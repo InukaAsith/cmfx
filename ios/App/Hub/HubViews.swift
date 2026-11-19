@@ -65,6 +65,40 @@ struct HubTab: View {
     }
 }
 
+/// A spinner and what is going on.
+struct Working: View {
+    let text: String
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+            Text(text).font(.subheadline).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A button for slow work: a spinner and `busy` in its place until the work is done.
+struct BusyButton: View {
+    let title: String
+    let busy: String
+    var primary = true
+    let action: () async -> Void
+    @State private var running = false
+    var body: some View {
+        let b = Button {
+            running = true
+            Task { await action(); running = false }
+        } label: {
+            HStack(spacing: 8) {
+                if running { ProgressView() }
+                Text(running ? busy : title)
+            }
+        }
+        .disabled(running)
+        if primary { b.primaryButton() } else { b.secondaryButton() }
+    }
+}
+
 private struct Status: View {
     let text: String?
     var body: some View {
@@ -86,7 +120,8 @@ struct SpotifyPage: View {
                     TextField(Secrets.spotifyBuilt ? "Built in (type to replace)" : "Spotify app client ID", text: $client)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
                         .onChange(of: client) { Secrets.spotifyClient = $1.trimmingCharacters(in: .whitespaces) }
-                    Button("Sign in with Spotify") { Task { await s.signIn() } }.primaryButton().disabled(Secrets.spotifyClient.isEmpty && client.isEmpty)
+                    BusyButton(title: "Sign in with Spotify", busy: "Signing in…") { await s.signIn() }
+                        .disabled(Secrets.spotifyClient.isEmpty && client.isEmpty)
                 }
                 Status(text: s.status)
             }
@@ -113,6 +148,8 @@ struct GeminiPage: View {
                     .onChange(of: key) { Secrets.geminiKey = $1.trimmingCharacters(in: .whitespaces) }
                 Text("Get a free key at aistudio.google.com › Get API key. It stays in this iPhone's keychain.")
                     .font(.footnote).foregroundStyle(.secondary)
+                BusyButton(title: "Check the key", busy: "Asking Gemini…", primary: false) { await g.check() }
+                    .disabled(Secrets.geminiKey.isEmpty)
                 Status(text: g.status)
             }
             .glassCard()
@@ -159,7 +196,8 @@ struct MapsPage: View {
 struct NavPage: View {
     @State private var n = Hub.shared.nav
     @State private var query = ""
-    @State private var results: [MKMapItem] = []
+    @State private var results: [Place] = []
+    @State private var searching = false
     var body: some View {
         PageScroll(title: "Navigation") {
             if n.active {
@@ -187,15 +225,19 @@ struct NavPage: View {
                 .buttonBorderShape(.capsule)
                 Text("From Google Maps: drop a pin (or open a place) › Share › Copy, then Paste here.")
                     .font(.caption).foregroundStyle(.secondary)
-                ForEach(results, id: \.self) { item in
-                    Button { Task { await n.start(to: item) } } label: {
+                if searching { Working(text: "Searching…") }
+                if let w = n.working { Working(text: w) }
+                ForEach(results) { p in
+                    Button { Task { await n.start(to: p.item) } } label: {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(item.name ?? "").foregroundStyle(TDColor.text)
-                            Text(item.placemark.title ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text(p.name).foregroundStyle(TDColor.text)
+                            Text(p.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(n.working != nil)
                 }
                 Status(text: n.status)
             }
@@ -221,10 +263,13 @@ struct NavPage: View {
             Task { await go(link: query) }
             return
         }
-        let r = MKLocalSearch.Request()
-        r.naturalLanguageQuery = query
-        r.resultTypes = [.pointOfInterest, .address]
-        Task { results = (try? await MKLocalSearch(request: r).start().mapItems.prefix(10).map { $0 }) ?? [] }
+        let q = query
+        searching = true
+        Task {
+            defer { searching = false }
+            results = await Place.search(q)
+            if results.isEmpty { n.status = "Nothing found for “\(q)”" } else { n.status = nil }
+        }
     }
 }
 
@@ -289,7 +334,8 @@ private struct GmailSettings: View {
                 TextField(Secrets.googleBuilt ? "Built in (type to replace)" : "Google OAuth client ID (iOS)", text: $client)
                     .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
                     .onChange(of: client) { Secrets.googleClient = $1.trimmingCharacters(in: .whitespaces) }
-                Button("Sign in with Google") { Task { await g.signIn() } }.primaryButton().disabled(Secrets.googleClient.isEmpty && client.isEmpty)
+                BusyButton(title: "Sign in with Google", busy: "Signing in…") { await g.signIn() }
+                    .disabled(Secrets.googleClient.isEmpty && client.isEmpty)
             }
             Status(text: g.status)
         }

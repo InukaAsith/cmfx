@@ -110,6 +110,16 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
             let w = syncWaiters
             syncWaiters.removeAll()
             w.forEach { $0.resume() }
+            // the watch already shows what the phone had: now the fresh list, and the open chat read
+            if live {
+                enqueue {
+                    await self.sendList()
+                    if let id = self.open, id != Self.info, let jid = self.ids.key(id) {
+                        await self.out(ChatsProto.chat(id, title: self.names[jid] ?? "Chat", self.messages(jid).map(self.bubble)))
+                        await Self.go { WabridgeMarkRead(jid) }
+                    }
+                }
+            }
         case "paired":
             code = nil
             pairing = false
@@ -130,8 +140,34 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
         refresh()
     }
 
-    /// Online, and the offline messages in (8 s at most). false: not linked or no connection.
-    private func online() async -> Bool {
+    /// The connect under way, if any: nothing waits on it longer than it chooses to.
+    private var connecting: Task<Bool, Never>?
+
+    /// Starts connecting (once) without waiting.
+    private func startConnect() {
+        guard connecting == nil, openBridge(), linked, WabridgeState() != "synced" else { return }
+        connecting = Task {
+            let ok = await self.connectNow()
+            self.connecting = nil
+            return ok
+        }
+    }
+
+    /// Online within `limit`, else false (the connect goes on; "synced" updates the watch when it comes).
+    private func online(_ limit: Duration = .seconds(12)) async -> Bool {
+        guard openBridge(), linked else { return false }
+        if WabridgeState() == "synced" { return true }
+        startConnect()
+        guard let t = connecting else { return WabridgeState() != "disconnected" }
+        let once = Once()
+        return await withCheckedContinuation { c in
+            Task { @MainActor in let v = await t.value; if once.take() { c.resume(returning: v) } }
+            Task { @MainActor in try? await Task.sleep(for: limit); if once.take() { c.resume(returning: false) } }
+        }
+    }
+
+    /// Connects and waits for the offline messages (8 s at most). false: not linked or no connection.
+    private func connectNow() async -> Bool {
         guard openBridge(), linked else { return false }
         if WabridgeState() == "synced" { return true }
         let err = await Self.go { () -> String? in
@@ -268,7 +304,8 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
     private func handle(_ ask: ChatsProto.Ask) async {
         switch ask {
         case .ready:
-            _ = await online()
+            // at once, from the chats on the phone; fresh ones follow when WhatsApp has synced
+            startConnect()
             await sendList(quick: true)
         case .open(let id): await show(id)
         case .send(let id, let text): await send(id, text)
@@ -290,12 +327,18 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
         if !linked {
             rows = [.init(id: Self.info, name: "WhatsApp", preview: "Link it in CMFX on the iPhone")]
         } else {
+            // the saved chats show at once; while WhatsApp catches up, the top row says so
+            if WabridgeState() != "synced", connecting != nil {
+                rows.append(.init(id: Self.info, name: "Syncing...", preview: "Saved chats below"))
+            }
             for c in chats() {
                 names[c.jid] = c.name
                 rows.append(.init(id: ids.id(c.jid), unreadCount: c.unread, name: c.name, preview: c.preview))
             }
-            if rows.isEmpty {
-                rows = [.init(id: Self.info, name: "WhatsApp", preview: connection == "disconnected" ? "Offline" : "No chats yet")]
+            if rows.isEmpty || rows.allSatisfy({ $0.id == Self.info }) {
+                let syncing = WabridgeState() != "synced" && connecting != nil
+                rows = [.init(id: Self.info, name: syncing ? "Syncing..." : "WhatsApp",
+                              preview: syncing ? "Getting your chats" : connection == "disconnected" ? "Offline" : "No chats yet")]
             }
         }
         await out(ChatsProto.list(rows) + (quick ? ChatsProto.quick(Self.quick) : []))
@@ -315,11 +358,12 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
                 "Open CMFX on the iPhone › Hub › WhatsApp, and link it with a pairing code."
             return await out([ChatsProto.open(id, title: "WhatsApp"), ChatsProto.message(0, text)])
         }
-        let online = await online()
         await out(ChatsProto.chat(id, title: names[jid] ?? "Chat", messages(jid).map(bubble)))
-        if online {
+        if WabridgeState() == "synced" {
             await Self.go { WabridgeMarkRead(jid) }
             await sendList()
+        } else {
+            startConnect() // "synced" sends this chat again and marks it read
         }
     }
 
@@ -365,4 +409,10 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
             if !pairing, !(pageShown && UIApplication.shared.applicationState == .active) { goOffline() }
         }
     }
+}
+
+/// The first of two racing callers wins.
+@MainActor private final class Once {
+    private var done = false
+    func take() -> Bool { defer { done = true }; return !done }
 }

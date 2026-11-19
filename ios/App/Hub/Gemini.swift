@@ -41,6 +41,23 @@ import UIKit
         }
     }
 
+    /// The page's "Check the key": one tiny question.
+    func check() async {
+        status = nil
+        var req = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(Self.model)")!)
+        req.timeoutInterval = 15
+        req.setValue(Secrets.geminiKey, forHTTPHeaderField: "x-goog-api-key")
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if code == 200 { status = "The key works: \(Self.model) answers." }
+            else {
+                let msg = ((try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? [String: Any])?["message"] as? String
+                status = "Gemini \(code): \(msg ?? "the key was refused")"
+            }
+        } catch { status = error.localizedDescription }
+    }
+
     private func send(_ msgs: [Data]) { Task { try? await Hub.shared.send(Self.app, msgs) } }
 
     private func list() -> [Data] {
@@ -112,6 +129,8 @@ import UIKit
     private func stream(_ turns: [Turn]) -> AsyncThrowingStream<String, Error> {
         let body: [String: Any] = [
             "contents": turns.map { ["role": $0.user ? "user" : "model", "parts": [["text": $0.text]]] },
+            // quick answers: no long thinking first (gemini-3.5-flash defaults to medium)
+            "generationConfig": ["thinkingConfig": ["thinkingLevel": "MINIMAL"]],
             "systemInstruction": ["parts": [["text":
                 "You answer on a small round watch. Plain sentences, no markdown, no lists, no emoji. At most 60 words."]]],
         ]
