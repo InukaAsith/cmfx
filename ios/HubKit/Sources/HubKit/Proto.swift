@@ -42,7 +42,7 @@ public enum SpotifyProto {
 
     /// What the watch asked for.
     public enum Ask: Equatable {
-        case ready, playPause, next, previous, volume(Int), like, open(Character), search(String), pick(Character, Int)
+        case ready, playPause, next, previous, volume(Int), seek(Int), like, open(Character), search(String), pick(Character, Int)
     }
 
     public static func parse(_ m: Data) -> Ask? {
@@ -52,6 +52,7 @@ public enum SpotifyProto {
         case ("R", _): return .ready
         case ("k", 2): return b[1] == UInt8(ascii: "p") ? .playPause : b[1] == UInt8(ascii: "n") ? .next : .previous
         case ("v", 2): return .volume(Int(b[1]))
+        case ("j", 3): return .seek(Int(b[1]) | Int(b[2]) << 8)
         case ("h", _): return .like
         case ("o", 2): return .open(Character(UnicodeScalar(b[1])))
         case ("s", _): return .search(String(decoding: b.dropFirst(), as: UTF8.self))
