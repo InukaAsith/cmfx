@@ -160,9 +160,9 @@ struct NavPage: View {
                 .glassCard()
             }
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Mode", selection: $n.transport) {
-                    Text("Walk").tag(MKDirectionsTransportType.walking)
-                    Text("Drive").tag(MKDirectionsTransportType.automobile)
+                Picker("Mode", selection: $n.walking) {
+                    Text("Walk").tag(true)
+                    Text("Drive").tag(false)
                 }
                 .pickerStyle(.segmented)
                 TextField("Where to?", text: $query).onSubmit(search)

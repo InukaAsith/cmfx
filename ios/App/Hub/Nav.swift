@@ -9,7 +9,8 @@ import MapKit
 
 @MainActor @Observable final class NavService: NSObject, WatchService, CLLocationManagerDelegate {
     static let app = "Navigation"
-    var transport: MKDirectionsTransportType = .walking
+    var walking = true
+    private var transport: MKDirectionsTransportType { walking ? .walking : .automobile }
     private(set) var destination: MKMapItem?
     private(set) var active = false
     var status: String?
