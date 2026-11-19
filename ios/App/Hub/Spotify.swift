@@ -32,6 +32,12 @@ import UIKit
     private var devices: [[String: Any]] = []
     private var view: [[String: Any]] = []
     private var context: String?
+    /// What the watch's track list shows: songs to play, the queue (a tap skips ahead to it), or a playlist whose
+    /// songs Spotify keeps from apps (one row: play it all).
+    private enum Shown { case tracks, queue, whole }
+    private var shown = Shown.tracks
+    /// Library rows before the playlists: Up next, Liked Songs (0 in "add to")
+    private var specials = 0
     private var track: [String: Any] = [:]
     private var playing = false
     private var lastArt: String?
@@ -75,7 +81,14 @@ import UIKit
             case .seek(let sec):
                 try await call("PUT", "/me/player/seek", query: ["position_ms": "\(sec * 1000)"])
                 try await push()
-            case .volume(let v): try await call("PUT", "/me/player/volume", query: ["volume_percent": "\(v)"])
+            case .volume(let v):
+                // phones (Spotify on iOS/Android) take no volume from apps: say so instead of failing
+                let p = try? await call("GET", "/me/player") as? [String: Any]
+                if let d = p?["device"] as? [String: Any], d["supports_volume"] as? Bool == false {
+                    return try await note("Set the volume on \(d.str("name").isEmpty ? "the device" : d.str("name"))")
+                }
+                do { try await call("PUT", "/me/player/volume", query: ["volume_percent": "\(v)"]) }
+                catch SpotifyError.restricted { try await note("This device's volume is set on it") }
             case .like:
                 guard let id = track["id"] as? String else { return try await note("Nothing playing") }
                 // Feb 2026: one library for everything, by URI
@@ -88,6 +101,7 @@ import UIKit
                 context = nil
                 let r = try await call("GET", "/search", query: ["q": q, "type": "track", "limit": "10"]) as? [String: Any]
                 view = ((r?["tracks"] as? [String: Any])?["items"] as? [[String: Any]]) ?? []
+                shown = .tracks
                 try await send(list: "S", view.map { ($0.str("name"), artists($0), false) })
             case .pick(let kind, let i): try await pick(kind, i)
             }
@@ -116,8 +130,12 @@ import UIKit
                 }
             }
             playlists = items
-            try await send(list: kind, items.map {
-                ($0.str("name"), "\(((($0["items"] ?? $0["tracks"]) as? [String: Any])?["total"] as? Int) ?? 0) songs", false)
+            specials = kind == "P" ? 2 : 0
+            let lead: [(String, String, Bool)] = kind == "P" ? [("Up next", "Your queue", false), ("Liked Songs", "Your saved songs", false)] : []
+            try await send(list: kind, lead + items.map {
+                let total = (($0["items"] ?? $0["tracks"]) as? [String: Any])?["total"] as? Int
+                let owner = ($0["owner"] as? [String: Any])?["display_name"] as? String ?? ""
+                return ($0.str("name"), total.map { "\($0) songs" } ?? (owner.isEmpty ? "Playlist" : "by \(owner)"), false)
             })
         case "D":
             devices = ((try await call("GET", "/me/player/devices") as? [String: Any])?["devices"] as? [[String: Any]]) ?? []
@@ -130,8 +148,25 @@ import UIKit
 
     private func pick(_ kind: Character, _ i: Int) async throws {
         switch kind {
+        case "P" where i == 0 && specials == 2:
+            // Up next: what Spotify plays after this one
+            let q = try await call("GET", "/me/player/queue") as? [String: Any] ?? [:]
+            view = Array((q["queue"] as? [[String: Any]] ?? []).prefix(24))
+            context = nil
+            shown = .queue
+            try await send(list: "T", view.map { ($0.str("name"), artists($0), false) })
+        case "P" where i == 1 && specials == 2:
+            let me = try await call("GET", "/me") as? [String: Any] ?? [:]
+            let items = ((try await call("GET", "/me/tracks", query: ["limit": "24"]) as? [String: Any])?["items"]
+                as? [[String: Any]]) ?? []
+            view = items.compactMap { ($0["item"] ?? $0["track"]) as? [String: Any] }
+            context = me.str("id").isEmpty ? nil : "spotify:user:\(me.str("id")):collection"
+            shown = .tracks
+            let now = track.str("id")
+            try await send(list: "T", view.map { ($0.str("name"), artists($0), $0.str("id") == now) })
         case "P":
-            guard i < playlists.count else { return }
+            let i = i - specials
+            guard i >= 0, i < playlists.count else { return }
             context = playlists[i].str("uri")
             let id = playlists[i].str("id")
             // Feb 2026: only the user's own playlists show their songs to an app; another's is played whole
@@ -140,14 +175,31 @@ import UIKit
                 items = ((try await call("GET", "/playlists/\(id)/items", query: ["limit": "24"]) as? [String: Any])?["items"]
                     as? [[String: Any]]) ?? []
             } catch {
-                try await call("PUT", "/me/player/play", body: ["context_uri": playlists[i].str("uri")])
-                try await note("Playing the playlist")
-                try await Task.sleep(for: .milliseconds(500))
-                return try await push()
+                // not the user's: Spotify shows apps its name only; one row plays it all
+                view = []
+                shown = .whole
+                let owner = (playlists[i]["owner"] as? [String: Any])?["display_name"] as? String ?? ""
+                return try await send(list: "T", [("Play all", owner.isEmpty ? "Songs hidden by Spotify" : "by \(owner)", false)])
             }
+            shown = .tracks
             view = items.compactMap { ($0["item"] ?? $0["track"]) as? [String: Any] }
             let now = track.str("id")
             try await send(list: "T", view.map { ($0.str("name"), artists($0), $0.str("id") == now) })
+        case "T" where shown == .whole:
+            guard let ctx = context else { return }
+            do { try await call("PUT", "/me/player/play", body: ["context_uri": ctx]) }
+            catch SpotifyError.noDevice { try await playOnADevice(["context_uri": ctx]) }
+            try await Task.sleep(for: .milliseconds(500))
+            try await push()
+        case "T" where shown == .queue:
+            // the API cannot jump in the queue: skip forward to it
+            guard i < view.count else { return }
+            for _ in 0...i {
+                try await call("POST", "/me/player/next")
+                try await Task.sleep(for: .milliseconds(250))
+            }
+            try await Task.sleep(for: .milliseconds(400))
+            try await push()
         case "T", "S":
             guard i < view.count else { return }
             let uri = view[i].str("uri")
@@ -246,7 +298,8 @@ import UIKit
             let reason = err?["reason"] as? String ?? "", message = err?["message"] as? String ?? String(decoding: data.prefix(200), as: UTF8.self)
             DevLog.shared.log("spotify 403 \(method) \(path): \(reason) \(message)")
             if reason == "PREMIUM_REQUIRED" { premium = false; throw SpotifyError.premium }
-            if message.lowercased().contains("restriction violated") { throw SpotifyError.restricted }
+            let low = message.lowercased()
+            if low.contains("restriction violated") || low.contains("cannot control device volume") { throw SpotifyError.restricted }
             throw HubError.failed("Spotify: \(message.isEmpty ? "access refused (403)" : message)")
         }
         if code == 401 { Keychain.set("spotify-expires", "0") }
