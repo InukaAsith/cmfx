@@ -223,7 +223,8 @@ struct NavPage: View {
         }
         let r = MKLocalSearch.Request()
         r.naturalLanguageQuery = query
-        Task { results = (try? await MKLocalSearch(request: r).start().mapItems.prefix(8).map { $0 }) ?? [] }
+        r.resultTypes = [.pointOfInterest, .address]
+        Task { results = (try? await MKLocalSearch(request: r).start().mapItems.prefix(10).map { $0 }) ?? [] }
     }
 }
 

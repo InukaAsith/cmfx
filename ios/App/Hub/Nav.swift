@@ -46,22 +46,35 @@ import MapKit
         }
         let to = item.placemark.coordinate
         let src = MKMapItem(placemark: MKPlacemark(coordinate: here.coordinate))
-        // walking first (when chosen); if MapKit has no walking route there, the roads; if none at all, a straight line
+        // walking first (when chosen), then the roads. A pin off any path (a field, a building's middle) has no
+        // route itself: the nearest address to it is tried next. Only with none of these, a straight line.
         var route: MKRoute?
-        for t: MKDirectionsTransportType in walking ? [.walking, .automobile] : [.automobile] {
-            let req = MKDirections.Request()
-            req.source = src
-            req.destination = item
-            req.transportType = t
-            if let r = try? await MKDirections(request: req).calculate().routes.first {
-                route = r
-                if t != transport { status = "No walking route there: following the roads" }
-                break
+        var why: Error?
+        var targets = [item]
+        if let near = try? await CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: to.latitude, longitude: to.longitude)).first {
+            targets.append(MKMapItem(placemark: MKPlacemark(placemark: near)))
+        }
+        search: for target in targets {
+            for t: MKDirectionsTransportType in walking ? [.walking, .automobile] : [.automobile] {
+                let req = MKDirections.Request()
+                req.source = src
+                req.destination = target
+                req.transportType = t
+                do {
+                    if let r = try await MKDirections(request: req).calculate().routes.first {
+                        route = r
+                        if t != transport { status = "No walking route there: following the roads" }
+                        break search
+                    }
+                } catch {
+                    why = error
+                    DevLog.shared.log("route \(t == .walking ? "walk" : "drive") failed: \(error.localizedDescription)")
+                }
             }
         }
         if let route { load(route) } else {
             loadDirect(from: here.coordinate, to: to)
-            status = "No route there: the watch points straight at it"
+            status = "Apple Maps found no route (\(why?.localizedDescription ?? "none")): the watch points straight at it. Pin at \(String(format: "%.5f, %.5f", to.latitude, to.longitude))"
         }
         active = true
         manager.allowsBackgroundLocationUpdates = true
