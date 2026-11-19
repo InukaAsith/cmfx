@@ -38,6 +38,13 @@ jobs:
           echo "Using $X"
           sudo xcode-select -s "$X"
           xcodebuild -version
+      # WABridge: whatsmeow for the WhatsApp watch app, built with gomobile before xcodegen links it
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: ios/WABridge/go.sum
+      - name: WABridge (whatsmeow via gomobile)
+        run: bash ios/WABridge/build.sh
       - name: XcodeGen
         run: brew install xcodegen xcbeautify
       - name: Build

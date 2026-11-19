@@ -4,7 +4,12 @@ import WireKit
 // WireKit's Link over CoreBluetooth, on the link the phone already holds for Nothing X (cmf-watch-sdk
 // docs/abi-1.4.md, "Writing a host", steps 1–2). Everything runs on the main queue; one step waits at a time.
 // Background: `bluetooth-central` keeps the link and wakes the app on a notify (WakeProbe checks that it does).
-// ponytail: no state restoration; a kill by the system ends the link until the next launch.
+// The watch is shared with Nothing X (the system holds its link; this is CMFX's use of it), so:
+// - a drop (the watch walked away, restarted) asks for the watch again at once: a pending connect iOS keeps while
+//   the app is suspended, no timer; the notifies are subscribed again when it is back, then `onReconnect`.
+// - writes without response wait for room (`canSendWriteWithoutResponse`), in order, instead of being dropped.
+// - the RPC listener's link (`restore`) uses state restoration: iOS relaunches CMFX for a watch notify after it
+//   ended it for memory, and the restored link is taken up again.
 
 enum BLEError: LocalizedError {
     case off, unauthorized, noWatch, missing, failed(String)
@@ -35,24 +40,44 @@ final class BLELink: NSObject, Link, @unchecked Sendable {
     private let lock = NSLock()
     private var step: CheckedContinuation<Void, Error>?
     private var pendingServices = 0
-    /// The link went down (DEBUG wake probe logs it).
+    /// Writes without response waiting for room in iOS's buffer, oldest first.
+    private var queued: [(Data, CBCharacteristic, CheckedContinuation<Void, Error>)] = []
+    /// false after disconnect(): no reconnecting.
+    private var wanted = true
+    /// Back after a drop or a restoration: `onReconnect` once the notifies are on again.
+    private var reconnecting = false
+    /// The link went down (DEBUG wake probe logs it). Its sessions are over: their handlers go with it.
     var onDisconnect: (() -> Void)?
+    /// The link is back (reconnected after a drop, or restored): open a session on it again.
+    var onReconnect: (() -> Void)?
 
     /// The connected watch's identifier: keys the cached pairing secret.
     var watchID: UUID? { peripheral?.identifier }
     /// The advertised name ("CMF Watch Pro 2-1A2B"): the only model id there is.
     var watchName: String? { peripheral?.name }
 
-    override init() {
+    /// `restore`: a state restoration identifier (one link at a time may use it).
+    init(restore: String? = nil) {
         super.init()
-        central = CBCentralManager(delegate: self, queue: .main)
+        var options: [String: Any] = [CBCentralManagerOptionShowPowerAlertKey: false]
+        if let restore { options[CBCentralManagerOptionRestoreIdentifierKey] = restore }
+        central = CBCentralManager(delegate: self, queue: .main, options: options)
+    }
+
+    /// Connected, every characteristic found and every notify on.
+    private var ready: Bool {
+        guard let p = peripheral, p.state == .connected, Self.required.allSatisfy({ chars[$0] != nil }) else { return false }
+        return Self.notifies.compactMap { chars[$0] }.allSatisfy(\.isNotifying)
     }
 
     /// `scan`: with no link up (Nothing X closed, the system dropped it) look for the watch's advertisement, as
     /// Bluefy's picker does, for up to 10 s.
     @MainActor func connect(scan: Bool = false) async throws {
+        wanted = true
         if central.state != .poweredOn { try await wait() }
-        var found = central.retrieveConnectedPeripherals(withServices: [Self.service]).first
+        // restored, or back after a drop
+        if ready { return }
+        var found = peripheral ?? central.retrieveConnectedPeripherals(withServices: [Self.service]).first
         if found == nil, scan {
             central.scanForPeripherals(withServices: nil)
             let timeout = Task { @MainActor in
@@ -66,13 +91,18 @@ final class BLELink: NSObject, Link, @unchecked Sendable {
         guard let p = found else { throw BLEError.noWatch }
         peripheral = p
         p.delegate = self
-        central.connect(p)
+        if p.state == .connected { p.discoverServices(nil) } else { central.connect(p) }
         try await wait() // connected, services and characteristics found, both notifies on
     }
 
+    /// On purpose: no reconnecting.
     @MainActor func disconnect() {
+        wanted = false
+        reconnecting = false
         if let peripheral { central.cancelPeripheralConnection(peripheral) }
         peripheral = nil
+        failQueued(BLEError.failed(String(localized: "The watch disconnected.")))
+        finish(BLEError.failed(String(localized: "The watch disconnected."))) // a connect waiting on a pending reconnect
     }
 
     /// Ends a step that never finished (the watch went quiet).
@@ -94,16 +124,34 @@ final class BLELink: NSObject, Link, @unchecked Sendable {
     @MainActor private func send(_ uuid: String, _ data: Data) async throws {
         try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
             guard let p = peripheral, let ch = chars[uuid] else { return c.resume(throwing: BLEError.missing) }
+            guard p.state == .connected else { return c.resume(throwing: BLEError.failed(String(localized: "The watch disconnected."))) }
             // a frame over MTU-3 goes as one write with response (abi-1.4.md, step 4)
             let big = data.count > p.maximumWriteValueLength(for: .withoutResponse)
             if big || !ch.properties.contains(.writeWithoutResponse) {
                 step = c
                 p.writeValue(data, for: ch, type: .withResponse)
-            } else {
+            } else if queued.isEmpty, p.canSendWriteWithoutResponse {
                 p.writeValue(data, for: ch, type: .withoutResponse)
                 c.resume()
+            } else {
+                // iOS's buffer is full: written from peripheralIsReady, in order
+                queued.append((data, ch, c))
             }
         }
+    }
+
+    private func drainQueued(_ p: CBPeripheral) {
+        while let w = queued.first, p.canSendWriteWithoutResponse {
+            queued.removeFirst()
+            p.writeValue(w.0, for: w.1, type: .withoutResponse)
+            w.2.resume()
+        }
+    }
+
+    private func failQueued(_ error: Error) {
+        let q = queued
+        queued.removeAll()
+        q.forEach { $0.2.resume(throwing: error) }
     }
 
     @MainActor private func wait() async throws {
@@ -120,7 +168,13 @@ final class BLELink: NSObject, Link, @unchecked Sendable {
 extension BLELink: CBCentralManagerDelegate, CBPeripheralDelegate {
     func centralManagerDidUpdateState(_ c: CBCentralManager) {
         switch c.state {
-        case .poweredOn: finish()
+        case .poweredOn:
+            // restored with nobody waiting yet: take the watch up again (the listener's connect() finds it ready)
+            if step == nil, wanted, let p = peripheral {
+                reconnecting = true
+                if p.state == .connected { p.discoverServices(nil) } else { c.connect(p) }
+            }
+            finish()
         case .poweredOff: finish(BLEError.off)
         case .unauthorized, .unsupported: finish(BLEError.unauthorized)
         default: break
@@ -138,13 +192,48 @@ extension BLELink: CBCentralManagerDelegate, CBPeripheralDelegate {
         p.discoverServices(nil)
     }
 
+    func centralManager(_ c: CBCentralManager, willRestoreState dict: [String: Any]) {
+        let restored = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral]) ?? []
+        guard let p = restored.first(where: { ($0.name ?? "").hasPrefix("CMF Watch") }) ?? restored.first else { return }
+        peripheral = p
+        p.delegate = self
+        // its characteristics, if iOS kept them; the notifies are checked again once powered on
+        for s in p.services ?? [] {
+            for ch in s.characteristics ?? [] {
+                if let name = Self.known.first(where: { $0.0 == ch.uuid })?.1 { chars[name] = ch }
+            }
+        }
+    }
+
     func centralManager(_ c: CBCentralManager, didFailToConnect p: CBPeripheral, error: Error?) {
         finish(error ?? BLEError.noWatch)
+        again(p)
     }
 
     func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
         finish(BLEError.failed(String(localized: "The watch disconnected.")))
+        failQueued(BLEError.failed(String(localized: "The watch disconnected.")))
+        // the sessions on it are over (a new one registers its own handler)
+        lock.withLock { handlers.removeAll() }
         onDisconnect?()
+        again(p)
+    }
+
+    /// Not dropped on purpose: ask for the watch again. iOS keeps the request (no timeout) while the app is
+    /// suspended and connects when the watch is back.
+    private func again(_ p: CBPeripheral) {
+        guard wanted, p === peripheral, central.state == .poweredOn else { return }
+        reconnecting = true
+        central.connect(p)
+    }
+
+    /// Notifies on: whoever waits goes on; after a drop or a restoration, `onReconnect`.
+    private func linkReady() {
+        finish()
+        if reconnecting {
+            reconnecting = false
+            onReconnect?()
+        }
     }
 
     func peripheral(_ p: CBPeripheral, didDiscoverServices error: Error?) {
@@ -161,12 +250,19 @@ extension BLELink: CBCentralManagerDelegate, CBPeripheralDelegate {
         pendingServices -= 1
         guard pendingServices == 0 else { return }
         guard Self.required.allSatisfy({ chars[$0] != nil }) else { return finish(BLEError.missing) }
-        Self.notifies.compactMap { chars[$0] }.forEach { p.setNotifyValue(true, for: $0) }
+        let off = Self.notifies.compactMap { chars[$0] }.filter { !$0.isNotifying }
+        // restored with its subscriptions: nothing to turn on
+        if off.isEmpty { return linkReady() }
+        off.forEach { p.setNotifyValue(true, for: $0) }
     }
 
     func peripheral(_ p: CBPeripheral, didUpdateNotificationStateFor c: CBCharacteristic, error: Error?) {
         if let error { return finish(error) }
-        if Self.notifies.compactMap({ chars[$0] }).allSatisfy(\.isNotifying) { finish() }
+        if Self.notifies.compactMap({ chars[$0] }).allSatisfy(\.isNotifying) { linkReady() }
+    }
+
+    func peripheralIsReady(toSendWriteWithoutResponse p: CBPeripheral) {
+        drainQueued(p)
     }
 
     func peripheral(_ p: CBPeripheral, didUpdateValueFor c: CBCharacteristic, error: Error?) {

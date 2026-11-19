@@ -4,3 +4,4 @@ ios/*.xcodeproj/
 **/.build/
 .DS_Store
 *.ipa
+ios/WABridge/WABridge.xcframework/

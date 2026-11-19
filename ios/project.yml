@@ -31,6 +31,9 @@ targets:
       - package: WireKit
       - package: HubKit
       - package: MarkdownUI
+      # whatsmeow (MPL-2.0) via gomobile: a static framework, linked, not embedded (WABridge/build.sh makes it)
+      - framework: WABridge/WABridge.xcframework
+        embed: false
     entitlements:
       path: App/CMFX.entitlements
     info:
@@ -72,6 +75,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         LOCALIZATION_PREFERS_STRING_CATALOGS: YES
         SWIFT_EMIT_LOC_STRINGS: YES
+        # Go's runtime (WABridge): DNS and the system's certificates
+        OTHER_LDFLAGS: ["$(inherited)", "-lresolv", "-framework", "Security", "-framework", "CoreFoundation"]
   CMFXTests:
     type: bundle.unit-test
     platform: iOS

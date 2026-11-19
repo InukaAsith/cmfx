@@ -25,7 +25,8 @@ struct HubTab: View {
                     row(PhotosPage(), "photo.fill", .purple, "Photos", "Your gallery on the watch", PhotosService.app)
                     row(MailPage(), "envelope.fill", .red, "Mail", mailDetail, MailService.app)
                     row(NotesPage(), "note.text", .yellow, "Notes", "Your notes and reminders", NotesService.app)
-                    row(WhatsAppPage(), "message.fill", Color(red: 0.15, green: 0.8, blue: 0.4), "WhatsApp", "Not linked yet", "WhatsApp")
+                    row(WhatsAppPage(), "message.fill", Color(red: 0.15, green: 0.8, blue: 0.4), "WhatsApp",
+                        hub.whatsapp.linked ? "Linked" : "Link with a pairing code", WhatsAppService.app)
                 }
                 .glassCard(22)
                 Text("Each runs only while its app is open on the watch or while you use it here; Mail checks the inbox each minute while it is open.")
@@ -455,15 +456,63 @@ struct NoteEditor: View {
 }
 
 struct WhatsAppPage: View {
+    @State private var w = Hub.shared.whatsapp
+    @State private var phone = ""
+    @State private var copied = false
+
+    private var connectionText: String {
+        switch w.connection {
+        case "synced", "connected": "Online now"
+        case "unlinked": "Not linked"
+        default: "Offline: online only while the watch app is open"
+        }
+    }
+
     var body: some View {
         PageScroll(title: "WhatsApp") {
-            VStack(alignment: .leading, spacing: 10) {
-                CardHeader(symbol: "message.fill", color: .green, title: "Not linked yet")
-                Text("iOS gives no app your WhatsApp chats. The watch app works with a linked-device bridge (WhatsApp Web) running on a computer; linking from the iPhone comes later.")
+            VStack(alignment: .leading, spacing: 14) {
+                CardHeader(symbol: "message.fill", color: .green, title: w.linked ? "Linked as \(w.me.isEmpty ? "your account" : w.me)" : "Not linked",
+                           detail: w.linked ? connectionText : "CMFX becomes a linked device, like WhatsApp Web")
+                if w.linked {
+                    Button("Unlink", role: .destructive) { Task { await w.unlink() } }.secondaryButton()
+                } else if let code = w.code {
+                    Text(code)
+                        .font(.system(size: 40, weight: .bold, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity)
+                    Button(copied ? "Copied" : "Copy code") {
+                        UIPasteboard.general.string = code.replacingOccurrences(of: "-", with: "")
+                        copied = true
+                    }.secondaryButton().frame(maxWidth: .infinity)
+                    Text("On the phone with your WhatsApp: WhatsApp › Settings › Linked devices › Link a device › Link with phone number instead, then type this code. It works for about 2 minutes; keep CMFX open until it says linked.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button("Cancel") { w.cancelPairing() }.secondaryButton()
+                } else {
+                    TextField("Your WhatsApp number, with country code (+…)", text: $phone)
+                        .keyboardType(.phonePad).textContentType(.telephoneNumber).autocorrectionDisabled()
+                    Button(w.pairing ? "Asking WhatsApp…" : "Get pairing code") {
+                        copied = false
+                        Task { await w.pair(phone) }
+                    }
+                    .primaryButton()
+                    .disabled(w.pairing || phone.filter(\.isNumber).count < 7)
+                    Text("International format (E.164): + then the country code and number, no leading 0.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Status(text: w.status)
+            }
+            .glassCard()
+            VStack(alignment: .leading, spacing: 8) {
+                Text("On the watch").font(.headline)
+                Text("Open WhatsApp on the watch: your 12 newest chats and the last 12 messages of each. Reply with a quick reply or by typing; a new message buzzes the watch while the app is open. CMFX goes online only while the watch app is open and offline a minute after, so it costs no battery in between; the session and chats stay on this iPhone.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Text("CMFX is an unofficial WhatsApp client (whatsmeow). That is against WhatsApp's terms; bans of linked devices are rare but possible. Use it at your own risk.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             .glassCard()
         }
+        .onAppear { w.pageAppeared(true) }
+        .onDisappear { w.pageAppeared(false) }
     }
 }
 

@@ -3,6 +3,8 @@
 # ID when it installs it. Needs Xcode (the Build iOS workflow has it) and XcodeGen (brew install xcodegen).
 set -euo pipefail
 cd "$(dirname "$0")"
+# whatsmeow for the WhatsApp watch app (Go + gomobile); CI builds it in its own step
+[ -d WABridge/WABridge.xcframework ] || bash WABridge/build.sh
 xcodegen generate --quiet
 rm -rf build dist
 xcodebuild -project CMFX.xcodeproj -scheme CMFX -configuration Release -sdk iphoneos \

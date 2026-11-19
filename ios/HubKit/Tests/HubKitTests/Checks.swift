@@ -72,6 +72,9 @@ enum Checks {
         let long = ChatsProto.list([.init(id: 2, name: String(repeating: "é", count: 20), preview: String(repeating: "a", count: 60))])
         if long[1].count != 6 + 24 + 40 || long[1][4] != 24 || long[1][29] != 40 { bad.append("chats row cut \(long[1].count)") }
         if ChatsProto.list((0..<20).map { .init(id: UInt8($0), name: "n", preview: "") }).count != 13 { bad.append("chats max rows") }
+        // wahost.py: `C idx id unread nlen name plen preview`, unread a count
+        eq("chats unread count", hex(ChatsProto.list([.init(id: 4, unreadCount: 3, name: "Mum", preview: "Hi")])[1]),
+           "4300040303" + hex(Data("Mum".utf8)) + "02" + hex(Data("Hi".utf8)))
         eq("chats open", hex(ChatsProto.open(9, title: "Groceries")), "4809" + hex(Data("Groceries".utf8)))
         eq("chats message", hex(ChatsProto.message(2, kind: ChatsProto.todo, "Milk")), "4d020003" + hex(Data("Milk".utf8)))
         eq("chats append", hex(ChatsProto.append(me: true, "On it")), "410100" + hex(Data("On it".utf8)))

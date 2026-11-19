@@ -25,6 +25,7 @@ import WireKit
     let photos = PhotosService()
     let mail = MailService()
     let notes = NotesService()
+    let whatsapp = WhatsAppService()
 
     /// slot → app name, from the loader (RPCListener).
     private(set) var apps: [Int: String] = [:]
@@ -37,7 +38,7 @@ import WireKit
 
     private var services: [String: WatchService] {
         [SpotifyService.app: spotify, GeminiService.app: gemini, MapsService.app: maps, NavService.app: nav,
-         PhotosService.app: photos, MailService.app: mail, NotesService.app: notes]
+         PhotosService.app: photos, MailService.app: mail, NotesService.app: notes, WhatsAppService.app: whatsapp]
     }
 
     func attach(_ s: KSession?, apps: [Int: String]) {
@@ -55,6 +56,8 @@ import WireKit
         guard let name = apps[slot], let service = services[name] else { return }
         lastApp = name
         lastHeard = .now
+        // the watch runs one app at a time: WhatsApp goes offline when another talks
+        if name != WhatsAppService.app { whatsapp.otherApp() }
         let bg = UIApplication.shared.beginBackgroundTask(withName: "hub")
         service.receive(m)
         Task { try? await Task.sleep(for: .seconds(8)); UIApplication.shared.endBackgroundTask(bg) }
