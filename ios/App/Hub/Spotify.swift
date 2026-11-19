@@ -59,6 +59,9 @@ import UIKit
                 try await call("POST", ask == .next ? "/me/player/next" : "/me/player/previous")
                 try await Task.sleep(for: .milliseconds(500))
                 try await push()
+            case .seek(let sec):
+                try await call("PUT", "/me/player/seek", query: ["position_ms": "\(sec * 1000)"])
+                try await push()
             case .volume(let v): try await call("PUT", "/me/player/volume", query: ["volume_percent": "\(v)"])
             case .like:
                 guard let id = track["id"] as? String else { return try await note("Nothing playing") }
