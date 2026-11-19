@@ -1,0 +1,127 @@
+{
+ "command": 37032,
+ "widget": [
+  {
+   "title": "USD",
+   "value": "92.41",
+   "hex": "55534400000000000000000000000000000000000000000039322e34310000000000000000000000000000000000000000000000000000000000000000000000"
+  },
+  {
+   "title": "Погода в Москве сегодня",
+   "value": "−3° снег, ветер 5 м/с\nзавтра −7°",
+   "hex": "d09fd0bed0b3d0bed0b4d0b020d0b220d09cd0bed1810000e2889233c2b020d181d0bdd0b5d0b32c20d0b2d0b5d182d0b5d180203520d0bc2fd1810ad0b70000"
+  },
+  {
+   "title": "",
+   "value": "",
+   "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  },
+  {
+   "title": "A title of exactly 23 b",
+   "value": "a value that is longer than thirty-nine bytes for sure",
+   "hex": "41207469746c65206f662065786163746c79203233206200612076616c75652074686174206973206c6f6e676572207468616e207468697274792d6e696e6500"
+  }
+ ],
+ "payload": [
+  {
+   "slot": 3,
+   "kind": 0,
+   "data": "55534400000000000000000000000000000000000000000039322e34310000000000000000000000000000000000000000000000000000000000000000000000",
+   "hex": "030055534400000000000000000000000000000000000000000039322e34310000000000000000000000000000000000000000000000000000000000000000000000"
+  },
+  {
+   "slot": 15,
+   "kind": 1,
+   "data": "0102",
+   "hex": "0f010102"
+  }
+ ],
+ "replies": [
+  {
+   "hex": "00",
+   "ok": true
+  },
+  {
+   "hex": "0a60ea0000",
+   "later_ms": 60000
+  },
+  {
+   "hex": "07",
+   "refused": 7
+  },
+  {
+   "hex": "01",
+   "refused": 1
+  },
+  {
+   "hex": "02",
+   "refused": 2
+  },
+  {
+   "hex": "",
+   "refused": 255
+  }
+ ],
+ "blob": [
+  {
+   "records": [
+    "c8000800",
+    "7b2274223a32317d"
+   ],
+   "blob": "04c8000800087b2274223a32317d"
+  },
+  {
+   "records": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "blob": "64aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "note": "the second record doesn't fit: whole records only"
+  },
+  {
+   "records": [
+    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+   ],
+   "blob": null,
+   "note": "a record of 128 bytes doesn't fit with its length byte"
+  },
+  {
+   "records": [],
+   "blob": null
+  }
+ ],
+ "http_widget": [
+  {
+   "records": [
+    "c8000e00",
+    "5553440a39322e3431206576656e"
+   ],
+   "title": "USD",
+   "value": "92.41 even"
+  },
+  {
+   "records": [
+    "c8000500",
+    "48656c6c6f"
+   ],
+   "title": "Hello",
+   "value": ""
+  },
+  {
+   "records": [
+    "f4010200",
+    "6f6b"
+   ],
+   "none": true,
+   "note": "a 500 doesn't go to the widget"
+  },
+  {
+   "records": [
+    "c8000200",
+    "c328"
+   ],
+   "none": true,
+   "note": "not UTF-8"
+  }
+ ]
+}

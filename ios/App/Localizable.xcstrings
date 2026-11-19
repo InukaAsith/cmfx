@@ -1,0 +1,6211 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+      "shouldTranslate" : false
+    },
+    " → widget" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " → виджет"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " → віджет"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " → widget"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " → विजेट"
+          }
+        }
+      }
+    },
+    "%@ asked the phone to fetch these on its own, for its widget or page on the watch. They run while the phone is connected to the watch." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ попросило телефон загружать это само, для своего виджета или страницы на часах. Работает, пока телефон подключён к часам."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ попросив телефон завантажувати це сам, для свого віджета або сторінки на годиннику. Працює, поки телефон підключений до годинника."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ pidió al teléfono que obtenga esto por su cuenta, para su widget o su página en el reloj. Funciona mientras el teléfono está conectado al reloj."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ने फ़ोन से कहा है कि वह इन्हें खुद लाए, घड़ी पर इसके विजेट या पेज के लिए। ये तब चलते हैं जब फ़ोन घड़ी से जुड़ा हो।"
+          }
+        }
+      }
+    },
+    "%@ asks again the next time it needs something." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ спросит снова, когда что-то понадобится."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ запитає знову, коли щось знадобиться."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ volverá a preguntar la próxima vez que necesite algo."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ अगली बार कुछ चाहिए होने पर फिर से पूछेगा।"
+          }
+        }
+      }
+    },
+    "%@ hasn't asked for anything on your phone." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ пока ничего не запрашивало на телефоне."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ поки нічого не запитував на телефоні."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ no ha pedido nada en tu teléfono."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ने आपके फ़ोन पर अभी तक कुछ नहीं माँगा है।"
+          }
+        }
+      }
+    },
+    "%@ is running on the watch. If it is a page next to the watch face, remove the page first: on the watch, long press %@ in Apps → Remove page. Else go back to the watch face. Then try again." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ запущено на часах. Если это страница рядом с циферблатом, сначала уберите её: на часах удерживайте %@ в «Приложениях» → «Удалить страницу». Иначе вернитесь на циферблат. Потом попробуйте снова."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ запущено на годиннику. Якщо це сторінка поруч із циферблатом, спершу приберіть її: на годиннику утримуйте %@ у «Застосунках» → «Видалити сторінку». Інакше поверніться на циферблат. Потім спробуйте знову."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ está abierta en el reloj. Si es una página junto a la esfera, quítala primero: en el reloj, mantén pulsada %@ en Apps → Quitar página. Si no, vuelve a la esfera. Luego inténtalo de nuevo."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ घड़ी पर चल रहा है। अगर यह वॉच फ़ेस के पास का पेज है, तो पहले उसे हटाएँ: घड़ी पर Apps में %@ को दबाकर रखें → पेज हटाएँ। नहीं तो वॉच फ़ेस पर लौटें। फिर से कोशिश करें।"
+          }
+        }
+      }
+    },
+    "%@ on your watch is looking for this phone." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ на часах ищет этот телефон."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ на годиннику шукає цей телефон."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ en tu reloj está buscando este teléfono."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "आपकी घड़ी पर %@ इस फ़ोन को ढूँढ रहा है।"
+          }
+        }
+      }
+    },
+    "%@ or the Apps menu is open on the watch. Go back to the watch face, then try again." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На часах открыто %@ или меню приложений. Вернитесь на циферблат и попробуйте снова."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На годиннику відкрито %@ або меню застосунків. Поверніться на циферблат і спробуйте знову."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ o el menú de apps está abierto en el reloj. Vuelve a la esfera e inténtalo de nuevo."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर %@ या Apps मेन्यू खुला है। वॉच फ़ेस पर लौटें, फिर से कोशिश करें।"
+          }
+        }
+      }
+    },
+    "%@ wants %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ запрашивает %2$@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ запитує %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ quiere %2$@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ को %2$@ चाहिए"
+          }
+        }
+      }
+    },
+    "%@ wants to read and change data on %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ хочет читать и менять данные на %2$@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ хоче читати й змінювати дані на %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ quiere leer y cambiar datos en %2$@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@ पर डेटा पढ़ना और बदलना चाहता है"
+          }
+        }
+      }
+    },
+    "%@ · stub %lld" : {
+      "shouldTranslate" : false
+    },
+    "%lld" : {
+      "shouldTranslate" : false
+    },
+    "%lld h" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld ч"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld год"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld h"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld घं"
+          }
+        }
+      }
+    },
+    "%lld min" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld мин"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld хв"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld min"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld मिनट"
+          }
+        }
+      }
+    },
+    "%lld watch faces · %@ downloads · %@ likes" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld watch face · %@ downloads · %@ likes"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld watch faces · %@ downloads · %@ likes"
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld циферблат · загрузок: %@ · лайков: %@"
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld циферблата · загрузок: %@ · лайков: %@"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld циферблатов · загрузок: %@ · лайков: %@"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld циферблата · загрузок: %@ · лайков: %@"
+                }
+              }
+            }
+          }
+        },
+        "uk" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld циферблат · завантажень: %@ · вподобань: %@"
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld циферблати · завантажень: %@ · вподобань: %@"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld циферблатів · завантажень: %@ · вподобань: %@"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld циферблата · завантажень: %@ · вподобань: %@"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld esfera · %@ descargas · %@ me gusta"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld esferas · %@ descargas · %@ me gusta"
+                }
+              }
+            }
+          }
+        },
+        "hi" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld वॉच फ़ेस · %@ डाउनलोड · %@ लाइक"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld वॉच फ़ेस · %@ डाउनलोड · %@ लाइक"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld%%" : {
+      "shouldTranslate" : false
+    },
+    "About" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Описание"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Опис"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descripción"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "विवरण"
+          }
+        }
+      }
+    },
+    "Add Header" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить заголовок"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Додати заголовок"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir cabecera"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "हेडर जोड़ें"
+          }
+        }
+      }
+    },
+    "All" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Все"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Усі"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todas"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सभी"
+          }
+        }
+      }
+    },
+    "All %lld app slots on the watch are taken." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "The only app slot on the watch is taken."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "All %lld app slots on the watch are taken."
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Все %lld слот для приложений на часах заняты."
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Все %lld слота для приложений на часах заняты."
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Все %lld слотов для приложений на часах заняты."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Все %lld слота для приложений на часах заняты."
+                }
+              }
+            }
+          }
+        },
+        "uk" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Усі %lld слот для застосунків на годиннику зайняті."
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Усі %lld слоти для застосунків на годиннику зайняті."
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Усі %lld слотів для застосунків на годиннику зайняті."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Усі %lld слота для застосунків на годиннику зайняті."
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "La única ranura de apps del reloj está ocupada."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Las %lld ranuras de apps del reloj están ocupadas."
+                }
+              }
+            }
+          }
+        },
+        "hi" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "घड़ी का %lld ऐप स्लॉट भरा हुआ है।"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "घड़ी के सभी %lld ऐप स्लॉट भरे हुए हैं।"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Allow %@ to access" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешить %@ доступ"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дозволити %@ доступ"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir a %@ acceder a"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ को इन तक पहुँच दें"
+          }
+        }
+      }
+    },
+    "Allow or deny it in FMC Companion." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешите или запретите в FMC Companion."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дозвольте або заборонте у FMC Companion."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permítelo o deniégalo en FMC Companion."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC Companion में इसे अनुमति दें या मना करें।"
+          }
+        }
+      }
+    },
+    "An app or the Apps menu is open on the watch. Go back to the watch face, then try again." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На часах открыто приложение или меню приложений. Вернитесь на циферблат и попробуйте снова."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На годиннику відкрито застосунок або меню застосунків. Поверніться на циферблат і спробуйте знову."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hay una app o el menú de apps abierto en el reloj. Vuelve a la esfera e inténtalo de nuevo."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर कोई ऐप या Apps मेन्यू खुला है। वॉच फ़ेस पर लौटें, फिर से कोशिश करें।"
+          }
+        }
+      }
+    },
+    "An image of this face is %lld×%lld px. Over %lld px can make the watch restart in a loop." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В этом циферблате есть изображение %lld×%lld px. Больше %lld px может зациклить перезагрузку часов."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У цьому циферблаті є зображення %lld×%lld px. Понад %lld px може зациклити перезавантаження годинника."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una imagen de esta esfera mide %lld×%lld px. Más de %lld px puede hacer que el reloj se reinicie en bucle."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इस वॉच फ़ेस की एक इमेज %lld×%lld px की है। %lld px से बड़ी इमेज से घड़ी बार-बार रीस्टार्ट हो सकती है।"
+          }
+        }
+      }
+    },
+    "Anyone nearby with a Bluetooth scanner could read what goes to the watch, location included (rounded to about 10 km)." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Любой рядом с Bluetooth-сканером может прочитать, что уходит на часы, включая местоположение (с точностью около 10 км)."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будь-хто поруч із Bluetooth-сканером може прочитати, що йде на годинник, зокрема розташування (з точністю близько 10 км)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cualquiera cerca con un escáner Bluetooth podría leer lo que se envía al reloj, incluida la ubicación (redondeada a unos 10 km)."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "पास में Bluetooth स्कैनर वाला कोई भी घड़ी पर जाने वाला डेटा पढ़ सकता है, लोकेशन भी (लगभग 10 किमी तक गोल की हुई)।"
+          }
+        }
+      }
+    },
+    "App Loader" : {
+      "shouldTranslate" : false
+    },
+    "App Loader found" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Loader найден"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Loader знайдено"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Loader encontrado"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Loader मिला"
+          }
+        }
+      }
+    },
+    "Apps" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приложения"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Застосунки"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ऐप्स"
+          }
+        }
+      }
+    },
+    "Apps in the FMC store." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приложения из магазина FMC."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Застосунки з магазину FMC."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps de la tienda FMC."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC स्टोर के ऐप्स।"
+          }
+        }
+      }
+    },
+    "Apps in the FMC store. Connect on the Watch tab to install them." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приложения из магазина FMC. Чтобы установить, подключитесь на вкладке «Часы»."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Застосунки з магазину FMC. Щоб установити, підключіться на вкладці «Годинник»."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps de la tienda FMC. Conéctate en la pestaña Reloj para instalarlas."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC स्टोर के ऐप्स। इन्हें इंस्टॉल करने के लिए घड़ी टैब पर कनेक्ट करें।"
+          }
+        }
+      }
+    },
+    "Author" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Автор"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Автор"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autor"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "लेखक"
+          }
+        }
+      }
+    },
+    "BG: the app was in the background when it happened." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BG: приложение было в фоне."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BG: застосунок був у фоні."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BG: la app estaba en segundo plano cuando ocurrió."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BG: उस समय ऐप बैकग्राउंड में था।"
+          }
+        }
+      }
+    },
+    "Background refresh" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фоновое обновление"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фонове оновлення"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualización en segundo plano"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "बैकग्राउंड रीफ़्रेश"
+          }
+        }
+      }
+    },
+    "Bad provider URL" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Неверный адрес провайдера"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Неправильна адреса провайдера"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL del proveedor no válida"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "प्रोवाइडर URL गलत है"
+          }
+        }
+      }
+    },
+    "Bluetooth is off." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth выключен."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth вимкнено."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Bluetooth está desactivado."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth बंद है।"
+          }
+        }
+      }
+    },
+    "Calendar" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Календарь"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Календар"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calendario"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कैलेंडर"
+          }
+        }
+      }
+    },
+    "Calendar titles and notification text" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Названия событий и текст уведомлений"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Назви подій і текст сповіщень"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Títulos del calendario y texto de notificaciones"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कैलेंडर के शीर्षक और नोटिफ़िकेशन का टेक्स्ट"
+          }
+        }
+      }
+    },
+    "Calendars" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Календари"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Календарі"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calendarios"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कैलेंडर"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отмена"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скасувати"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "रद्द करें"
+          }
+        }
+      }
+    },
+    "Catalog request failed (%lld)" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить каталог (%lld)"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося завантажити каталог (%lld)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error al cargar el catálogo (%lld)"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कैटलॉग लोड नहीं हुआ (%lld)"
+          }
+        }
+      }
+    },
+    "Check again" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверить снова"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перевірити знову"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprobar de nuevo"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "फिर से जाँचें"
+          }
+        }
+      }
+    },
+    "Check for updates" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверить обновления"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перевірити оновлення"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar actualizaciones"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अपडेट जाँचें"
+          }
+        }
+      }
+    },
+    "Clear" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очистить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очистити"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "साफ़ करें"
+          }
+        }
+      }
+    },
+    "Clear log" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очистить лог"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очистити лог"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrar registro"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "लॉग साफ़ करें"
+          }
+        }
+      }
+    },
+    "Clear the RPC log?" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очистить лог RPC?"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очистити лог RPC?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Borrar el registro RPC?"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RPC लॉग साफ़ करें?"
+          }
+        }
+      }
+    },
+    "Close Nothing X before installing: the watch talks to one app at a time." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перед установкой закройте Nothing X: часы работают только с одним приложением за раз."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перед встановленням закрийте Nothing X: годинник працює лише з одним застосунком за раз."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cierra Nothing X antes de instalar: el reloj solo habla con una app a la vez."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इंस्टॉल करने से पहले Nothing X बंद करें: घड़ी एक समय में एक ही ऐप से बात करती है।"
+          }
+        }
+      }
+    },
+    "Close Nothing X first" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сначала закройте Nothing X"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Спершу закрийте Nothing X"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cierra Nothing X primero"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "पहले Nothing X बंद करें"
+          }
+        }
+      }
+    },
+    "Connect" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підключити"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कनेक्ट करें"
+          }
+        }
+      }
+    },
+    "Connect on the Watch tab to install." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы установить, подключитесь на вкладке «Часы»."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Щоб установити, підключіться на вкладці «Годинник»."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conéctate en la pestaña Reloj para instalar."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इंस्टॉल करने के लिए घड़ी टैब पर कनेक्ट करें।"
+          }
+        }
+      }
+    },
+    "Connect on the Watch tab to read the watch." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключитесь на вкладке «Часы», чтобы прочитать часы."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підключіться на вкладці «Годинник», щоб прочитати годинник."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conéctate en la pestaña Reloj para leer el reloj."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी की जानकारी पढ़ने के लिए घड़ी टैब पर कनेक्ट करें।"
+          }
+        }
+      }
+    },
+    "Connect on the Watch tab to see the apps on the watch." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключитесь на вкладке «Часы», чтобы увидеть приложения на часах."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підключіться на вкладці «Годинник», щоб побачити застосунки на годиннику."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conéctate en la pestaña Reloj para ver las apps del reloj."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर ऐप्स देखने के लिए घड़ी टैब पर कनेक्ट करें।"
+          }
+        }
+      }
+    },
+    "Connect to see the faces on the watch." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключитесь, чтобы увидеть циферблаты на часах."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підключіться, щоб побачити циферблати на годиннику."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conéctate para ver las esferas del reloj."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर वॉच फ़ेस देखने के लिए कनेक्ट करें।"
+          }
+        }
+      }
+    },
+    "Connected" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключено"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підключено"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectado"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कनेक्ट है"
+          }
+        }
+      }
+    },
+    "Connecting to the watch…" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключение к часам…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підключення до годинника…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectando con el reloj…"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी से कनेक्ट हो रहा है…"
+          }
+        }
+      }
+    },
+    "Connecting…" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключение…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підключення…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectando…"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कनेक्ट हो रहा है…"
+          }
+        }
+      }
+    },
+    "Continue with %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Продолжить с %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Продовжити з %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuar con %@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ से जारी रखें"
+          }
+        }
+      }
+    },
+    "Couldn't change the faces on the watch: %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось изменить циферблаты на часах: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося змінити циферблати на годиннику: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron cambiar las esferas del reloj: %@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर वॉच फ़ेस नहीं बदले जा सके: %@"
+          }
+        }
+      }
+    },
+    "Couldn't check for updates: %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось проверить обновления: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося перевірити оновлення: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron buscar actualizaciones: %@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अपडेट नहीं जाँचे जा सके: %@"
+          }
+        }
+      }
+    },
+    "Couldn't connect" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет связи"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає зв'язку"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo conectar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कनेक्ट नहीं हो सका"
+          }
+        }
+      }
+    },
+    "Couldn't delete %@: %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось удалить %1$@: %2$@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося видалити %1$@: %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo eliminar %1$@: %2$@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ हटाया नहीं जा सका: %2$@"
+          }
+        }
+      }
+    },
+    "Couldn't delete the account" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось удалить аккаунт"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося видалити акаунт"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo eliminar la cuenta"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अकाउंट हटाया नहीं जा सका"
+          }
+        }
+      }
+    },
+    "Couldn't install" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось установить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося встановити"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo instalar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इंस्टॉल नहीं हो सका"
+          }
+        }
+      }
+    },
+    "Couldn't install %@: %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось установить %1$@: %2$@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося встановити %1$@: %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo instalar %1$@: %2$@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ इंस्टॉल नहीं हो सका: %2$@"
+          }
+        }
+      }
+    },
+    "Couldn't load the App Loader from fmc.tools to send the order. Pull to refresh to try again." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить App Loader с fmc.tools, чтобы отправить порядок. Потяните вниз, чтобы попробовать снова."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося завантажити App Loader з fmc.tools, щоб надіслати порядок. Потягніть униз, щоб спробувати знову."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo descargar el App Loader de fmc.tools para enviar el orden. Desliza hacia abajo para reintentarlo."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "क्रम भेजने के लिए fmc.tools से App Loader लोड नहीं हो सका। फिर से कोशिश करने के लिए नीचे खींचें।"
+          }
+        }
+      }
+    },
+    "Couldn't load the FMC store." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить магазин FMC."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося завантажити магазин FMC."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo cargar la tienda FMC."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC स्टोर लोड नहीं हो सका।"
+          }
+        }
+      }
+    },
+    "Couldn't load the watch face" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить циферблат"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося завантажити циферблат"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo cargar la esfera"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वॉच फ़ेस लोड नहीं हो सका"
+          }
+        }
+      }
+    },
+    "Couldn't load watch faces" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить циферблаты"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося завантажити циферблати"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron cargar las esferas"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वॉच फ़ेस लोड नहीं हो सके"
+          }
+        }
+      }
+    },
+    "Couldn't read the faces on the watch: %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать циферблаты на часах: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося прочитати циферблати на годиннику: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron leer las esferas del reloj: %@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर वॉच फ़ेस नहीं पढ़े जा सके: %@"
+          }
+        }
+      }
+    },
+    "Couldn't send the order: %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось отправить порядок: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося надіслати порядок: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo enviar el orden: %@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "क्रम नहीं भेजा जा सका: %@"
+          }
+        }
+      }
+    },
+    "Couldn't update" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось обновить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося оновити"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo actualizar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अपडेट नहीं हो सका"
+          }
+        }
+      }
+    },
+    "Couldn't update the App Loader: %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось обновить App Loader: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося оновити App Loader: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo actualizar el App Loader: %@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Loader अपडेट नहीं हो सका: %@"
+          }
+        }
+      }
+    },
+    "Couldn't update the firmware: %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось обновить прошивку: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося оновити прошивку: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo actualizar el firmware: %@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "फ़र्मवेयर अपडेट नहीं हो सका: %@"
+          }
+        }
+      }
+    },
+    "DEVELOPER" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "РАЗРАБОТЧИК"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "РОЗРОБНИК"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DESARROLLADOR"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "डेवलपर"
+          }
+        }
+      }
+    },
+    "DOWNLOADS" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ЗАГРУЗКИ"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ЗАВАНТАЖЕННЯ"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DESCARGAS"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "डाउनलोड"
+          }
+        }
+      }
+    },
+    "Delete" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Видалити"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "हटाएँ"
+          }
+        }
+      }
+    },
+    "Delete %@ from the watch?" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить %@ с часов?"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Видалити %@ з годинника?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar %@ del reloj?"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ को घड़ी से हटाएँ?"
+          }
+        }
+      }
+    },
+    "Delete %@?" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить %@?"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Видалити %@?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar %@?"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ हटाएँ?"
+          }
+        }
+      }
+    },
+    "Delete account" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить аккаунт"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Видалити акаунт"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar cuenta"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अकाउंट हटाएँ"
+          }
+        }
+      }
+    },
+    "Delete from the Watch" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить с часов"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Видалити з годинника"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar del reloj"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी से हटाएँ"
+          }
+        }
+      }
+    },
+    "Delete your FMC account?" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить аккаунт FMC?"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Видалити акаунт FMC?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar tu cuenta de FMC?"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अपना FMC अकाउंट हटाएँ?"
+          }
+        }
+      }
+    },
+    "Description" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Описание"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Опис"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descripción"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "विवरण"
+          }
+        }
+      }
+    },
+    "Developer" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разработчик"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Розробник"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desarrollador"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "डेवलपर"
+          }
+        }
+      }
+    },
+    "Downloading the firmware…" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Загрузка прошивки…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завантаження прошивки…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargando el firmware…"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "फ़र्मवेयर डाउनलोड हो रहा है…"
+          }
+        }
+      }
+    },
+    "Downloads" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Загрузки"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завантаження"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargas"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "डाउनलोड"
+          }
+        }
+      }
+    },
+    "Draft" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Черновик"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чернетка"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrador"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ड्राफ़्ट"
+          }
+        }
+      }
+    },
+    "Drag to set the order of the Apps menu on the watch. It goes to the watch inside the App Loader (about 54 KB) when you tap Done." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перетаскивайте, чтобы задать порядок меню приложений на часах. Он уйдёт на часы вместе с App Loader (около 54 КБ), когда вы нажмёте «Готово»."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перетягуйте, щоб задати порядок меню застосунків на годиннику. Він піде на годинник разом з App Loader (близько 54 КБ), коли ви натиснете «Готово»."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrastra para ordenar el menú de apps del reloj. El orden va al reloj dentro del App Loader (unos 54 KB) cuando toques OK."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर Apps मेन्यू का क्रम तय करने के लिए खींचें। 'हो गया' दबाने पर यह App Loader (लगभग 54 KB) के साथ घड़ी पर जाएगा।"
+          }
+        }
+      }
+    },
+    "Email" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эл. почта"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ел. пошта"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Correo"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ईमेल"
+          }
+        }
+      }
+    },
+    "Every %@: %@%@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждые %1$@: %2$@%3$@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кожні %1$@: %2$@%3$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada %1$@: %2$@%3$@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "हर %1$@: %2$@%3$@"
+          }
+        }
+      }
+    },
+    "FMC Companion" : {
+      "shouldTranslate" : false
+    },
+    "FMC Companion may not use Bluetooth. Allow it in Settings." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У FMC Companion нет доступа к Bluetooth. Разрешите его в Настройках."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC Companion не має доступу до Bluetooth. Дозвольте його в Параметрах."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC Companion no tiene permiso para usar Bluetooth. Actívalo en Ajustes."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC Companion को Bluetooth की अनुमति नहीं है। सेटिंग्स में इसे अनुमति दें।"
+          }
+        }
+      }
+    },
+    "FMC account" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Аккаунт FMC"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Акаунт FMC"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuenta de FMC"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC अकाउंट"
+          }
+        }
+      }
+    },
+    "Face %lld" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Циферблат %lld"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Циферблат %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esfera %lld"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वॉच फ़ेस %lld"
+          }
+        }
+      }
+    },
+    "Find my phone" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Найти телефон"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Знайти телефон"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar mi teléfono"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "मेरा फ़ोन ढूँढें"
+          }
+        }
+      }
+    },
+    "Firmware" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прошивка"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прошивка"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Firmware"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "फ़र्मवेयर"
+          }
+        }
+      }
+    },
+    "Firmware sent, but the watch hasn't answered with it in 10 minutes. Check the watch, then connect again on the Watch tab." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прошивка отправлена, но часы не ответили с ней за 10 минут. Проверьте часы и подключитесь снова на вкладке «Часы»."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прошивку надіслано, але годинник не відповів із нею за 10 хвилин. Перевірте годинник і підключіться знову на вкладці «Годинник»."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Firmware enviado, pero el reloj no ha respondido con él en 10 minutos. Revisa el reloj y vuelve a conectarte en la pestaña Reloj."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "फ़र्मवेयर भेज दिया गया, पर घड़ी ने 10 मिनट में इसके साथ जवाब नहीं दिया। घड़ी देखें, फिर घड़ी टैब पर दोबारा कनेक्ट करें।"
+          }
+        }
+      }
+    },
+    "Get" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Получить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отримати"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obtener"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "पाएँ"
+          }
+        }
+      }
+    },
+    "Headers" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заголовки"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заголовки"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cabeceras"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "हेडर"
+          }
+        }
+      }
+    },
+    "Information" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Информация"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Інформація"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Información"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "जानकारी"
+          }
+        }
+      }
+    },
+    "Install" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Установить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Установити"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इंस्टॉल करें"
+          }
+        }
+      }
+    },
+    "Install anyway" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Всё равно установить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Усе одно встановити"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalar de todos modos"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "फिर भी इंस्टॉल करें"
+          }
+        }
+      }
+    },
+    "Installed" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Установлено"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Встановлено"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalado"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इंस्टॉल किया गया"
+          }
+        }
+      }
+    },
+    "Installing…" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Установка…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Встановлення…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalando…"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इंस्टॉल हो रहा है…"
+          }
+        }
+      }
+    },
+    "It goes from the watch. To get it back, install it again." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Он пропадёт с часов. Чтобы вернуть, установите его снова."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Він зникне з годинника. Щоб повернути, встановіть його знову."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se quitará del reloj. Para recuperarla, instálala de nuevo."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "यह घड़ी से हट जाएगा। वापस पाने के लिए इसे फिर से इंस्टॉल करें।"
+          }
+        }
+      }
+    },
+    "Its data on the watch goes too." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Его данные на часах тоже удалятся."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Його дані на годиннику теж видаляться."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sus datos en el reloj también se eliminan."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर इसका डेटा भी हट जाएगा।"
+          }
+        }
+      }
+    },
+    "Keep the watch connected in Nothing X. The app only reads from it." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Держите часы подключёнными в Nothing X. Приложение только читает с них."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тримайте годинник підключеним у Nothing X. Застосунок лише читає з нього."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantén el reloj conectado en Nothing X. La app solo lee de él."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी को Nothing X में कनेक्ट रखें। यह ऐप सिर्फ़ उससे पढ़ता है।"
+          }
+        }
+      }
+    },
+    "Language" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Язык"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мова"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Idioma"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "भाषा"
+          }
+        }
+      }
+    },
+    "Large images" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Большие изображения"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Великі зображення"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imágenes grandes"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "बड़ी इमेज"
+          }
+        }
+      }
+    },
+    "Liked" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Понравившиеся"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вподобані"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Me gusta"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "पसंद किए गए"
+          }
+        }
+      }
+    },
+    "Likes" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Лайки"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вподобання"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Me gusta"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "लाइक"
+          }
+        }
+      }
+    },
+    "Loader ABI" : {
+      "shouldTranslate" : false
+    },
+    "Loading…" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Загрузка…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завантаження…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cargando…"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "लोड हो रहा है…"
+          }
+        }
+      }
+    },
+    "Location" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Геопозиция"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Геопозиція"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ubicación"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "लोकेशन"
+          }
+        }
+      }
+    },
+    "Log" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Лог"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Лог"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registro"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "लॉग"
+          }
+        }
+      }
+    },
+    "Made for the %@. It may not work on the Watch Pro 2." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сделан для %@. На Watch Pro 2 может не работать."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зроблено для %@. На Watch Pro 2 може не працювати."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hecha para el %@. Puede que no funcione en el Watch Pro 2."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ के लिए बना है। Watch Pro 2 पर शायद काम न करे।"
+          }
+        }
+      }
+    },
+    "Mine" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мои"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мої"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mías"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "मेरे"
+          }
+        }
+      }
+    },
+    "Most downloaded" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Самые скачиваемые"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Найбільше завантажень"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Más descargadas"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सबसे ज़्यादा डाउनलोड"
+          }
+        }
+      }
+    },
+    "My watch faces" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мои циферблаты"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мої циферблати"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mis esferas"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "मेरे वॉच फ़ेस"
+          }
+        }
+      }
+    },
+    "Name" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Имя"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Назва"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "नाम"
+          }
+        }
+      }
+    },
+    "Name or author" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Название или автор"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Назва або автор"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre o autor"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "नाम या लेखक"
+          }
+        }
+      }
+    },
+    "Newest" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новые"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нові"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Más recientes"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "नए"
+          }
+        }
+      }
+    },
+    "No account? Sign up at fmc.tools" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет аккаунта? Зарегистрируйтесь на fmc.tools"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає акаунта? Зареєструйтеся на fmc.tools"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿No tienes cuenta? Regístrate en fmc.tools"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अकाउंट नहीं है? fmc.tools पर साइन अप करें"
+          }
+        }
+      }
+    },
+    "No apps" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет приложений"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає застосунків"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay apps"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कोई ऐप नहीं"
+          }
+        }
+      }
+    },
+    "No liked watch faces" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет понравившихся циферблатов"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає вподобаних циферблатів"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No te gusta ninguna esfera aún"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कोई पसंदीदा वॉच फ़ेस नहीं"
+          }
+        }
+      }
+    },
+    "No watch connected. Open Nothing X and make sure the watch is connected." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часы не подключены. Откройте Nothing X и проверьте, что часы подключены."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Годинник не підключено. Відкрийте Nothing X і перевірте, що годинник підключено."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay ningún reloj conectado. Abre Nothing X y comprueba que el reloj esté conectado."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कोई घड़ी कनेक्ट नहीं है। Nothing X खोलें और देखें कि घड़ी कनेक्ट है।"
+          }
+        }
+      }
+    },
+    "No watch faces yet" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Циферблатов пока нет"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Циферблатів поки немає"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no hay esferas"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अभी कोई वॉच फ़ेस नहीं"
+          }
+        }
+      }
+    },
+    "None" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कोई नहीं"
+          }
+        }
+      }
+    },
+    "Not available on iPhone" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Недоступно на iPhone"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Недоступно на iPhone"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No disponible en iPhone"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone पर उपलब्ध नहीं"
+          }
+        }
+      }
+    },
+    "Not connected" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не подключено"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не підключено"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No conectado"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कनेक्ट नहीं है"
+          }
+        }
+      }
+    },
+    "Not installed" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не установлен"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не встановлено"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No instalado"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इंस्टॉल नहीं है"
+          }
+        }
+      }
+    },
+    "Not on the watch" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет на часах"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає на годиннику"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No está en el reloj"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर नहीं है"
+          }
+        }
+      }
+    },
+    "Nothing found" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ничего не найдено"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нічого не знайдено"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se encontró nada"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "कुछ नहीं मिला"
+          }
+        }
+      }
+    },
+    "Nothing yet. Requests from watch apps and reading the faces show up here." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пока пусто. Здесь появятся запросы от приложений для часов и чтение циферблатов."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поки порожньо. Тут з'являться запити від застосунків для годинника й читання циферблатів."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún nada. Aquí aparecen las peticiones de las apps del reloj y la lectura de esferas."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अभी कुछ नहीं। घड़ी ऐप्स के अनुरोध और वॉच फ़ेस पढ़ना यहाँ दिखेगा।"
+          }
+        }
+      }
+    },
+    "Notifications" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сповіщення"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificaciones"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "नोटिफ़िकेशन"
+          }
+        }
+      }
+    },
+    "OK" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ठीक है"
+          }
+        }
+      }
+    },
+    "Off in iOS Settings" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выключено в настройках iOS"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вимкнено в параметрах iOS"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivado en Ajustes de iOS"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS सेटिंग्स में बंद है"
+          }
+        }
+      }
+    },
+    "On the watch" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На часах"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На годиннику"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En el reloj"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर"
+          }
+        }
+      }
+    },
+    "Open on fmc.tools" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открыть на fmc.tools"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкрити на fmc.tools"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir en fmc.tools"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "fmc.tools पर खोलें"
+          }
+        }
+      }
+    },
+    "Open wake-probe on the watch, start here, lock the phone. Each line is one request from the watch, every 20 s." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Откройте wake-probe на часах, нажмите «Старт» здесь, заблокируйте телефон. Каждая строка — один запрос от часов, раз в 20 с."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкрийте wake-probe на годиннику, натисніть «Старт» тут, заблокуйте телефон. Кожен рядок — один запит від годинника, раз на 20 с."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre wake-probe en el reloj, pulsa Iniciar aquí y bloquea el teléfono. Cada línea es una petición del reloj, cada 20 s."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर wake-probe खोलें, यहाँ शुरू करें, फ़ोन लॉक करें। हर लाइन घड़ी का एक अनुरोध है, हर 20 सेकंड पर।"
+          }
+        }
+      }
+    },
+    "Password" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пароль"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пароль"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contraseña"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "पासवर्ड"
+          }
+        }
+      }
+    },
+    "Patched · stub %u" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "С патчем · stub %u"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "З патчем · stub %u"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parcheado · stub %u"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "पैच किया गया · stub %u"
+          }
+        }
+      }
+    },
+    "Pick the face to replace. Faces are in the order the watch shows them." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите циферблат для замены. Они идут в том порядке, в каком их показывают часы."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Виберіть циферблат для заміни. Вони йдуть у тому порядку, в якому їх показує годинник."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige la esfera que quieres reemplazar. Están en el orden en que las muestra el reloj."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "बदलने के लिए वॉच फ़ेस चुनें। ये उसी क्रम में हैं जिसमें घड़ी इन्हें दिखाती है।"
+          }
+        }
+      }
+    },
+    "Placeholder name" : {
+      "shouldTranslate" : false
+    },
+    "Popular" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Популярные"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Популярні"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Populares"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "लोकप्रिय"
+          }
+        }
+      }
+    },
+    "Preview" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скриншоты"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Знімки екрана"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vista previa"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "प्रीव्यू"
+          }
+        }
+      }
+    },
+    "Reading the watch…" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Читаем часы…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Читаємо годинник…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leyendo el reloj…"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पढ़ी जा रही है…"
+          }
+        }
+      }
+    },
+    "Ready for watch faces" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Готово к установке циферблатов"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Готово до встановлення циферблатів"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listo para esferas"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वॉच फ़ेस के लिए तैयार"
+          }
+        }
+      }
+    },
+    "Reminders" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Напоминания"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нагадування"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recordatorios"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "रिमाइंडर"
+          }
+        }
+      }
+    },
+    "Removes %@ and its data from the watch, and forgets its permissions." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удаляет %@ и его данные с часов и забывает его разрешения."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Видаляє %@ і його дані з годинника та забуває його дозволи."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina %@ y sus datos del reloj, y olvida sus permisos."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी से %@ और उसका डेटा हटाता है, और उसकी अनुमतियाँ भूल जाता है।"
+          }
+        }
+      }
+    },
+    "Request failed (%lld)" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ошибка запроса (%lld)"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Помилка запиту (%lld)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error en la solicitud (%lld)"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अनुरोध विफल (%lld)"
+          }
+        }
+      }
+    },
+    "Reset" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сбросить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скинути"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restablecer"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "रीसेट करें"
+          }
+        }
+      }
+    },
+    "Reset permissions" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сбросить разрешения"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скинути дозволи"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restablecer permisos"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अनुमतियाँ रीसेट करें"
+          }
+        }
+      }
+    },
+    "Reset permissions for %@?" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сбросить разрешения для %@?"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скинути дозволи для %@?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Restablecer los permisos de %@?"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ की अनुमतियाँ रीसेट करें?"
+          }
+        }
+      }
+    },
+    "SLOT" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "СЛОТ"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "СЛОТ"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RANURA"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "स्लॉट"
+          }
+        }
+      }
+    },
+    "Send Notifications" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправка уведомлений"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Надсилання сповіщень"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar notificaciones"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "नोटिफ़िकेशन भेजना"
+          }
+        }
+      }
+    },
+    "Sending the firmware: %lld%%, about %@ left. Keep the phone next to the watch and this screen open." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправка прошивки: %lld%%, осталось около %@. Держите телефон рядом с часами и не закрывайте этот экран."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Надсилання прошивки: %lld%%, лишилося близько %@. Тримайте телефон поруч із годинником і не закривайте цей екран."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviando el firmware: %lld%%, quedan unos %@. Mantén el teléfono junto al reloj y esta pantalla abierta."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "फ़र्मवेयर भेजा जा रहा है: %lld%%, लगभग %@ बाकी। फ़ोन घड़ी के पास और यह स्क्रीन खुली रखें।"
+          }
+        }
+      }
+    },
+    "Sending the firmware: %lld%%. Keep the phone next to the watch and this screen open." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправка прошивки: %lld%%. Держите телефон рядом с часами и не закрывайте этот экран."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Надсилання прошивки: %lld%%. Тримайте телефон поруч із годинником і не закривайте цей екран."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviando el firmware: %lld%%. Mantén el teléfono junto al reloj y esta pantalla abierta."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "फ़र्मवेयर भेजा जा रहा है: %lld%%। फ़ोन घड़ी के पास और यह स्क्रीन खुली रखें।"
+          }
+        }
+      }
+    },
+    "Sending the firmware…" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправка прошивки…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Надсилання прошивки…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviando el firmware…"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "फ़र्मवेयर भेजा जा रहा है…"
+          }
+        }
+      }
+    },
+    "Sending the order to the watch…" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправляем порядок на часы…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Надсилаємо порядок на годинник…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviando el orden al reloj…"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "क्रम घड़ी पर भेजा जा रहा है…"
+          }
+        }
+      }
+    },
+    "Sent with every request %@ makes to %@. They stay on this iPhone, in the Keychain, and never go to the watch." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправляются с каждым запросом %1$@ к %2$@. Хранятся на этом iPhone в Связке ключей и никогда не уходят на часы."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Надсилаються з кожним запитом %1$@ до %2$@. Зберігаються на цьому iPhone у Зв'язці ключів і ніколи не йдуть на годинник."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se envían con cada solicitud que %1$@ hace a %2$@. Se quedan en este iPhone, en el Llavero, y nunca van al reloj."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ के %2$@ को भेजे हर अनुरोध के साथ जाते हैं। ये इसी iPhone के Keychain में रहते हैं और कभी घड़ी पर नहीं जाते।"
+          }
+        }
+      }
+    },
+    "Show" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показать"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показати"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "दिखाएँ"
+          }
+        }
+      }
+    },
+    "Show on the watch" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показать на часах"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показати на годиннику"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar en el reloj"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर दिखाएँ"
+          }
+        }
+      }
+    },
+    "Show text on the watch" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показывать текст на часах"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показувати текст на годиннику"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar texto en el reloj"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर टेक्स्ट दिखाएँ"
+          }
+        }
+      }
+    },
+    "Sign in" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Войти"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Увійти"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar sesión"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "साइन इन करें"
+          }
+        }
+      }
+    },
+    "Sign in to FMC" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вход в FMC"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вхід у FMC"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicia sesión en FMC"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC में साइन इन करें"
+          }
+        }
+      }
+    },
+    "Sign out" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выйти"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вийти"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerrar sesión"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "साइन आउट करें"
+          }
+        }
+      }
+    },
+    "Sign-in failed" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось войти"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося увійти"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo iniciar sesión"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "साइन इन नहीं हो सका"
+          }
+        }
+      }
+    },
+    "Some of these are off for FMC Companion in iOS Settings. [Open Settings](app-settings:)\n" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Некоторые из них выключены для FMC Companion в настройках iOS. [Открыть настройки](app-settings:)\n"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Деякі з них вимкнено для FMC Companion у параметрах iOS. [Відкрити параметри](app-settings:)\n"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Algunos están desactivados para FMC Companion en Ajustes de iOS. [Abrir Ajustes](app-settings:)\n"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इनमें से कुछ FMC Companion के लिए iOS सेटिंग्स में बंद हैं। [सेटिंग्स खोलें](app-settings:)\n"
+          }
+        }
+      }
+    },
+    "Sort" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сортировка"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сортування"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordenar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "क्रम"
+          }
+        }
+      }
+    },
+    "Source code" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Исходный код"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вихідний код"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Código fuente"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सोर्स कोड"
+          }
+        }
+      }
+    },
+    "Start" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Старт"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Старт"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "शुरू करें"
+          }
+        }
+      }
+    },
+    "Stock" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Стоковая"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Стокова"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De fábrica"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "स्टॉक"
+          }
+        }
+      }
+    },
+    "Stop" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Стоп"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Стоп"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detener"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "रोकें"
+          }
+        }
+      }
+    },
+    "Tap Connect to read it" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нажмите «Подключить», чтобы прочитать часы"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Натисніть «Підключити», щоб прочитати годинник"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca Conectar para leerlo"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "पढ़ने के लिए कनेक्ट करें दबाएँ"
+          }
+        }
+      }
+    },
+    "The App Loader is running on the watch. Close the Apps menu and any running app, and remove the watch app pages and widgets you added, then try again. Patched firmware with stub 6 or later doesn't need this." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На часах запущен App Loader. Закройте меню приложений и все запущенные приложения, уберите добавленные страницы и виджеты приложений для часов и попробуйте снова. Прошивке с патчем stub 6 и новее это не нужно."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На годиннику запущено App Loader. Закрийте меню застосунків і всі запущені застосунки, приберіть додані сторінки й віджети застосунків для годинника та спробуйте знову. Прошивці з патчем stub 6 і новіше це не потрібно."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El App Loader se está ejecutando en el reloj. Cierra el menú de apps y cualquier app abierta, quita las páginas y widgets de apps del reloj que añadiste e inténtalo de nuevo. El firmware parcheado con stub 6 o posterior no lo necesita."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर App Loader चल रहा है। Apps मेन्यू और चल रहे सभी ऐप बंद करें, जोड़े गए घड़ी ऐप पेज और विजेट हटाएँ, फिर से कोशिश करें। stub 6 या नए वाले पैच किए गए फ़र्मवेयर में इसकी ज़रूरत नहीं है।"
+          }
+        }
+      }
+    },
+    "The App Loader on fmc.tools is older than the app order. The order stays on this phone for now." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Loader на fmc.tools старее, чем порядок приложений. Пока порядок останется на этом телефоне."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Loader на fmc.tools старіший за порядок застосунків. Поки що порядок залишиться на цьому телефоні."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El App Loader de fmc.tools es anterior al orden de apps. Por ahora el orden se queda en este teléfono."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "fmc.tools पर App Loader ऐप क्रम से पुराना है। फ़िलहाल क्रम इसी फ़ोन पर रहेगा।"
+          }
+        }
+      }
+    },
+    "The Apps menu or an app is open on the watch. The order goes when you're back on the watch face and pull to refresh." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На часах открыто меню приложений или приложение. Порядок уйдёт, когда вы вернётесь на циферблат и потянете экран вниз."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На годиннику відкрито меню застосунків або застосунок. Порядок піде, коли ви повернетеся на циферблат і потягнете екран униз."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El menú de apps o una app está abierta en el reloj. El orden se enviará cuando vuelvas a la esfera y deslices hacia abajo."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर Apps मेन्यू या कोई ऐप खुला है। जब आप वॉच फ़ेस पर लौटकर नीचे खींचेंगे, तब क्रम भेजा जाएगा।"
+          }
+        }
+      }
+    },
+    "The always-on screen of this face has no thumbnail. Faces like this made the screen flash on a watch. Open it in the editor on fmc.tools and install it from there." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У always-on экрана этого циферблата нет миниатюры. Из-за таких циферблатов экран часов мигал. Откройте его в редакторе на fmc.tools и установите оттуда."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Always-on екран цього циферблата не має мініатюри. Через такі циферблати екран годинника блимав. Відкрийте його в редакторі на fmc.tools і встановіть звідти."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La pantalla siempre activa de esta esfera no tiene miniatura. Esferas así hicieron parpadear la pantalla de un reloj. Ábrela en el editor de fmc.tools e instálala desde allí."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इस वॉच फ़ेस की always-on स्क्रीन का थंबनेल नहीं है। ऐसे वॉच फ़ेस से घड़ी की स्क्रीन झिलमिलाई थी। इसे fmc.tools के एडिटर में खोलें और वहीं से इंस्टॉल करें।"
+          }
+        }
+      }
+    },
+    "The firmware is about 57 MB. Before installing: charge the watch, keep the phone next to it, and close Nothing X." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прошивка весит около 57 МБ. Перед установкой зарядите часы, держите телефон рядом и закройте Nothing X."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прошивка важить близько 57 МБ. Перед встановленням зарядіть годинник, тримайте телефон поруч і закрийте Nothing X."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El firmware ocupa unos 57 MB. Antes de instalar: carga el reloj, deja el teléfono a su lado y cierra Nothing X."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "फ़र्मवेयर लगभग 57 MB का है। इंस्टॉल करने से पहले: घड़ी चार्ज करें, फ़ोन उसके पास रखें और Nothing X बंद करें।"
+          }
+        }
+      }
+    },
+    "The watch did not answer." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часы не ответили."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Годинник не відповів."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reloj no respondió."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी ने जवाब नहीं दिया।"
+          }
+        }
+      }
+    },
+    "The watch disconnected." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часы отключились."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Годинник відключився."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reloj se desconectó."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी डिस्कनेक्ट हो गई।"
+          }
+        }
+      }
+    },
+    "The watch is full" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На часах нет места"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На годиннику немає місця"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reloj está lleno"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी भर गई है"
+          }
+        }
+      }
+    },
+    "The watch is full. Delete a face on the watch (long press the face, swipe one up) and try again." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На часах нет места. Удалите циферблат на часах (удерживайте циферблат, смахните один вверх) и попробуйте снова."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На годиннику немає місця. Видаліть циферблат на годиннику (утримуйте циферблат, змахніть один угору) і спробуйте знову."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reloj está lleno. Elimina una esfera en el reloj (mantén pulsada la esfera y desliza una hacia arriba) e inténtalo de nuevo."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी भर गई है। घड़ी पर एक वॉच फ़ेस हटाएँ (वॉच फ़ेस दबाकर रखें, एक को ऊपर स्वाइप करें) और फिर से कोशिश करें।"
+          }
+        }
+      }
+    },
+    "The watch is installing the update and restarts by itself, which takes a few minutes. The app reads it every 20 seconds until it's back." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часы устанавливают обновление и сами перезагрузятся, это займёт несколько минут. Приложение проверяет их каждые 20 секунд, пока они не вернутся."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Годинник встановлює оновлення й сам перезавантажиться, це займе кілька хвилин. Застосунок перевіряє його кожні 20 секунд, доки він не повернеться."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reloj está instalando la actualización y se reiniciará solo, lo que tarda unos minutos. La app lo lee cada 20 segundos hasta que vuelva."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी अपडेट इंस्टॉल कर रही है और खुद रीस्टार्ट होगी, इसमें कुछ मिनट लगते हैं। ऐप हर 20 सेकंड में इसे पढ़ता है जब तक यह वापस न आ जाए।"
+          }
+        }
+      }
+    },
+    "The watch is installing the update…" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часы устанавливают обновление…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Годинник встановлює оновлення…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reloj está instalando la actualización…"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी अपडेट इंस्टॉल कर रही है…"
+          }
+        }
+      }
+    },
+    "The watch talks to one app at a time. Close Nothing X (swipe it away in the app switcher), then install.\n\nAfterwards Nothing X may not see the watch. Then forget the watch in Bluetooth settings and add it again in Nothing X." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часы работают только с одним приложением за раз. Закройте Nothing X (смахните его в переключателе приложений), потом установите.\n\nПосле этого Nothing X может не увидеть часы. Тогда забудьте часы в настройках Bluetooth и добавьте их заново в Nothing X."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Годинник працює лише з одним застосунком за раз. Закрийте Nothing X (змахніть його в перемикачі застосунків), потім установіть.\n\nПісля цього Nothing X може не побачити годинник. Тоді забудьте годинник у параметрах Bluetooth і додайте його знову в Nothing X."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reloj solo habla con una app a la vez. Cierra Nothing X (deslízala fuera en el selector de apps) y luego instala.\n\nDespués, puede que Nothing X no vea el reloj. En ese caso, olvida el reloj en los ajustes de Bluetooth y vuelve a añadirlo en Nothing X."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी एक समय में एक ही ऐप से बात करती है। Nothing X बंद करें (ऐप स्विचर में उसे स्वाइप करके हटाएँ), फिर इंस्टॉल करें।\n\nउसके बाद Nothing X को शायद घड़ी न दिखे। तब Bluetooth सेटिंग्स में घड़ी भूलें और Nothing X में उसे फिर से जोड़ें।"
+          }
+        }
+      }
+    },
+    "The watch talks to one app at a time. Close Nothing X (swipe it away in the app switcher), then install.\n\nThe watch should be charged and the phone next to it. Keep this screen open until the update is sent; the watch then installs it and restarts.\n\nAfterwards Nothing X may not see the watch. Then forget the watch in Bluetooth settings and add it again in Nothing X." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часы работают только с одним приложением за раз. Закройте Nothing X (смахните его в переключателе приложений), потом установите.\n\nЧасы должны быть заряжены, а телефон рядом. Не закрывайте этот экран, пока обновление не отправится; потом часы установят его и перезагрузятся.\n\nПосле этого Nothing X может не увидеть часы. Тогда забудьте часы в настройках Bluetooth и добавьте их заново в Nothing X."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Годинник працює лише з одним застосунком за раз. Закрийте Nothing X (змахніть його в перемикачі застосунків), потім установіть.\n\nГодинник має бути заряджений, а телефон поруч. Не закривайте цей екран, доки оновлення не надішлеться; потім годинник установить його й перезавантажиться.\n\nПісля цього Nothing X може не побачити годинник. Тоді забудьте годинник у параметрах Bluetooth і додайте його знову в Nothing X."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reloj solo habla con una app a la vez. Cierra Nothing X (deslízala fuera en el selector de apps) y luego instala.\n\nEl reloj debe estar cargado y el teléfono a su lado. Deja esta pantalla abierta hasta que se envíe la actualización; después el reloj la instala y se reinicia.\n\nDespués, puede que Nothing X no vea el reloj. En ese caso, olvida el reloj en los ajustes de Bluetooth y vuelve a añadirlo en Nothing X."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी एक समय में एक ही ऐप से बात करती है। Nothing X बंद करें (ऐप स्विचर में उसे स्वाइप करके हटाएँ), फिर इंस्टॉल करें।\n\nघड़ी चार्ज होनी चाहिए और फ़ोन उसके पास। अपडेट भेजे जाने तक यह स्क्रीन खुली रखें; फिर घड़ी उसे इंस्टॉल करके रीस्टार्ट होगी।\n\nउसके बाद Nothing X को शायद घड़ी न दिखे। तब Bluetooth सेटिंग्स में घड़ी भूलें और Nothing X में उसे फिर से जोड़ें।"
+          }
+        }
+      }
+    },
+    "This face has a %lld×%lld px image, larger than factory faces use. Large images can make the watch restart in a loop." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В этом циферблате есть изображение %lld×%lld px, больше, чем в заводских. Из-за больших изображений часы могут уйти в циклическую перезагрузку."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У цьому циферблаті є зображення %lld×%lld px, більше, ніж у заводських. Через великі зображення годинник може піти в циклічне перезавантаження."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta esfera tiene una imagen de %lld×%lld px, más grande que las de fábrica. Las imágenes grandes pueden hacer que el reloj se reinicie en bucle."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इस वॉच फ़ेस में %lld×%lld px की इमेज है, जो फ़ैक्टरी वॉच फ़ेस से बड़ी है। बड़ी इमेज से घड़ी बार-बार रीस्टार्ट हो सकती है।"
+          }
+        }
+      }
+    },
+    "This file is not a watch face." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот файл не циферблат."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цей файл не є циферблатом."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este archivo no es una esfera."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "यह फ़ाइल वॉच फ़ेस नहीं है।"
+          }
+        }
+      }
+    },
+    "This removes your account and profile on fmc.tools. It can't be undone." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш аккаунт и профиль на fmc.tools будут удалены. Это нельзя отменить."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш акаунт і профіль на fmc.tools буде видалено. Це не можна скасувати."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esto elimina tu cuenta y tu perfil en fmc.tools. No se puede deshacer."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इससे fmc.tools पर आपका अकाउंट और प्रोफ़ाइल हट जाएगा। इसे वापस नहीं किया जा सकता।"
+          }
+        }
+      }
+    },
+    "This takes a few seconds" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это займёт несколько секунд"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Це займе кілька секунд"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tarda unos segundos"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इसमें कुछ सेकंड लगते हैं"
+          }
+        }
+      }
+    },
+    "This watch does not offer the expected services." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эти часы не предоставляют нужные сервисы."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цей годинник не надає потрібних сервісів."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este reloj no ofrece los servicios esperados."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "यह घड़ी ज़रूरी सर्विस नहीं देती।"
+          }
+        }
+      }
+    },
+    "This watch face has no file." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У этого циферблата нет файла."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Цей циферблат не має файлу."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta esfera no tiene archivo."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इस वॉच फ़ेस की कोई फ़ाइल नहीं है।"
+          }
+        }
+      }
+    },
+    "UPDATED" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ОБНОВЛЕНО"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ОНОВЛЕНО"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ACTUALIZADA"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अपडेट हुआ"
+          }
+        }
+      }
+    },
+    "Up to date" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Актуально"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Актуально"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al día"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अप टू डेट"
+          }
+        }
+      }
+    },
+    "Update" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оновити"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualizar"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अपडेट करें"
+          }
+        }
+      }
+    },
+    "Updates" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновления"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оновлення"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualizaciones"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अपडेट"
+          }
+        }
+      }
+    },
+    "Updates install over Bluetooth. Keep the app closed on the watch meanwhile." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновления ставятся по Bluetooth. Пока что не открывайте приложение на часах."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оновлення встановлюються через Bluetooth. Поки що не відкривайте застосунок на годиннику."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las actualizaciones se instalan por Bluetooth. Mientras tanto, mantén la app cerrada en el reloj."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अपडेट Bluetooth से इंस्टॉल होते हैं। तब तक घड़ी पर ऐप बंद रखें।"
+          }
+        }
+      }
+    },
+    "Updating" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновление"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оновлення"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualizando"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "अपडेट हो रहा है"
+          }
+        }
+      }
+    },
+    "VERSION" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ВЕРСИЯ"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ВЕРСІЯ"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "VERSIÓN"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वर्शन"
+          }
+        }
+      }
+    },
+    "Value" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Значение"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Значення"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valor"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "मान"
+          }
+        }
+      }
+    },
+    "Version" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Версия"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Версія"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वर्शन"
+          }
+        }
+      }
+    },
+    "Version %@ is out" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вышла версия %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вийшла версія %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya está la versión %@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वर्शन %@ आ गया है"
+          }
+        }
+      }
+    },
+    "Version %@ · slot %lld" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Версия %@ · слот %lld"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Версія %@ · слот %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión %@ · ranura %lld"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वर्शन %@ · स्लॉट %lld"
+          }
+        }
+      }
+    },
+    "Version %@ → %@ · slot %lld" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Версия %1$@ → %2$@ · слот %3$lld"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Версія %1$@ → %2$@ · слот %3$lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión %1$@ → %2$@ · ranura %3$lld"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वर्शन %1$@ → %2$@ · स्लॉट %3$lld"
+          }
+        }
+      }
+    },
+    "Version 1.0 · slot 0" : {
+      "shouldTranslate" : false
+    },
+    "View in the Store" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открыть в магазине"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкрити в магазині"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ver en la tienda"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "स्टोर में देखें"
+          }
+        }
+      }
+    },
+    "Waiting for your answer" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ждёт вашего ответа"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чекає на вашу відповідь"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esperando tu respuesta"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "आपके जवाब का इंतज़ार"
+          }
+        }
+      }
+    },
+    "Wake probe" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wake probe"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wake probe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wake probe"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wake probe"
+          }
+        }
+      }
+    },
+    "Watch" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часы"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Годинник"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reloj"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी"
+          }
+        }
+      }
+    },
+    "Watch faces" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Циферблаты"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Циферблати"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esferas"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वॉच फ़ेस"
+          }
+        }
+      }
+    },
+    "Watch faces · %lld of %lld" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Циферблаты · %lld из %lld"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Циферблати · %lld з %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esferas · %lld de %lld"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वॉच फ़ेस · %lld में से %lld"
+          }
+        }
+      }
+    },
+    "Weather" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Погода"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Погода"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiempo"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "मौसम"
+          }
+        }
+      }
+    },
+    "Web request" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Веб-запрос"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Веб-запит"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solicitud web"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वेब अनुरोध"
+          }
+        }
+      }
+    },
+    "Your fmc.tools account, for watch faces on your watch." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш аккаунт fmc.tools для циферблатов на часах."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш акаунт fmc.tools для циферблатів на годиннику."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu cuenta de fmc.tools, para las esferas de tu reloj."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "आपका fmc.tools अकाउंट, आपकी घड़ी के वॉच फ़ेस के लिए।"
+          }
+        }
+      }
+    },
+    "fmc.tools" : {
+      "shouldTranslate" : false
+    },
+    "on the watch" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "на часах"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "на годиннику"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "en el reloj"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "घड़ी पर"
+          }
+        }
+      }
+    },
+    "or" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "или"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "або"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "या"
+          }
+        }
+      }
+    },
+    "the weather where you are" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "погоду там, где вы"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "погоду там, де ви"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el tiempo donde estás"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "आपकी जगह का मौसम"
+          }
+        }
+      }
+    },
+    "the web: %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "доступ в сеть: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "доступ до мережі: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "la web: %@"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "वेब: %@"
+          }
+        }
+      }
+    },
+    "to send you notifications" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "право отправлять вам уведомления"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "дозвіл надсилати вам сповіщення"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "enviarte notificaciones"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "आपको नोटिफ़िकेशन भेजने की अनुमति"
+          }
+        }
+      }
+    },
+    "your approximate location" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ваше примерное местоположение"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ваше приблизне розташування"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tu ubicación aproximada"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "आपकी अनुमानित लोकेशन"
+          }
+        }
+      }
+    },
+    "your calendar" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ваш календарь"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ваш календар"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tu calendario"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "आपका कैलेंडर"
+          }
+        }
+      }
+    },
+    "your notifications" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ваши уведомления"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ваші сповіщення"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tus notificaciones"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "आपके नोटिफ़िकेशन"
+          }
+        }
+      }
+    },
+    "your reminders" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ваши напоминания"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ваші нагадування"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tus recordatorios"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "आपके रिमाइंडर"
+          }
+        }
+      }
+    },
+    "—" : {
+      "shouldTranslate" : false
+    }
+  },
+  "version" : "1.0"
+}
