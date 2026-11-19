@@ -72,7 +72,7 @@ actor KLock {
     }
 
     /// CMFX came to the front: costs nothing in the background (no timer). A loop stuck for 45 s starts again; a
-    /// working one registers with the watch again (one PING), which is what relaunching Nothing X used to do for it.
+    /// working one registers with the watch again (one PING, never a restart), which is what relaunching Nothing X used to do for it.
     /// Nothing while stopped on purpose (a watch face install).
     func wake() {
         guard task != nil else { return }
@@ -85,8 +85,8 @@ actor KLock {
             do {
                 _ = try await withDeadline(.seconds(8)) { try await KLock.shared.run { try await session.ping() } }
             } catch {
-                DevLog.shared.log("watch did not answer: starting again")
-                if self.session === session, self.task != nil { self.restart() }
+                // busy (a transfer) or away: not a reason to cut the link
+                DevLog.shared.log("register on open: \(error)")
             }
         }
     }
