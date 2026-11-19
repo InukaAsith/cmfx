@@ -7,7 +7,7 @@ import UIKit
 
 @MainActor @Observable final class GeminiService: WatchService {
     static let app = "Gemini"
-    static let model = "gemini-3.5-flash"
+    static let model = "gemini-3.5-flash-lite"
     var status: String?
     private var answering: Task<Void, Never>?
     private var asking: String?
@@ -126,32 +126,43 @@ import UIKit
         }
     }
 
-    private func stream(_ turns: [Turn]) -> AsyncThrowingStream<String, Error> {
-        let body: [String: Any] = [
+    private func request(_ turns: [Turn], quick: Bool) -> URLRequest {
+        var body: [String: Any] = [
             "contents": turns.map { ["role": $0.user ? "user" : "model", "parts": [["text": $0.text]]] },
-            // quick answers: no long thinking first (gemini-3.5-flash defaults to medium)
-            "generationConfig": ["thinkingConfig": ["thinkingLevel": "MINIMAL"]],
             "systemInstruction": ["parts": [["text":
                 "You answer on a small round watch. Plain sentences, no markdown, no lists, no emoji. At most 60 words."]]],
         ]
+        // quick answers: as little thinking first as the model allows
+        if quick { body["generationConfig"] = ["thinkingConfig": ["thinkingLevel": "MINIMAL"]] }
         var req = URLRequest(url: URL(string:
             "https://generativelanguage.googleapis.com/v1beta/models/\(Self.model):streamGenerateContent?alt=sse")!)
         req.httpMethod = "POST"
-        req.timeoutInterval = 60
+        req.timeoutInterval = 30
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(Secrets.geminiKey, forHTTPHeaderField: "x-goog-api-key")
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        return AsyncThrowingStream { c in
+        return req
+    }
+
+    private func stream(_ turns: [Turn]) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { c in
             let t = Task {
                 do {
-                    let (bytes, resp) = try await URLSession.shared.bytes(for: req)
-                    let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                    var (bytes, resp) = try await URLSession.shared.bytes(for: self.request(turns, quick: true))
+                    var code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                    if code == 400 {
+                        // a model without that thinking setting: ask again without it
+                        (bytes, resp) = try await URLSession.shared.bytes(for: self.request(turns, quick: false))
+                        code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                    }
                     guard code == 200 else { throw HubError.failed("Gemini \(code)") }
                     for try await line in bytes.lines where line.hasPrefix("data: ") {
                         guard let j = try? JSONSerialization.jsonObject(with: Data(line.dropFirst(6).utf8)) as? [String: Any]
                         else { continue }
                         for cand in j["candidates"] as? [[String: Any]] ?? [] {
                             for p in ((cand["content"] as? [String: Any])?["parts"] as? [[String: Any]]) ?? [] {
+                                // thought summaries are not the answer
+                                if p["thought"] as? Bool == true { continue }
                                 if let t = p["text"] as? String { c.yield(t) }
                             }
                         }
