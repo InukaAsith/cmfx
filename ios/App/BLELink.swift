@@ -39,6 +39,8 @@ final class BLELink: NSObject, Link, @unchecked Sendable {
     private var handlers: [@Sendable (String, Data) -> Void] = []
     private let lock = NSLock()
     private var step: CheckedContinuation<Void, Error>?
+    /// Bumped with each step: a timeout ends only the step it was set for.
+    private var stepGen = 0
     private var pendingServices = 0
     /// Writes without response waiting for room in iOS's buffer, oldest first.
     private var queued: [(Data, CBCharacteristic, CheckedContinuation<Void, Error>)] = []
@@ -128,14 +130,28 @@ final class BLELink: NSObject, Link, @unchecked Sendable {
             // a frame over MTU-3 goes as one write with response (abi-1.4.md, step 4)
             let big = data.count > p.maximumWriteValueLength(for: .withoutResponse)
             if big || !ch.properties.contains(.writeWithoutResponse) {
+                // never two waiting: an older one (it should not happen) fails rather than waits for ever
+                finish(BLEError.failed(String(localized: "The watch did not answer.")))
                 step = c
+                stepGen += 1
+                let g = stepGen
                 p.writeValue(data, for: ch, type: .withResponse)
+                // no ack in 5 s: this write failed, the lane goes on
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(5))
+                    if self.stepGen == g { self.finish(BLEError.failed(String(localized: "The watch did not answer."))) }
+                }
             } else if queued.isEmpty, p.canSendWriteWithoutResponse {
                 p.writeValue(data, for: ch, type: .withoutResponse)
                 c.resume()
             } else {
-                // iOS's buffer is full: written from peripheralIsReady, in order
+                // iOS's buffer is full: written from peripheralIsReady, in order. iOS does not always say it is
+                // ready (another app on the same link): after 1.5 s the queue is written anyway, nothing waits for ever
                 queued.append((data, ch, c))
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(1500))
+                    self.flushStale(p)
+                }
             }
         }
     }
@@ -143,6 +159,17 @@ final class BLELink: NSObject, Link, @unchecked Sendable {
     private func drainQueued(_ p: CBPeripheral) {
         while let w = queued.first, p.canSendWriteWithoutResponse {
             queued.removeFirst()
+            p.writeValue(w.0, for: w.1, type: .withoutResponse)
+            w.2.resume()
+        }
+    }
+
+    /// Writes still queued after their wait: written now (a dropped one is resent by its sender).
+    private func flushStale(_ p: CBPeripheral) {
+        guard p.state == .connected else { return failQueued(BLEError.failed(String(localized: "The watch disconnected."))) }
+        let q = queued
+        queued.removeAll()
+        for w in q {
             p.writeValue(w.0, for: w.1, type: .withoutResponse)
             w.2.resume()
         }
