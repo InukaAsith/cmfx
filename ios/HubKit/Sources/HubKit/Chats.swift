@@ -11,9 +11,16 @@ public enum ChatsProto {
 
     public struct Row: Equatable, Sendable {
         public var id: UInt8, unread: Bool, name: String, preview: String
+        /// How many are unread (the watch shows the number; 0: `unread` alone, as 1).
+        public var count: Int = 0
         public init(id: UInt8, unread: Bool = false, name: String, preview: String) {
             self.id = id; self.unread = unread; self.name = name; self.preview = preview
         }
+        public init(id: UInt8, unreadCount: Int, name: String, preview: String) {
+            self.init(id: id, unread: unreadCount > 0, name: name, preview: preview)
+            count = unreadCount
+        }
+        var unreadByte: UInt8 { count > 0 ? UInt8(min(count, 255)) : (unread ? 1 : 0) }
     }
 
     /// `L n`, then `C idx id unread nlen name… plen preview…` per row (12 at most).
@@ -21,7 +28,7 @@ public enum ChatsProto {
         let rows = rows.prefix(maxRows)
         var out = [Data([UInt8(ascii: "L"), UInt8(rows.count)])]
         for (i, r) in rows.enumerated() {
-            out.append(Data([UInt8(ascii: "C"), UInt8(i), r.id, r.unread ? 1 : 0]) + field(r.name, 24) + field(r.preview, 40))
+            out.append(Data([UInt8(ascii: "C"), UInt8(i), r.id, r.unreadByte]) + field(r.name, 24) + field(r.preview, 40))
         }
         return out
     }

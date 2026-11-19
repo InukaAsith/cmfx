@@ -6,8 +6,11 @@ import WireKit
 // or woken by BLE in the background. Its own BLELink and K session, next to WatchModel.check's: every K host sees
 // every K reply, so INFO and MSG from both go one at a time through KLock. A watchface install stops it (the stock
 // session binds the watch) and starts it again after.
-// ponytail: retries every 30 s while no watch is up (10 min on stock firmware); no CoreBluetooth state restoration,
-// so a kill by the system ends it until the next launch.
+// Its link stays: after a drop it waits on BLELink's pending reconnect (no timer), and CoreBluetooth state
+// restoration brings it back when iOS relaunches CMFX for the watch after ending it. A watch never seen: tried
+// again every 30 s while the app runs (10 min on stock firmware).
+// ponytail: what woke a restored launch arrives before the session is open and is lost; the watch app's next
+// message gets through.
 
 /// One K exchange at a time across sessions: a reply carries no request id.
 actor KLock {
@@ -39,14 +42,30 @@ actor KLock {
     /// The stub's release, from the same read: PUSH needs 7.
     private var stub: UInt32 = 1
 
+    /// CoreBluetooth state restoration: the listener's link only.
+    static let restoreID = "app.cmfx.watch"
+
+    private enum Ended { case stock, dropped, failed }
+
     func start() {
         guard task == nil else { return }
+        // now, not in the task: a relaunch for a restored link needs its central in didFinishLaunching
+        if link == nil { link = Self.makeLink() }
         task = Task {
             while !Task.isCancelled {
-                let stock = await listen()
-                try? await Task.sleep(for: stock ? .seconds(600) : .seconds(30))
+                switch await listen() {
+                case .stock: try? await Task.sleep(for: .seconds(600))
+                case .dropped: continue // connect() waits for the reconnect iOS keeps pending
+                case .failed: try? await Task.sleep(for: .seconds(30))
+                }
             }
         }
+    }
+
+    private static func makeLink() -> BLELink {
+        let link = BLELink(restore: restoreID)
+        link.onReconnect = { DevLog.shared.log("link back") }
+        return link
     }
 
     func stop() {
@@ -65,22 +84,19 @@ actor KLock {
         if task == nil { start() }
     }
 
-    /// true: stock firmware, nothing to listen to.
-    private func listen() async -> Bool {
-        let link = BLELink()
+    private func listen() async -> Ended {
+        let link = self.link ?? Self.makeLink()
         self.link = link
         var up = true
         link.onDisconnect = { up = false }
-        defer {
-            link.disconnect()
-            if self.link === link { self.link = nil }
-        }
         do {
             try await link.connect()
             let (session, state) = try await KLock.shared.run { try await WatchModel.open(link) }
             guard let state else {
                 DevLog.shared.log("stock firmware: not listening")
-                return true
+                link.disconnect()
+                if self.link === link { self.link = nil }
+                return .stock
             }
             apps = state.apps.mapValues(\.name)
             stub = state.stub.version
@@ -97,10 +113,11 @@ actor KLock {
                 await handle(m.data, slot: Int(m.slot), session)
             }
             DevLog.shared.log("link dropped")
+            return up ? .failed : .dropped
         } catch {
             DevLog.shared.log("link: \(error.localizedDescription)")
         }
-        return false
+        return .failed
     }
 
     /// The watch apps' background jobs that are due, while the link is up: in the foreground and in the ~10 s a BLE
