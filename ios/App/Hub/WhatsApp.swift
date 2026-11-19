@@ -159,7 +159,7 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
         if WabridgeState() == "synced" { return true }
         startConnect()
         guard let t = connecting else { return WabridgeState() != "disconnected" }
-        let once = Once()
+        let once = FirstWins()
         return await withCheckedContinuation { c in
             Task { @MainActor in let v = await t.value; if once.take() { c.resume(returning: v) } }
             Task { @MainActor in try? await Task.sleep(for: limit); if once.take() { c.resume(returning: false) } }
@@ -412,7 +412,7 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
 }
 
 /// The first of two racing callers wins.
-@MainActor private final class Once {
+@MainActor private final class FirstWins {
     private var done = false
     func take() -> Bool { defer { done = true }; return !done }
 }
