@@ -6,7 +6,7 @@ import HubKit
 
 @MainActor @Observable final class GeminiService: WatchService {
     static let app = "Gemini"
-    static let model = "gemini-2.5-flash"
+    static let model = "gemini-3.5-flash"
     private var history: [[String: Any]] = []
     var status: String?
     private var answering: Task<Void, Never>?
