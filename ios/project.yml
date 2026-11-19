@@ -1,0 +1,91 @@
+# CMFX for iPhone. `xcodegen generate` then `./build.sh` (or the Build iOS workflow): an unsigned IPA that AltStore,
+# SideStore or any signing tool signs with your Apple ID.
+name: CMFX
+options:
+  bundleIdPrefix: app.cmfx
+  developmentLanguage: en
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  WireKit:
+    path: WireKit
+  HubKit:
+    path: HubKit
+  # face and app descriptions on fmc.tools are markdown
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    exactVersion: 2.4.1
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+targets:
+  CMFX:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: WireKit
+      - package: HubKit
+      - package: MarkdownUI
+    entitlements:
+      path: App/CMFX.entitlements
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: CMFX
+        UILaunchScreen: {}
+        # the watch wakes the app by BLE; location only while navigating
+        UIBackgroundModes: [bluetooth-central, location]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSBluetoothAlwaysUsageDescription: CMFX talks to your CMF Watch Pro 2 next to Nothing X.
+        NSCalendarsFullAccessUsageDescription: Watch apps you allow show your upcoming events on the watch.
+        NSRemindersFullAccessUsageDescription: Watch apps you allow show your reminders on the watch and mark them done.
+        NSLocationWhenInUseUsageDescription: Navigation, the offline map's position and the weather use where you are.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Navigation keeps the turns coming on the watch while the phone is locked.
+        NSPhotoLibraryUsageDescription: Photos you pick are sent to the watch.
+        ITSAppUsesNonExemptEncryption: false
+        LSApplicationQueriesSchemes: [spotify, comgooglemaps]
+        # fmc://install?url=… (fmc.tools), cmfx://spotify (Spotify sign-in), cmfx://nav?… (directions)
+        CFBundleURLTypes:
+          - CFBundleURLName: app.cmfx
+            CFBundleURLSchemes: [cmfx, fmc]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.cmfx.ios
+        PRODUCT_NAME: CMFX
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+  CMFXTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AppTests]
+    dependencies:
+      - target: CMFX
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/CMFX.app/CMFX"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  CMFX:
+    build:
+      targets:
+        CMFX: all
+    test:
+      targets:
+        - CMFXTests
+        - package: WireKit/WireKitTests
+        - package: HubKit/HubKitTests

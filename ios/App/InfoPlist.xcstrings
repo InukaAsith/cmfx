@@ -1,0 +1,153 @@
+{
+  "sourceLanguage" : "en",
+  "version" : "1.0",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "shouldTranslate" : false,
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC Companion"
+          }
+        }
+      }
+    },
+    "NSBluetoothAlwaysUsageDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC Companion connects to your watch to install watch faces and to read which apps are on it."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC Companion подключается к часам, чтобы устанавливать циферблаты и видеть, какие приложения на них есть."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC Companion підключається до годинника, щоб установлювати циферблати й бачити, які застосунки на ньому є."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC Companion se conecta a tu reloj para instalar esferas y ver qué apps tiene."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FMC Companion आपकी घड़ी से कनेक्ट होकर वॉच फ़ेस इंस्टॉल करता है और देखता है कि उस पर कौन-से ऐप हैं।"
+          }
+        }
+      }
+    },
+    "NSCalendarsFullAccessUsageDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch apps you allow show your upcoming events on the watch."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приложения для часов, которым вы разрешите, покажут ближайшие события на часах."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Застосунки для годинника, яким ви дозволите, показуватимуть найближчі події на годиннику."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las apps del reloj que permitas muestran tus próximos eventos en el reloj."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "जिन घड़ी ऐप को आप अनुमति देंगे, वे घड़ी पर आपके आने वाले इवेंट दिखाएँगे।"
+          }
+        }
+      }
+    },
+    "NSRemindersFullAccessUsageDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch apps you allow show your reminders on the watch and mark them done."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приложения для часов, которым вы разрешите, покажут напоминания на часах и смогут отмечать их выполненными."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Застосунки для годинника, яким ви дозволите, показуватимуть нагадування на годиннику й позначатимуть їх виконаними."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las apps del reloj que permitas muestran tus recordatorios en el reloj y los marcan como hechos."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "जिन घड़ी ऐप को आप अनुमति देंगे, वे घड़ी पर आपके रिमाइंडर दिखाएँगे और उन्हें पूरा मार्क करेंगे।"
+          }
+        }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch apps you allow get the weather and your town, rounded to about 10 km."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приложения для часов, которым вы разрешите, получат погоду и ваш город с точностью около 10 км."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Застосунки для годинника, яким ви дозволите, отримають погоду й ваше місто з точністю близько 10 км."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las apps del reloj que permitas obtienen el tiempo y tu ciudad, redondeado a unos 10 km."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "जिन घड़ी ऐप को आप अनुमति देंगे, उन्हें मौसम और आपका शहर मिलेगा, लगभग 10 किमी तक गोल किया हुआ।"
+          }
+        }
+      }
+    }
+  }
+}
