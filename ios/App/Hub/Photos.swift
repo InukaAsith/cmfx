@@ -25,6 +25,12 @@ import UIKit
     private var galleryDue = false
     private var picture: Int?
     private var shown: Int?
+    /// round: the picture fills the panel's circle; else the whole picture, a rounded rectangle (the watch's
+    /// double tap)
+    private var round = false
+    /// the sharp version (256 colours) of what is shown, asked for by a tap
+    private var sharpDue = false
+    private var sharpSent = false
     private var gen = 0
     private var gaps = 0
     private var viewing = false
@@ -43,10 +49,16 @@ import UIKit
         switch (b.first, b.count) {
         case (UInt8(ascii: "R"), _): galleryDue = true; thumbs = []; viewing = false
         case (UInt8(ascii: "q"), 2): if !thumbs.contains(Int(b[1])) { thumbs.append(Int(b[1])) }
-        case (UInt8(ascii: "o"), 2): open(Int(b[1]))
+        case (UInt8(ascii: "o"), 2): round = true; open(Int(b[1]))
+        case (UInt8(ascii: "o"), 3): round = b[2] == 1; open(Int(b[1]))
+        case (UInt8(ascii: "h"), _): if shown != nil { sharpDue = true; gen += 1 }
         case (UInt8(ascii: "g"), _): viewing = false; picture = nil; gen += 1
         // a band's chunk was lost on the way: the picture again, whole (twice at most)
-        case (UInt8(ascii: "G"), _): if let i = shown, gaps < 2 { gaps += 1; open(i, again: true) }
+        case (UInt8(ascii: "G"), _):
+            if let i = shown, gaps < 2 {
+                gaps += 1
+                if sharpSent { sharpDue = true; gen += 1 } else { open(i, again: true) }
+            }
         default: return
         }
         pump()
@@ -56,6 +68,8 @@ import UIKit
         if !again { gaps = 0 }
         viewing = true
         picture = i
+        sharpDue = false
+        sharpSent = false
         gen += 1
     }
 
@@ -71,6 +85,9 @@ import UIKit
                 } else if let i = picture {
                     picture = nil
                     await sendPicture(i, gen: gen)
+                } else if sharpDue, let i = shown {
+                    sharpDue = false
+                    await sendSharp(i, gen: gen)
                 } else if !viewing, !thumbs.isEmpty {
                     await sendThumb(thumbs.removeFirst())
                 } else {
@@ -139,17 +156,71 @@ import UIKit
 
     /// The picture in 8 bands of their own 16 colours; given up as soon as the watch asks for another one.
     private func sendPicture(_ i: Int, gen: Int) async {
-        guard let img = await image(i, side: Self.panel), gen == self.gen else { return }
+        guard let f = await framed(i), gen == self.gen else { return }
         shown = i
-        let scale = 2, n = Self.panel / scale
-        let rgb = Pixels.rgb(img, side: n, round: true)
-        let off = Int16((Self.panel - n * scale) / 2)
-        let msgs = Rle.bandedPicture(rgb: rgb, width: n, height: n, scale: UInt8(scale), x0: off, y0: off)
+        await out(Rle.bandedPicture(rgb: f.rgb, width: f.w, height: f.h, scale: UInt8(Self.scale), x0: f.x0, y0: f.y0), gen: gen)
+    }
+
+    /// The same picture in up to 256 colours (the watch shows a progress ring while it comes).
+    private func sendSharp(_ i: Int, gen: Int) async {
+        guard let f = await framed(i), gen == self.gen else { return }
+        sharpSent = true
+        await out(Rle.sharpPicture(rgb: f.rgb, width: f.w, height: f.h, scale: UInt8(Self.scale), x0: f.x0, y0: f.y0), gen: gen)
+    }
+
+    private func out(_ msgs: [Data], gen: Int) async {
         do {
             for m in msgs {
                 guard gen == self.gen else { return }
                 try await Hub.shared.send(Self.app, m)
             }
         } catch { status = error.localizedDescription }
+    }
+
+    static let scale = 2
+
+    /// Picture i as the watch shows it, in its pixels (scale 2): round, a square filling the panel masked to the
+    /// circle; else the whole picture as big as fits inside the circle, corners rounded. → RGB, size, origin.
+    private func framed(_ i: Int) async -> (rgb: [UInt8], w: Int, h: Int, x0: Int16, y0: Int16)? {
+        guard i < assets.count else { return nil }
+        let a = assets[i]
+        let (w, h): (Int, Int)
+        if round {
+            (w, h) = (Self.panel / Self.scale, Self.panel / Self.scale)
+        } else {
+            let k = Double(max(a.pixelWidth, 1)) / Double(max(a.pixelHeight, 1)), r = 226.0
+            (w, h) = (Int(2 * r * k / (1 + k * k).squareRoot()) / Self.scale, Int(2 * r / (1 + k * k).squareRoot()) / Self.scale)
+        }
+        guard let img = await image(i, side: max(w, h) * 2) else { return nil }
+        let rgb = Self.draw(img, width: w, height: h, round: round)
+        return (rgb, w, h, Int16((Self.panel - w * Self.scale) / 2), Int16((Self.panel - h * Self.scale) / 2))
+    }
+
+    /// `img` filling width × height (centred), black outside the circle (round) or the rounded corners.
+    private static func draw(_ img: UIImage, width: Int, height: Int, round: Bool) -> [UInt8] {
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1
+        fmt.opaque = true
+        fmt.preferredRange = .standard
+        let r = CGRect(x: 0, y: 0, width: width, height: height)
+        let pic = UIGraphicsImageRenderer(size: r.size, format: fmt).image { _ in
+            UIColor.black.setFill()
+            UIRectFill(r)
+            (round ? UIBezierPath(ovalIn: r) : UIBezierPath(roundedRect: r, cornerRadius: 12)).addClip()
+            let s = img.size
+            let k = max(r.width / max(s.width, 1), r.height / max(s.height, 1))
+            img.draw(in: CGRect(x: (r.width - s.width * k) / 2, y: (r.height - s.height * k) / 2,
+                                width: s.width * k, height: s.height * k))
+        }
+        guard let cg = pic.cgImage else { return [UInt8](repeating: 0, count: width * height * 3) }
+        var rgba = [UInt8](repeating: 0, count: width * height * 4)
+        let ctx = CGContext(data: &rgba, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        ctx.draw(cg, in: r)
+        var rgb = [UInt8](repeating: 0, count: width * height * 3)
+        for p in 0..<(width * height) {
+            rgb[3 * p] = rgba[4 * p]; rgb[3 * p + 1] = rgba[4 * p + 1]; rgb[3 * p + 2] = rgba[4 * p + 2]
+        }
+        return rgb
     }
 }
