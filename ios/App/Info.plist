@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>FMC Companion</string>
+	<string>CMFX</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -34,7 +34,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>FMC Companion connects to your watch to install watch faces and to read which apps are on it.</string>
+	<string>CMFX connects to your watch to install watch faces and to read which apps are on it.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Watch apps you allow show your upcoming events on the watch.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

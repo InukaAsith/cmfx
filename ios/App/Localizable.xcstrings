@@ -669,30 +669,30 @@
         }
       }
     },
-    "Allow or deny it in FMC Companion." : {
+    "Allow or deny it in CMFX." : {
       "localizations" : {
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Разрешите или запретите в FMC Companion."
+            "value" : "Разрешите или запретите в CMFX."
           }
         },
         "uk" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Дозвольте або заборонте у FMC Companion."
+            "value" : "Дозвольте або заборонте у CMFX."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Permítelo o deniégalo en FMC Companion."
+            "value" : "Permítelo o deniégalo en CMFX."
           }
         },
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "FMC Companion में इसे अनुमति दें या मना करें।"
+            "value" : "CMFX में इसे अनुमति दें या मना करें।"
           }
         }
       }
@@ -2520,33 +2520,33 @@
         }
       }
     },
-    "FMC Companion" : {
+    "CMFX" : {
       "shouldTranslate" : false
     },
-    "FMC Companion may not use Bluetooth. Allow it in Settings." : {
+    "CMFX may not use Bluetooth. Allow it in Settings." : {
       "localizations" : {
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "У FMC Companion нет доступа к Bluetooth. Разрешите его в Настройках."
+            "value" : "У CMFX нет доступа к Bluetooth. Разрешите его в Настройках."
           }
         },
         "uk" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "FMC Companion не має доступу до Bluetooth. Дозвольте його в Параметрах."
+            "value" : "CMFX не має доступу до Bluetooth. Дозвольте його в Параметрах."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "FMC Companion no tiene permiso para usar Bluetooth. Actívalo en Ajustes."
+            "value" : "CMFX no tiene permiso para usar Bluetooth. Actívalo en Ajustes."
           }
         },
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "FMC Companion को Bluetooth की अनुमति नहीं है। सेटिंग्स में इसे अनुमति दें।"
+            "value" : "CMFX को Bluetooth की अनुमति नहीं है। सेटिंग्स में इसे अनुमति दें।"
           }
         }
       }
@@ -4629,30 +4629,30 @@
         }
       }
     },
-    "Some of these are off for FMC Companion in iOS Settings. [Open Settings](app-settings:)\n" : {
+    "Some of these are off for CMFX in iOS Settings. [Open Settings](app-settings:)\n" : {
       "localizations" : {
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Некоторые из них выключены для FMC Companion в настройках iOS. [Открыть настройки](app-settings:)\n"
+            "value" : "Некоторые из них выключены для CMFX в настройках iOS. [Открыть настройки](app-settings:)\n"
           }
         },
         "uk" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Деякі з них вимкнено для FMC Companion у параметрах iOS. [Відкрити параметри](app-settings:)\n"
+            "value" : "Деякі з них вимкнено для CMFX у параметрах iOS. [Відкрити параметри](app-settings:)\n"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Algunos están desactivados para FMC Companion en Ajustes de iOS. [Abrir Ajustes](app-settings:)\n"
+            "value" : "Algunos están desactivados para CMFX en Ajustes de iOS. [Abrir Ajustes](app-settings:)\n"
           }
         },
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "इनमें से कुछ FMC Companion के लिए iOS सेटिंग्स में बंद हैं। [सेटिंग्स खोलें](app-settings:)\n"
+            "value" : "इनमें से कुछ CMFX के लिए iOS सेटिंग्स में बंद हैं। [सेटिंग्स खोलें](app-settings:)\n"
           }
         }
       }

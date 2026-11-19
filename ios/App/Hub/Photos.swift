@@ -19,8 +19,17 @@ import UIKit
     private(set) var count = 0
     var status: String?
     private var assets: [PHAsset] = []
-    /// One job at a time: a file's F/f/c must not interleave with another's.
-    private var chain: Task<Void, Never>?
+    // What the watch wants, worked through one transfer at a time (a file's F/f/c, a picture's bands, never
+    // interleaved): the gallery first, then the picture it stopped on (only the latest: an older one still being
+    // sent is cut off), then thumbnails, paused while a picture is open on the watch (`o` … `g`).
+    private var galleryDue = false
+    private var picture: Int?
+    private var shown: Int?
+    private var gen = 0
+    private var gaps = 0
+    private var viewing = false
+    private var thumbs: [Int] = []
+    private var working = false
 
     var allowed: Bool { access == .authorized || access == .limited }
 
@@ -32,16 +41,43 @@ import UIKit
     func receive(_ m: Data) {
         let b = [UInt8](m)
         switch (b.first, b.count) {
-        case (UInt8(ascii: "R"), _): enqueue { await self.sendGallery() }
-        case (UInt8(ascii: "q"), 2): let i = Int(b[1]); enqueue { await self.sendThumb(i) }
-        case (UInt8(ascii: "o"), 2): let i = Int(b[1]); enqueue { await self.sendPicture(i) }
-        default: break
+        case (UInt8(ascii: "R"), _): galleryDue = true; thumbs = []; viewing = false
+        case (UInt8(ascii: "q"), 2): if !thumbs.contains(Int(b[1])) { thumbs.append(Int(b[1])) }
+        case (UInt8(ascii: "o"), 2): open(Int(b[1]))
+        case (UInt8(ascii: "g"), _): viewing = false; picture = nil; gen += 1
+        // a band's chunk was lost on the way: the picture again, whole (twice at most)
+        case (UInt8(ascii: "G"), _): if let i = shown, gaps < 2 { gaps += 1; open(i, again: true) }
+        default: return
         }
+        pump()
     }
 
-    private func enqueue(_ job: @escaping @MainActor () async -> Void) {
-        let prev = chain
-        chain = Task { await prev?.value; await job() }
+    private func open(_ i: Int, again: Bool = false) {
+        if !again { gaps = 0 }
+        viewing = true
+        picture = i
+        gen += 1
+    }
+
+    private func pump() {
+        guard !working else { return }
+        working = true
+        Task { @MainActor in
+            defer { working = false }
+            while true {
+                if galleryDue {
+                    galleryDue = false
+                    await sendGallery()
+                } else if let i = picture {
+                    picture = nil
+                    await sendPicture(i, gen: gen)
+                } else if !viewing, !thumbs.isEmpty {
+                    await sendThumb(thumbs.removeFirst())
+                } else {
+                    return
+                }
+            }
+        }
     }
 
     private func load() {
@@ -101,13 +137,19 @@ import UIKit
         catch { status = error.localizedDescription }
     }
 
-    private func sendPicture(_ i: Int) async {
-        guard let img = await image(i, side: Self.panel) else { return }
+    /// The picture in 8 bands of their own 16 colours; given up as soon as the watch asks for another one.
+    private func sendPicture(_ i: Int, gen: Int) async {
+        guard let img = await image(i, side: Self.panel), gen == self.gen else { return }
+        shown = i
         let scale = 2, n = Self.panel / scale
         let rgb = Pixels.rgb(img, side: n, round: true)
         let off = Int16((Self.panel - n * scale) / 2)
+        let msgs = Rle.bandedPicture(rgb: rgb, width: n, height: n, scale: UInt8(scale), x0: off, y0: off)
         do {
-            try await Hub.shared.send(Self.app, Rle.picture(rgb: rgb, width: n, height: n, scale: UInt8(scale), x0: off, y0: off))
+            for m in msgs {
+                guard gen == self.gen else { return }
+                try await Hub.shared.send(Self.app, m)
+            }
         } catch { status = error.localizedDescription }
     }
 }
