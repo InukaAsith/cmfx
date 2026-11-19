@@ -48,7 +48,7 @@ targets:
         NSRemindersFullAccessUsageDescription: Watch apps you allow show your reminders on the watch and mark them done.
         NSLocationWhenInUseUsageDescription: Navigation, the offline map's position and the weather use where you are.
         NSLocationAlwaysAndWhenInUseUsageDescription: Navigation keeps the turns coming on the watch while the phone is locked.
-        NSPhotoLibraryUsageDescription: Photos you pick are sent to the watch.
+        NSPhotoLibraryUsageDescription: Your newest photos show as a gallery on the watch.
         ITSAppUsesNonExemptEncryption: false
         LSApplicationQueriesSchemes: [spotify, comgooglemaps]
         # fmc://install?url=… (fmc.tools), cmfx://spotify (Spotify sign-in), cmfx://nav?… (directions)

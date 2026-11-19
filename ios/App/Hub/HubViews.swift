@@ -22,7 +22,7 @@ struct HubTab: View {
                     row(MapsPage(), "map.fill", .orange, "Offline Maps", "Save a region to the watch", MapsService.app)
                     row(NavPage(), "location.north.line.fill", TDColor.accent, "Navigation",
                         hub.nav.active ? "Navigating" : "Turn by turn on the watch", NavService.app)
-                    row(PhotosPage(), "photo.fill", .purple, "Photos", "Show a photo on the watch", PhotosService.app)
+                    row(PhotosPage(), "photo.fill", .purple, "Photos", "Your gallery on the watch", PhotosService.app)
                     row(WhatsAppPage(), "message.fill", Color(red: 0.15, green: 0.8, blue: 0.4), "WhatsApp", "Not linked yet", "WhatsApp")
                 }
                 .glassCard(22)
@@ -191,26 +191,28 @@ struct NavPage: View {
 
 struct PhotosPage: View {
     @State private var p = Hub.shared.photos
-    @State private var item: PhotosPickerItem?
     var body: some View {
         PageScroll(title: "Photos") {
-            VStack(spacing: 14) {
-                if let img = p.picked {
-                    Image(uiImage: img).resizable().scaledToFill().frame(width: 220, height: 220).clipShape(Circle())
+            VStack(alignment: .leading, spacing: 14) {
+                CardHeader(symbol: "photo.on.rectangle", color: .purple, title: "Gallery on the watch",
+                           detail: p.allowed ? "Your newest \(PhotosService.max) photos" : "Needs access to your photos")
+                if p.access == .notDetermined {
+                    Button("Allow access to all photos") { Task { await p.requestAccess() } }.primaryButton()
+                } else if !p.allowed {
+                    Text("Photo access is off. Turn on Full Access in Settings › CMFX › Photos.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button("Open Settings") {
+                        if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+                    }.secondaryButton()
+                } else if p.access == .limited {
+                    Text("Limited access: only the photos you allowed show. Choose Full Access in Settings › CMFX › Photos for all of them.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
-                PhotosPicker(selection: $item, matching: .images) { Text(p.picked == nil ? "Pick a photo" : "Pick another") }
-                    .primaryButton()
-                if p.sending { ProgressView() }
+                Text("Open Photos on the watch: a grid of thumbnails or a list of names (tap the heading). Tap one to open it; the crown goes to the next, a double tap zooms. Thumbnails are sent only as you scroll to them and stay on the watch.")
+                    .font(.footnote).foregroundStyle(.secondary)
                 Status(text: p.status)
-                Text("Open Photos on the watch first. The photo is drawn round, 16 colours.").font(.footnote).foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity)
             .glassCard()
-        }
-        .onChange(of: item) { _, it in
-            Task {
-                if let d = try? await it?.loadTransferable(type: Data.self), let img = UIImage(data: d) { await p.pick(img) }
-            }
         }
     }
 }
