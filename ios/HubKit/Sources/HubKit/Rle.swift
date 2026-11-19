@@ -87,6 +87,59 @@ extension Rle {
     }
 }
 
+extension Rle {
+    /// 256-colour runs: a byte < 255 is one pixel of that colour; 255, c, n is n (3…255) pixels of colour c; no run
+    /// crosses a row (cmf-watch-sdk photos proto.rs, the sharp version).
+    public static func tokens8(_ idx: [UInt8], width: Int, height: Int) -> Data {
+        var out = Data()
+        for y in 0..<height {
+            var x = 0
+            while x < width {
+                let c = idx[y * width + x]
+                var k = 1
+                while x + k < width, idx[y * width + x + k] == c, k < 255 { k += 1 }
+                if k >= 3 { out.append(contentsOf: [255, c, UInt8(k)]) } else { out.append(contentsOf: [UInt8](repeating: c, count: k)) }
+                x += k
+            }
+        }
+        return out
+    }
+
+    /// The sharp version of an opened photo: up to 255 colours, fewer when it would not fit the watch's `cap`;
+    /// `S total:u16 w:u16 h:u16 scale x0:i16 y0:i16`, `K first count rgb565…`, `Y seq tokens…`, `Z`.
+    public static func sharpPicture(rgb: [UInt8], width: Int, height: Int, scale: UInt8, x0: Int16, y0: Int16,
+                                    cap: Int = 40 * 1024) -> [Data] {
+        var palette: [(UInt8, UInt8, UInt8)] = [], data = Data()
+        for colours in [255, 192, 128, 96, 64] {
+            let (p, idx) = Quantize.medianCut(rgb: rgb, colours: colours)
+            palette = p
+            data = tokens8(idx, width: width, height: height)
+            if data.count <= cap { break }
+        }
+        var s = Data([UInt8(ascii: "S")])
+        s.le(UInt16(data.count)); s.le(UInt16(width)); s.le(UInt16(height)); s.append(scale); s.le(x0); s.le(y0)
+        var out = [s]
+        var first = 0
+        while first < palette.count {
+            let n = min(60, palette.count - first)
+            var k = Data([UInt8(ascii: "K"), UInt8(first), UInt8(n)])
+            for c in palette[first..<(first + n)] { k.le(rgb565(c.0, c.1, c.2)) }
+            out.append(k)
+            first += n
+        }
+        var seq: UInt8 = 0
+        var i = data.startIndex
+        while i < data.endIndex {
+            let j = min(i + msgMax - 2, data.endIndex)
+            out.append(Data([UInt8(ascii: "Y"), seq]) + data[i..<j])
+            seq &+= 1
+            i = j
+        }
+        out.append(Data([UInt8(ascii: "Z")]))
+        return out
+    }
+}
+
 extension Data {
     mutating func le(_ v: UInt16) { append(UInt8(v & 0xFF)); append(UInt8(v >> 8)) }
     mutating func le(_ v: UInt32) { for k in 0..<4 { append(UInt8(v >> (8 * k) & 0xFF)) } }
