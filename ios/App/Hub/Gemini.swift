@@ -100,6 +100,8 @@ import UIKit
                 convos[i].turns = Array(convos[i].turns.suffix(20))
                 save()
             }
+            // the list on the watch: this conversation first
+            try? await Hub.shared.send(Self.app, list())
         } catch is CancellationError {
         } catch {
             status = error.localizedDescription
