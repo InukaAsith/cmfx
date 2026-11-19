@@ -7,9 +7,10 @@ struct CMFXApp: App {
     @State private var account = Account()
     @State private var watch = WatchModel.shared
     @State private var catalog = Catalog()
-    // DEBUG screenshots: `-watch` opens the Watch tab, `-apps` Apps, `-app <name>` that app's page
-    @State private var tab: RootTab = CommandLine.arguments.contains("-watch") ? .watch
-        : CommandLine.arguments.contains(where: { $0 == "-apps" || $0 == "-app" }) ? .apps : .faces
+    /// CMFX opens on its Overview.
+    @State private var tab: RootTab = .overview
+    /// FMC Companion's watch faces catalog, the one part of it kept: a sheet from Overview or More.
+    @State private var faces = false
     /// The catalog's navigation: face ids. A link to a face replaces it.
     @State private var path: [String] = []
     @AppStorage("appearance") private var appearance = Appearance.system.rawValue
@@ -23,9 +24,8 @@ struct CMFXApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabs(tab: $tab, path: $path)
+            RootTabs(tab: $tab, path: $path, faces: $faces)
                 .onOpenURL(perform: open)
-                .onChange(of: Permissions.shared.open) { if $1 != nil { tab = .apps } }
                 .environment(account)
                 .environment(watch)
                 .environment(catalog)
@@ -44,24 +44,25 @@ struct CMFXApp: App {
     }
 }
 
+/// CMFX's own features in the bar; the rest (and FMC Companion's watch faces) under More.
 enum RootTab: Hashable, CaseIterable {
-    case faces, apps, hub, watch, settings
+    case overview, whatsapp, mail, notes, more
     var title: String {
         switch self {
-        case .faces: "Faces"
-        case .apps: "Apps"
-        case .hub: "Hub"
-        case .watch: "Watch"
-        case .settings: "Settings"
+        case .overview: "Overview"
+        case .whatsapp: "WhatsApp"
+        case .mail: "Mail"
+        case .notes: "Notes"
+        case .more: "More"
         }
     }
     var icon: String {
         switch self {
-        case .faces: "square.grid.2x2"
-        case .apps: "square.grid.3x3.fill"
-        case .hub: "dot.radiowaves.left.and.right"
-        case .watch: "applewatch"
-        case .settings: "gearshape"
+        case .overview: "circle.grid.2x2.fill"
+        case .whatsapp: "message.fill"
+        case .mail: "envelope.fill"
+        case .notes: "note.text"
+        case .more: "ellipsis.circle.fill"
         }
     }
 }
@@ -71,14 +72,15 @@ enum RootTab: Hashable, CaseIterable {
 struct RootTabs: View {
     @Binding var tab: RootTab
     @Binding var path: [String]
+    @Binding var faces: Bool
 
     @ViewBuilder private func page(_ t: RootTab) -> some View {
         switch t {
-        case .faces: CatalogView(path: $path)
-        case .apps: AppsTab()
-        case .hub: HubTab()
-        case .watch: ContentView()
-        case .settings: SettingsTab()
+        case .overview: OverviewTab(tab: $tab, faces: $faces)
+        case .whatsapp: NavigationStack { WhatsAppPage() }
+        case .mail: NavigationStack { MailPage() }
+        case .notes: NavigationStack { NotesPage() }
+        case .more: MoreTab(faces: $faces)
         }
     }
 
@@ -87,13 +89,14 @@ struct RootTabs: View {
             TabView(selection: $tab) {
                 ForEach(RootTab.allCases, id: \.self) { t in
                     Tab(t.title, systemImage: t.icon, value: t) { page(t) }
-                        .badge(t == .apps ? Permissions.shared.pending.count : 0)
                 }
             }
             .tabBarMinimizeBehavior(.onScrollDown)
+            .fullScreenCover(isPresented: $faces) { FacesSheet(path: $path) }
         } else {
             page(tab)
                 .safeAreaInset(edge: .bottom, spacing: 0) { OwnTabBar(current: $tab) }
+                .fullScreenCover(isPresented: $faces) { FacesSheet(path: $path) }
         }
     }
 }
@@ -134,8 +137,8 @@ private struct OwnTabBar: View {
 extension CMFXApp {
     func open(_ url: URL) {
         guard let id = FaceLink.watchface(url) else { return }
-        tab = .faces
         path = [id]
+        faces = true
     }
 }
 
@@ -167,16 +170,6 @@ struct ContentView: View {
                     FacesOnWatchSection()
                 }
                 Section {
-                    if case .checked = watch.phase {
-                        NavigationLink(value: Route.firmware) {
-                            HStack(spacing: 12) {
-                                SettingsIcon(symbol: "cpu.fill", color: .gray)
-                                Text("Firmware")
-                                Spacer()
-                                CountBadge(count: FirmwareModel.shared.updates(watch.loader))
-                            }
-                        }
-                    }
                     // the app's own page in Settings has the per-app Language picker
                     Link(destination: URL(string: UIApplication.openSettingsURLString)!) {
                         HStack(spacing: 12) {
@@ -196,38 +189,8 @@ struct ContentView: View {
                         }
                     }
                 }
-                Section("FMC account") {
-                    if let user = account.user {
-                        HStack(spacing: 14) {
-                            AsyncImage(url: user.avatarURL) { $0.resizable().scaledToFill() } placeholder: {
-                                Image(systemName: "person.fill").font(.title3).foregroundStyle(Color.fmcOnAccent)
-                            }
-                            .frame(width: 44, height: 44)
-                            .background(Color.fmcAccent)
-                            .clipShape(.circle)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(user.name.isEmpty ? "Signed in" : user.name).font(.body.weight(.semibold))
-                                Text(user.email).font(.subheadline).foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                        Button("Sign out") { account.signOut() }
-                        DeleteAccountButton()
-                    } else {
-                        Button { path.append(.signIn) } label: {
-                            LabeledContent {
-                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-                            } label: {
-                                Label("Sign in", systemImage: "person.crop.circle")
-                            }
-                        }
-                        .tint(.primary)
-                    }
-                }
             }
             .navigationTitle("Watch")
-            // updates are checked right after each connect: the Firmware row shows them
-            .task(id: watch.phase) { if case .checked = watch.phase { await FirmwareModel.shared.refresh(account) } }
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .firmware: FirmwareView()

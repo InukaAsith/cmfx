@@ -188,10 +188,10 @@ import UIKit
         if round {
             (w, h) = (Self.panel / Self.scale, Self.panel / Self.scale)
         } else {
-            let k = Double(max(a.pixelWidth, 1)) / Double(max(a.pixelHeight, 1)), r = 226.0
+            let k = Double(Swift.max(a.pixelWidth, 1)) / Double(Swift.max(a.pixelHeight, 1)), r = 226.0
             (w, h) = (Int(2 * r * k / (1 + k * k).squareRoot()) / Self.scale, Int(2 * r / (1 + k * k).squareRoot()) / Self.scale)
         }
-        guard let img = await image(i, side: max(w, h) * 2) else { return nil }
+        guard let img = await image(i, side: Swift.max(w, h) * 2) else { return nil }
         let rgb = Self.draw(img, width: w, height: h, round: round)
         return (rgb, w, h, Int16((Self.panel - w * Self.scale) / 2), Int16((Self.panel - h * Self.scale) / 2))
     }
@@ -208,7 +208,7 @@ import UIKit
             UIRectFill(r)
             (round ? UIBezierPath(ovalIn: r) : UIBezierPath(roundedRect: r, cornerRadius: 12)).addClip()
             let s = img.size
-            let k = max(r.width / max(s.width, 1), r.height / max(s.height, 1))
+            let k = Swift.max(r.width / Swift.max(s.width, 1), r.height / Swift.max(s.height, 1))
             img.draw(in: CGRect(x: (r.width - s.width * k) / 2, y: (r.height - s.height * k) / 2,
                                 width: s.width * k, height: s.height * k))
         }
