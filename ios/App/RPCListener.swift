@@ -142,21 +142,8 @@ actor KLock {
                 }
             }
             DevLog.shared.log("listening")
-            var pinged = Date.now
             while up, !Task.isCancelled {
                 beat = .now
-                // while CMFX is open only (iOS freezes it in the background): once a minute, is the watch still
-                // hearing us? No answer: start again.
-                if UIApplication.shared.applicationState == .active, Date.now.timeIntervalSince(pinged) > 60 {
-                    pinged = .now
-                    do {
-                        _ = try await withDeadline(.seconds(8)) { try await KLock.shared.run { try await session.ping() } }
-                    } catch {
-                        DevLog.shared.log("watch did not answer: starting again")
-                        Task { @MainActor in if self.task != nil { self.restart() } }
-                        return .failed
-                    }
-                }
                 await runDueJobs(session)
                 guard let m = try? await session.recvFrom(timeout: .seconds(5)) else { continue }
                 beat = .now
