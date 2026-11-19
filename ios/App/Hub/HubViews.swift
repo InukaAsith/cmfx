@@ -176,7 +176,17 @@ struct NavPage: View {
                     Text("Drive").tag(false)
                 }
                 .pickerStyle(.segmented)
-                TextField("Where to?", text: $query).onSubmit(search)
+                TextField("Where to? (or a Google Maps link)", text: $query).onSubmit(search)
+                PasteButton(payloadType: String.self) { texts in
+                    guard let t = texts.first else { return }
+                    Task { @MainActor in
+                        query = t
+                        await go(link: t)
+                    }
+                }
+                .buttonBorderShape(.capsule)
+                Text("From Google Maps: drop a pin (or open a place) › Share › Copy, then Paste here.")
+                    .font(.caption).foregroundStyle(.secondary)
                 ForEach(results, id: \.self) { item in
                     Button { Task { await n.start(to: item) } } label: {
                         VStack(alignment: .leading, spacing: 2) {
@@ -193,7 +203,24 @@ struct NavPage: View {
         }
     }
 
+    /// A Google Maps link or "lat, lng": straight to it.
+    private func go(link: String) async {
+        n.status = "Reading the link…"
+        guard let p = await MapsLink.place(in: link) else {
+            n.status = "No place found in that link"
+            return
+        }
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: p.coordinate))
+        item.name = p.name
+        results = []
+        await n.start(to: item)
+    }
+
     private func search() {
+        if MapsLink.parse(query) != nil || MapsLink.firstURL(query) != nil {
+            Task { await go(link: query) }
+            return
+        }
         let r = MKLocalSearch.Request()
         r.naturalLanguageQuery = query
         Task { results = (try? await MKLocalSearch(request: r).start().mapItems.prefix(8).map { $0 }) ?? [] }

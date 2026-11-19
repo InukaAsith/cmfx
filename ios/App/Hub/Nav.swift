@@ -39,24 +39,84 @@ import MapKit
     func start(to item: MKMapItem) async {
         destination = item
         status = nil
-        manager.requestWhenInUseAuthorization()
-        let req = MKDirections.Request()
-        req.source = .forCurrentLocation()
-        req.destination = item
-        req.transportType = transport
-        do {
-            guard let route = try await MKDirections(request: req).calculate().routes.first else {
-                status = "No route"; return
+        guard let here = await here() else {
+            status = manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted
+                ? "Location is off for CMFX: turn it on in Settings › CMFX › Location" : "Couldn't find where you are"
+            return
+        }
+        let to = item.placemark.coordinate
+        let src = MKMapItem(placemark: MKPlacemark(coordinate: here.coordinate))
+        // walking first (when chosen); if MapKit has no walking route there, the roads; if none at all, a straight line
+        var route: MKRoute?
+        for t: MKDirectionsTransportType in walking ? [.walking, .automobile] : [.automobile] {
+            let req = MKDirections.Request()
+            req.source = src
+            req.destination = item
+            req.transportType = t
+            if let r = try? await MKDirections(request: req).calculate().routes.first {
+                route = r
+                if t != transport { status = "No walking route there: following the roads" }
+                break
             }
-            load(route)
-            active = true
-            manager.allowsBackgroundLocationUpdates = true
-            manager.showsBackgroundLocationIndicator = true
-            manager.startUpdatingLocation()
-            manager.startUpdatingHeading()
-            try await sendRoute()
-        } catch {
-            status = error.localizedDescription
+        }
+        if let route { load(route) } else {
+            loadDirect(from: here.coordinate, to: to)
+            status = "No route there: the watch points straight at it"
+        }
+        active = true
+        manager.allowsBackgroundLocationUpdates = true
+        manager.showsBackgroundLocationIndicator = true
+        manager.startUpdatingLocation()
+        manager.startUpdatingHeading()
+        do { try await sendRoute() } catch { status = error.localizedDescription }
+    }
+
+    /// A pin with no route to it: one straight leg.
+    private func loadDirect(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) {
+        origin = a
+        pts = [local(a), local(b)]
+        let d = hypot(pts[1].0, pts[1].1)
+        cum = [0, d]
+        expected = d / (walking ? 1.4 : 11)
+        steps = [(d, 2, 0, "Straight to the pin")]
+    }
+
+    private var fixWaiters: [CheckedContinuation<CLLocation?, Never>] = []
+    private var authWaiters: [CheckedContinuation<Void, Never>] = []
+
+    /// Where the phone is now: asks for location access the first time, then one fix (10 s at most).
+    private func here() async -> CLLocation? {
+        if manager.authorizationStatus == .notDetermined {
+            await withCheckedContinuation { c in
+                authWaiters.append(c)
+                manager.requestWhenInUseAuthorization()
+            }
+        }
+        guard [.authorizedWhenInUse, .authorizedAlways].contains(manager.authorizationStatus) else { return nil }
+        if let l = manager.location, -l.timestamp.timeIntervalSinceNow < 20, l.horizontalAccuracy < 100 { return l }
+        Task { try? await Task.sleep(for: .seconds(10)); self.fix(nil) }
+        return await withCheckedContinuation { c in
+            fixWaiters.append(c)
+            manager.requestLocation()
+        }
+    }
+
+    private func fix(_ l: CLLocation?) {
+        let w = fixWaiters
+        fixWaiters = []
+        for c in w { c.resume(returning: l ?? manager.location) }
+    }
+
+    nonisolated func locationManager(_ m: CLLocationManager, didFailWithError error: Error) {
+        Task { @MainActor in self.fix(nil) }
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ m: CLLocationManager) {
+        Task { @MainActor in
+            guard self.manager.authorizationStatus != .notDetermined else { return }
+            let w = self.authWaiters
+            self.authWaiters = []
+            for c in w { c.resume() }
         }
     }
 
@@ -125,7 +185,10 @@ import MapKit
 
     nonisolated func locationManager(_ m: CLLocationManager, didUpdateLocations locs: [CLLocation]) {
         guard let loc = locs.last else { return }
-        Task { @MainActor in await self.update(loc) }
+        Task { @MainActor in
+            if !self.fixWaiters.isEmpty { self.fix(loc) }
+            await self.update(loc)
+        }
     }
 
     private func update(_ loc: CLLocation) async {

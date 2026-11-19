@@ -78,10 +78,13 @@ import UIKit
             case .pick(let kind, let i): try await pick(kind, i)
             }
         } catch SpotifyError.premium {
+            status = "Spotify says this account needs Premium to control playback"
             try? await note("Premium needed")
         } catch {
             status = error.localizedDescription
-            try? await note("Spotify error")
+            let m = error.localizedDescription.lowercased()
+            try? await note(m.contains("not registered") || m.contains("user may not") ? "Add you in User Management"
+                : m.contains("404") || m.contains("no active device") ? "Open Spotify on a device" : "Spotify error")
         }
     }
 
@@ -206,7 +209,15 @@ import UIKit
         }
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        if code == 403 { throw SpotifyError.premium }
+        if code == 403 {
+            // 403 is not only Premium: an account missing from the developer app's User Management, or a
+            // development-mode app whose owner has no Premium, answer it too; Spotify's own words say which
+            let err = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? [String: Any]
+            let reason = err?["reason"] as? String ?? "", message = err?["message"] as? String ?? String(decoding: data.prefix(200), as: UTF8.self)
+            DevLog.shared.log("spotify 403 \(method) \(path): \(reason) \(message)")
+            if reason == "PREMIUM_REQUIRED" { throw SpotifyError.premium }
+            throw HubError.failed("Spotify: \(message.isEmpty ? "access refused (403)" : message)")
+        }
         if code == 401 { Keychain.set("spotify-expires", "0") }
         guard (200..<300).contains(code) else { throw HubError.failed("Spotify \(code)") }
         return data.isEmpty ? [:] : try JSONSerialization.jsonObject(with: data)
