@@ -1,5 +1,5 @@
 // swift-tools-version: 6.0
-// CMFX's side of the watch apps (cmf-watch-sdk sdk/examples: spotify, assistant, maps, nav, pixview): message
+// CMFX's side of the watch apps (cmf-watch-sdk sdk/examples: spotify, assistant, maps, nav, pixview, chats: mail, notes): message
 // builders and the picture encoders, without UIKit, tested on a Mac with `swift test`.
 import PackageDescription
 

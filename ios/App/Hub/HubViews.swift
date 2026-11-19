@@ -23,10 +23,12 @@ struct HubTab: View {
                     row(NavPage(), "location.north.line.fill", TDColor.accent, "Navigation",
                         hub.nav.active ? "Navigating" : "Turn by turn on the watch", NavService.app)
                     row(PhotosPage(), "photo.fill", .purple, "Photos", "Your gallery on the watch", PhotosService.app)
+                    row(MailPage(), "envelope.fill", .red, "Mail", hub.mail.signedIn ? "Gmail, signed in" : "Sign in with Google", MailService.app)
+                    row(NotesPage(), "note.text", .yellow, "Notes", "Your notes and reminders", NotesService.app)
                     row(WhatsAppPage(), "message.fill", Color(red: 0.15, green: 0.8, blue: 0.4), "WhatsApp", "Not linked yet", "WhatsApp")
                 }
                 .glassCard(22)
-                Text("Each runs only while its app is open on the watch or while you use it here: no polling, no background work.")
+                Text("Each runs only while its app is open on the watch or while you use it here; Mail checks the inbox each minute while it is open.")
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 6)
             }
         }
@@ -213,6 +215,128 @@ struct PhotosPage: View {
                 Status(text: p.status)
             }
             .glassCard()
+        }
+    }
+}
+
+struct MailPage: View {
+    @State private var m = Hub.shared.mail
+    @State private var client = Secrets.googleBuilt ? "" : Secrets.googleClient
+    var body: some View {
+        PageScroll(title: "Mail") {
+            VStack(alignment: .leading, spacing: 14) {
+                CardHeader(symbol: "envelope.fill", color: .red, title: m.signedIn ? (m.email ?? "Signed in") : "Not signed in",
+                           detail: m.signedIn ? "Gmail: your newest inbox threads on the watch" : nil)
+                if m.signedIn {
+                    Button("Sign out", role: .destructive) { m.signOut() }.secondaryButton()
+                } else {
+                    TextField(Secrets.googleBuilt ? "Built in (type to replace)" : "Google OAuth client ID (iOS)", text: $client)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                        .onChange(of: client) { Secrets.googleClient = $1.trimmingCharacters(in: .whitespaces) }
+                    Button("Sign in with Google") { Task { await m.signIn() } }.primaryButton().disabled(Secrets.googleClient.isEmpty && client.isEmpty)
+                }
+                Status(text: m.status)
+            }
+            .glassCard()
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Setup, once").font(.headline)
+                Text("1. console.cloud.google.com › a project › enable the Gmail API.\n2. OAuth consent screen: add yourself as a test user.\n3. Credentials › Create OAuth client ID › iOS, bundle ID app.cmfx.ios.\n4. Paste its Client ID here and sign in.\n\nOn the watch: your 11 newest inbox threads, the latest email of one as text (it is marked read), quick or typed replies, • Archive and • Mark unread. A new email buzzes the watch while Mail is open.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            .glassCard()
+        }
+    }
+}
+
+struct NotesPage: View {
+    @State private var n = Hub.shared.notes
+    var body: some View {
+        PageScroll(title: "Notes") {
+            VStack(alignment: .leading, spacing: 14) {
+                CardHeader(symbol: "note.text", color: .yellow, title: "Notes and Reminders",
+                           detail: n.allowed ? "Your reminder lists show on the watch too" : "Reminders need access")
+                if n.access == .notDetermined {
+                    Button("Allow access to Reminders") { Task { await n.requestAccess() } }.secondaryButton()
+                } else if !n.allowed {
+                    Text("Reminders access is off. Turn on Full Access in Settings › CMFX › Reminders.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Text("On the watch: New note (what you type first is its title), your notes, then your reminder lists. Tap a reminder to tick it; type to add a line or a reminder.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Status(text: n.status)
+            }
+            .glassCard()
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("Notes").font(.headline)
+                    Spacer()
+                    NavigationLink { NoteEditor(note: nil) } label: { Image(systemName: "plus").font(.headline) }
+                }
+                if n.store.notes.isEmpty {
+                    Text("No notes yet.").font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
+                }
+                ForEach(n.store.notes) { note in
+                    Divider().overlay(TDColor.line).padding(.vertical, 8)
+                    NavigationLink { NoteEditor(note: note) } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(note.title.isEmpty ? "Untitled" : note.title).font(.subheadline.weight(.medium)).foregroundStyle(TDColor.text)
+                                Text(note.lines.first { !$0.isEmpty } ?? "No text yet").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            Text(note.modified, style: .date).font(.caption2).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .glassCard()
+        }
+    }
+}
+
+/// A note: its title and its lines (one a line on the watch). Saved when you leave.
+struct NoteEditor: View {
+    let note: Note?
+    @State private var title = ""
+    @State private var text = ""
+    @State private var deleted = false
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        PageScroll(title: note == nil ? "New note" : "Note") {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("Title", text: $title).font(.headline)
+                Divider().overlay(TDColor.line)
+                TextEditor(text: $text).frame(minHeight: 240).scrollContentBackground(.hidden)
+                if note != nil {
+                    Button("Delete note", role: .destructive) {
+                        deleted = true
+                        if let note { Hub.shared.notes.store.delete(note.id) }
+                        dismiss()
+                    }.secondaryButton()
+                }
+            }
+            .glassCard()
+        }
+        .onAppear {
+            title = note?.title ?? ""
+            text = note?.lines.joined(separator: "\n") ?? ""
+        }
+        .onDisappear(perform: save)
+    }
+
+    private func save() {
+        guard !deleted else { return }
+        let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let t = title.trimmingCharacters(in: .whitespaces)
+        let store = Hub.shared.notes.store
+        if var n = note.flatMap({ store.note($0.id) }) {
+            n.title = t
+            n.lines = lines
+            store.update(n)
+        } else if note == nil, !t.isEmpty || !lines.isEmpty {
+            store.add(title: t.isEmpty ? String(lines[0].prefix(40)) : t, lines: t.isEmpty ? Array(lines.dropFirst()) : lines)
         }
     }
 }

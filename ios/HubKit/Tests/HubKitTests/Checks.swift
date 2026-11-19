@@ -55,6 +55,67 @@ enum Checks {
         if pal.count != 2 || idx[0] != idx[1] || idx[2] != idx[3] || idx[0] == idx[2] { bad.append("median cut \(idx)") }
         let tile = MapPack.tileFile([UInt8](repeating: 4, count: 256 * 256))
         if tile.first != 1 || tile.count != 1 + 2 * 256 { bad.append("tile file \(tile.count)") }
+        chats(&bad)
         return bad
+    }
+
+    /// The chats app's Mail and Notes modes (hosts/inboxhost.py builds the same bytes).
+    static func chats(_ bad: inout [String]) {
+        func eq(_ name: String, _ a: String, _ b: String) { if a != b { bad.append("\(name):\n  got  \(a)\n  want \(b)") } }
+        let rows = ChatsProto.list([.init(id: 1, name: "+ New note", preview: "Write one on the watch"),
+                                    .init(id: 7, unread: true, name: "Priya Perera", preview: "Lunch on Friday?")])
+        eq("chats list", rows.map(hex).joined(separator: ","),
+           "4c02," + hex(Data([0x43, 0, 1, 0, 10]) + Data("+ New note".utf8) + Data([22]) + Data("Write one on the watch".utf8))
+           + "," + hex(Data([0x43, 1, 7, 1, 12]) + Data("Priya Perera".utf8) + Data([16]) + Data("Lunch on Friday?".utf8)))
+        let long = ChatsProto.list([.init(id: 2, name: String(repeating: "é", count: 20), preview: String(repeating: "a", count: 60))])
+        if long[1].count != 6 + 24 + 40 || long[1][4] != 24 || long[1][29] != 40 { bad.append("chats row cut \(long[1].count)") }
+        if ChatsProto.list((0..<20).map { .init(id: UInt8($0), name: "n", preview: "") }).count != 13 { bad.append("chats max rows") }
+        eq("chats open", hex(ChatsProto.open(9, title: "Groceries")), "4809" + hex(Data("Groceries".utf8)))
+        eq("chats message", hex(ChatsProto.message(2, kind: ChatsProto.todo, "Milk")), "4d020003" + hex(Data("Milk".utf8)))
+        eq("chats append", hex(ChatsProto.append(me: true, "On it")), "410100" + hex(Data("On it".utf8)))
+        if ChatsProto.message(0, String(repeating: "€", count: 50)).count != 4 + 120 { bad.append("chats message cut") }
+        let q = ChatsProto.quick(["• Archive", "a", "b", "c", "d", "e", "f"])
+        if q.count != 6 || q[0] != Data([0x51, 0]) + Data("• Archive".utf8) { bad.append("chats quick") }
+        let words = (0..<60).map { "w\($0)" }.joined(separator: " ")
+        let ch = ChatsProto.chunks(words)
+        if ch.contains(where: { $0.utf8.count > 120 }) || ch.joined(separator: " ") != words { bad.append("chunks \(ch)") }
+        let big = ChatsProto.chunks("x " + String(repeating: "é", count: 100))
+        if big.map(\.utf8.count) != [1, 120, 80] { bad.append("chunks long word \(big.map(\.utf8.count))") }
+        let a1 = String(repeating: "word ", count: 14) + "end.", b1 = "Short one!", c1 = String(repeating: "long ", count: 30) + "tail"
+        let pg = ChatsProto.page([a1, b1, c1].joined(separator: " "))
+        if pg.count < 3 || pg[0] != a1 + " " + b1 || !pg[1].hasPrefix("long") || pg.contains(where: { $0.utf8.count > 120 }) {
+            bad.append("page \(pg)")
+        }
+        if ChatsProto.parse(Data("R".utf8)) != .ready || ChatsProto.parse(Data([0x6f, 7])) != .open(7)
+            || ChatsProto.parse(Data([0x74, 3])) != .tap(3) || ChatsProto.parse(Data([0x73, 7]) + Data("Thanks! ".utf8)) != .send(7, "Thanks!")
+            || ChatsProto.parse(Data([0x73, 7])) != nil {
+            bad.append("chats parse")
+        }
+        if ChatsProto.action("• Clear done") != "Clear done" || ChatsProto.action("Buy") != nil { bad.append("chats action") }
+        var ids = ChatsProto.Ids(first: 2)
+        let a = ids.id("thread-a"), b = ids.id("thread-b")
+        if a != 2 || b != 3 || ids.id("thread-a") != 2 || ids.key(3) != "thread-b" { bad.append("ids") }
+        for k in 0..<300 { _ = ids.id("k\(k)") }
+        if ids.id("again") < 2 { bad.append("ids wrap") }
+        // mail text
+        eq("strip html", MailText.body(MailText.strip(html: "<style>p{}</style><p>Hi&nbsp;there &amp; <b>you</b></p><br>Bye&#33;")),
+           "Hi there & you Bye!")
+        eq("quote", MailText.body("Sounds good.\n\nOn Mon, 3 Nov 2026 at 10:00, Sam <sam@example.com>\nwrote:\n> earlier\n> text"),
+           "Sounds good.")
+        eq("quoted lines", MailText.body("Yes\n> no\n  more"), "Yes more")
+        eq("name", MailText.name("\"Priya Perera\" <priya@example.com>"), "Priya Perera")
+        eq("bare name", MailText.name("noreply@example.com"), "noreply")
+        eq("address", MailText.address("Sam <sam@example.com>"), "sam@example.com")
+        let raw = String(decoding: MailText.reply(to: "Zoë <z@example.com>", subject: "Lunch", messageID: "<a@mail>",
+                                                  references: "<r@mail>", text: "On it"), as: UTF8.self)
+        for want in ["To: =?UTF-8?B?Wm/Dqw==?= <z@example.com>\r\n", "Subject: Re: Lunch\r\n", "In-Reply-To: <a@mail>\r\n",
+                     "References: <r@mail> <a@mail>\r\n", "\r\n\r\nT24gaXQ=\r\n"] where !raw.contains(want) {
+            bad.append("reply lacks \(want.debugDescription)")
+        }
+        if MailText.reply(to: "a@b.c", subject: "Re: x", messageID: "", references: "", text: "").count == 0
+            || !String(decoding: MailText.reply(to: "a@b.c", subject: "Re: x", messageID: "", references: "", text: ""), as: UTF8.self)
+                .hasPrefix("To: a@b.c\r\nSubject: Re: x\r\n") {
+            bad.append("reply bare")
+        }
     }
 }
