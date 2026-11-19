@@ -52,11 +52,24 @@ import UIKit
             switch ask {
             case .ready: try await push(art: true)
             case .playPause:
-                try await call("PUT", playing ? "/me/player/pause" : "/me/player/play")
+                // what plays now, from Spotify (the watch's idea may be old): "play" while playing is refused
+                let now = try? await call("GET", "/me/player") as? [String: Any]
+                let isPlaying = now?["is_playing"] as? Bool ?? playing
+                do {
+                    try await call("PUT", isPlaying ? "/me/player/pause" : "/me/player/play")
+                } catch SpotifyError.restricted {
+                    try await call("PUT", isPlaying ? "/me/player/play" : "/me/player/pause")
+                } catch SpotifyError.noDevice {
+                    try await playOnADevice()
+                }
                 try await Task.sleep(for: .milliseconds(400))
                 try await push()
             case .next, .previous:
-                try await call("POST", ask == .next ? "/me/player/next" : "/me/player/previous")
+                do {
+                    try await call("POST", ask == .next ? "/me/player/next" : "/me/player/previous")
+                } catch SpotifyError.noDevice {
+                    try await playOnADevice()
+                }
                 try await Task.sleep(for: .milliseconds(500))
                 try await push()
             case .seek(let sec):
@@ -78,6 +91,8 @@ import UIKit
                 try await send(list: "S", view.map { ($0.str("name"), artists($0), false) })
             case .pick(let kind, let i): try await pick(kind, i)
             }
+        } catch SpotifyError.noDevice {
+            try? await note("Open Spotify on a device")
         } catch SpotifyError.premium {
             status = "Spotify says this account needs Premium to control playback"
             try? await note("Premium needed")
@@ -137,7 +152,11 @@ import UIKit
             guard i < view.count else { return }
             let uri = view[i].str("uri")
             let body: [String: Any] = context.map { ["context_uri": $0, "offset": ["uri": uri]] } ?? ["uris": [uri]]
-            try await call("PUT", "/me/player/play", body: body)
+            do {
+                try await call("PUT", "/me/player/play", body: body)
+            } catch SpotifyError.noDevice {
+                try await playOnADevice(body)
+            }
             try await Task.sleep(for: .milliseconds(500))
             try await push()
         case "D":
@@ -219,6 +238,7 @@ import UIKit
         }
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 404, String(decoding: data, as: UTF8.self).contains("NO_ACTIVE_DEVICE") { throw SpotifyError.noDevice }
         if code == 403 {
             // 403 is not only Premium: an account missing from the developer app's User Management, or a
             // development-mode app whose owner has no Premium, answer it too; Spotify's own words say which
@@ -226,11 +246,23 @@ import UIKit
             let reason = err?["reason"] as? String ?? "", message = err?["message"] as? String ?? String(decoding: data.prefix(200), as: UTF8.self)
             DevLog.shared.log("spotify 403 \(method) \(path): \(reason) \(message)")
             if reason == "PREMIUM_REQUIRED" { throw SpotifyError.premium }
+            if message.lowercased().contains("restriction violated") { throw SpotifyError.restricted }
             throw HubError.failed("Spotify: \(message.isEmpty ? "access refused (403)" : message)")
         }
         if code == 401 { Keychain.set("spotify-expires", "0") }
         guard (200..<300).contains(code) else { throw HubError.failed("Spotify \(code)") }
-        return data.isEmpty ? [:] : try JSONSerialization.jsonObject(with: data)
+        // a command's answer may be empty, or not JSON at all (next, previous): fine, it worked
+        return (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) ?? [:]
+    }
+
+    /// Nothing is playing anywhere: start on a device (this iPhone's Spotify first, else the first one listed).
+    private func playOnADevice(_ body: [String: Any]? = nil) async throws {
+        let list = ((try await call("GET", "/me/player/devices") as? [String: Any])?["devices"] as? [[String: Any]]) ?? []
+        guard let d = list.first(where: { $0.str("type") == "Smartphone" }) ?? list.first else {
+            try await note("Open Spotify on a device")
+            return
+        }
+        try await call("PUT", "/me/player/play", query: ["device_id": d.str("id")], body: body)
     }
 
     /// The access token, refreshed when it is near its end.
@@ -310,7 +342,7 @@ extension SpotifyService: ASWebAuthenticationPresentationContextProviding {
     }
 }
 
-enum SpotifyError: Error { case premium }
+enum SpotifyError: Error { case premium, restricted, noDevice }
 
 extension Dictionary where Key == String, Value == Any {
     func str(_ k: String) -> String { self[k] as? String ?? "" }

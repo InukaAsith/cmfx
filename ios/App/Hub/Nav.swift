@@ -14,6 +14,8 @@ import MapKit
     private(set) var destination: MKMapItem?
     private(set) var active = false
     var status: String?
+    /// What it is doing now (the page shows a spinner with it), nil when idle.
+    var working: String?
 
     private let manager = CLLocationManager()
     private var origin = CLLocationCoordinate2D()
@@ -39,6 +41,8 @@ import MapKit
     func start(to item: MKMapItem) async {
         destination = item
         status = nil
+        working = "Finding where you are…"
+        defer { working = nil }
         guard let here = await here() else {
             status = manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted
                 ? "Location is off for CMFX: turn it on in Settings › CMFX › Location" : "Couldn't find where you are"
@@ -49,6 +53,7 @@ import MapKit
         // OpenStreetMap's routes first: Apple has no directions in many countries (Sri Lanka among them). Then
         // Apple's; a straight line only when neither has a route.
         var why = ""
+        working = "Finding a route…"
         if let ok = await osrm(from: here.coordinate, to: to) {
             if !ok { status = "No walking route there: following the roads" }
         } else if let r = await appleRoute(src, item, &why) {
@@ -82,11 +87,16 @@ import MapKit
     /// A route from OpenStreetMap (routing.openstreetmap.de, the FOSSGIS OSRM servers: the start and the end are
     /// all they get). → nil: no answer; true: the chosen way; false: walking had none, the roads are used.
     private func osrm(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) async -> Bool? {
-        for profile in walking ? ["foot", "car"] : ["car"] {
-            let url = URL(string: "https://routing.openstreetmap.de/routed-\(profile)/route/v1/driving/" +
+        // the FOSSGIS servers now and then fail a connection: each is tried twice; the OSRM demo server (roads
+        // only) last
+        let base = "https://routing.openstreetmap.de/routed-"
+        let tries: [(String, String)] = (walking ? [("foot", base + "foot"), ("foot", base + "foot")] : [])
+            + [("car", base + "car"), ("car", base + "car"), ("car", "https://router.project-osrm.org")]
+        for (profile, server) in tries {
+            let url = URL(string: server + "/route/v1/driving/" +
                 "\(a.longitude),\(a.latitude);\(b.longitude),\(b.latitude)?steps=true&overview=full&geometries=geojson")!
             var req = URLRequest(url: url)
-            req.timeoutInterval = 12
+            req.timeoutInterval = 20
             req.setValue("CMFX (watch navigation)", forHTTPHeaderField: "User-Agent")
             guard let (data, _) = try? await URLSession.shared.data(for: req),
                   let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

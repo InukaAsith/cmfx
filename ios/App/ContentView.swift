@@ -46,13 +46,13 @@ struct CMFXApp: App {
 
 /// CMFX's own features in the bar; the rest (and FMC Companion's watch faces) under More.
 enum RootTab: Hashable, CaseIterable {
-    case overview, whatsapp, mail, notes, more
+    case overview, whatsapp, navigation, mail, more
     var title: String {
         switch self {
         case .overview: "Overview"
         case .whatsapp: "WhatsApp"
+        case .navigation: "Navigation"
         case .mail: "Mail"
-        case .notes: "Notes"
         case .more: "More"
         }
     }
@@ -60,8 +60,8 @@ enum RootTab: Hashable, CaseIterable {
         switch self {
         case .overview: "circle.grid.2x2.fill"
         case .whatsapp: "message.fill"
+        case .navigation: "location.north.line.fill"
         case .mail: "envelope.fill"
-        case .notes: "note.text"
         case .more: "ellipsis.circle.fill"
         }
     }
@@ -79,7 +79,7 @@ struct RootTabs: View {
         case .overview: OverviewTab(tab: $tab, faces: $faces)
         case .whatsapp: NavigationStack { WhatsAppPage() }
         case .mail: NavigationStack { MailPage() }
-        case .notes: NavigationStack { NotesPage() }
+        case .navigation: NavigationStack { NavPage() }
         case .more: MoreTab(faces: $faces)
         }
     }

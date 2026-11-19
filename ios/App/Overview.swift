@@ -1,7 +1,7 @@
 import SwiftUI
 
-// CMFX's start: the watch at a glance and every feature as a tile. The bar holds Overview, WhatsApp, Mail and
-// Notes; More has the rest, the watch (connection, faces on it) and Settings. FMC Companion's watch faces catalog,
+// CMFX's start: the watch at a glance and every feature as a tile. The bar holds Overview, WhatsApp, Navigation
+// and Mail; More has the rest, the watch (connection, faces on it) and Settings. FMC Companion's watch faces catalog,
 // the one part of it kept, opens as a sheet.
 
 /// A feature: its page, look and one line of state.
@@ -131,7 +131,7 @@ struct MoreTab: View {
         NavigationStack {
             PageScroll(title: "More") {
                 VStack(spacing: 0) {
-                    ForEach(Array(features(hub).dropFirst(3).enumerated()), id: \.element.id) { i, f in
+                    ForEach(Array(features(hub).filter { !["WhatsApp", "Mail", "Navigation"].contains($0.id) }.enumerated()), id: \.element.id) { i, f in
                         if i > 0 { Divider().overlay(TDColor.line).padding(.vertical, 8) }
                         NavigationLink { page(f.id) } label: { row(f.symbol, f.color, f.id, f.detail) }
                     }
