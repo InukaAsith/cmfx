@@ -81,15 +81,22 @@ enum HubError: LocalizedError {
     }
 }
 
-/// Keys the user typed (Spotify client id, Gemini key): Keychain, never in the code.
+/// Keys: one typed in the app (Keychain) wins; else the one built in (Info.plist from the build's secrets).
 enum Secrets {
+    private static func built(_ k: String) -> String {
+        let v = (Bundle.main.object(forInfoDictionaryKey: k) as? String ?? "").trimmingCharacters(in: .whitespaces)
+        return v.hasPrefix("$(") ? "" : v
+    }
+    static var spotifyBuilt: Bool { !built("CMFXSpotifyClientID").isEmpty }
+    static var geminiBuilt: Bool { !built("CMFXGeminiKey").isEmpty }
+
     static var spotifyClient: String {
-        get { Keychain.get("spotify-client") ?? "" }
-        set { Keychain.set("spotify-client", newValue) }
+        get { (Keychain.get("spotify-client")).flatMap { $0.isEmpty ? nil : $0 } ?? built("CMFXSpotifyClientID") }
+        set { Keychain.set("spotify-client", newValue.isEmpty ? nil : newValue) }
     }
     static var geminiKey: String {
-        get { Keychain.get("gemini-key") ?? "" }
-        set { Keychain.set("gemini-key", newValue) }
+        get { (Keychain.get("gemini-key")).flatMap { $0.isEmpty ? nil : $0 } ?? built("CMFXGeminiKey") }
+        set { Keychain.set("gemini-key", newValue.isEmpty ? nil : newValue) }
     }
 }
 
