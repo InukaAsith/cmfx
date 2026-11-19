@@ -148,7 +148,7 @@ import UIKit
         case "A":
             guard i < playlists.count else { return }
             guard let uri = track["uri"] as? String else { return try await note("Nothing playing") }
-            try await call("POST", "/playlists/\(playlists[i].str("id"))/tracks", body: ["uris": [uri]])
+            try await call("POST", "/playlists/\(playlists[i].str("id"))/items", body: ["uris": [uri]])
             try await note("Added to \(playlists[i].str("name"))")
         default: break
         }
