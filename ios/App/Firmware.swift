@@ -46,12 +46,9 @@ import WireKit
         }
     }
 
-    /// The store's loader differs from the one on the watch (or the watch has none).
-    func loaderUpdate(_ state: LoaderState?) -> Bool {
-        // the store's loader with the phone's app order in it: that is what Update installs
-        guard let state, let pkg = check?.loaderPackage, let want = parseHeader(AppOrder.shared.patched(pkg)) else { return false }
-        return state.loader?.crc != want.crc
-    }
+    /// Never: CMFX watches run their own App Loader (cmf-watch-sdk's, with the FILE service Photos and Offline Maps
+    /// use); the fmc.tools one would replace it, so the store's loader is not offered.
+    func loaderUpdate(_ state: LoaderState?) -> Bool { false }
 
     /// The store's patched firmware has a newer stub than the watch.
     func firmwareUpdate(_ state: LoaderState?) -> Bool {
@@ -235,26 +232,6 @@ struct FirmwareView: View {
                         // the whole row's width: a 57 MB update is long enough to watch
                         if let f = model.flash {
                             if let p = f.percent { ProgressView(value: Double(p), total: 100) } else { ProgressView().frame(maxWidth: .infinity) }
-                        }
-                    }
-                }
-                if let loader = model.check?.loader {
-                    LabeledContent {
-                        if model.loaderUpdate(state), model.progress == nil {
-                            Button(state?.loader == nil ? "Install" : "Update") {
-                                Task { await model.updateLoader(watch) }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(model.check?.loaderPackage == nil)
-                        } else if let p = model.progress {
-                            ProgressView(value: p).frame(width: 80)
-                        } else {
-                            Text(state == nil ? "" : "Up to date").foregroundStyle(.secondary)
-                        }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(loader.name)
-                            Text(loader.version).font(.footnote).foregroundStyle(.secondary)
                         }
                     }
                 }
