@@ -65,14 +65,15 @@ import UIKit
             case .volume(let v): try await call("PUT", "/me/player/volume", query: ["volume_percent": "\(v)"])
             case .like:
                 guard let id = track["id"] as? String else { return try await note("Nothing playing") }
-                let liked = (try await call("GET", "/me/tracks/contains", query: ["ids": id]) as? [Bool]) == [true]
-                try await call(liked ? "DELETE" : "PUT", "/me/tracks", query: ["ids": id])
+                // Feb 2026: one library for everything, by URI
+                let liked = (try await call("GET", "/me/library/contains", query: ["uris": "spotify:track:\(id)"]) as? [Bool]) == [true]
+                try await call(liked ? "DELETE" : "PUT", "/me/library", query: ["uris": "spotify:track:\(id)"])
                 try await note(liked ? "Removed from Liked" : "Liked")
                 try await push()
             case .open(let kind): try await rows(kind)
             case .search(let q):
                 context = nil
-                let r = try await call("GET", "/search", query: ["q": q, "type": "track", "limit": "20"]) as? [String: Any]
+                let r = try await call("GET", "/search", query: ["q": q, "type": "track", "limit": "10"]) as? [String: Any]
                 view = ((r?["tracks"] as? [String: Any])?["items"] as? [[String: Any]]) ?? []
                 try await send(list: "S", view.map { ($0.str("name"), artists($0), false) })
             case .pick(let kind, let i): try await pick(kind, i)
@@ -101,7 +102,7 @@ import UIKit
             }
             playlists = items
             try await send(list: kind, items.map {
-                ($0.str("name"), "\((($0["tracks"] as? [String: Any])?["total"] as? Int) ?? 0) songs", false)
+                ($0.str("name"), "\(((($0["items"] ?? $0["tracks"]) as? [String: Any])?["total"] as? Int) ?? 0) songs", false)
             })
         case "D":
             devices = ((try await call("GET", "/me/player/devices") as? [String: Any])?["devices"] as? [[String: Any]]) ?? []
@@ -118,9 +119,18 @@ import UIKit
             guard i < playlists.count else { return }
             context = playlists[i].str("uri")
             let id = playlists[i].str("id")
-            let items = ((try await call("GET", "/playlists/\(id)/tracks", query: ["limit": "24"]) as? [String: Any])?["items"]
-                as? [[String: Any]]) ?? []
-            view = items.compactMap { $0["track"] as? [String: Any] }
+            // Feb 2026: only the user's own playlists show their songs to an app; another's is played whole
+            let items: [[String: Any]]
+            do {
+                items = ((try await call("GET", "/playlists/\(id)/items", query: ["limit": "24"]) as? [String: Any])?["items"]
+                    as? [[String: Any]]) ?? []
+            } catch {
+                try await call("PUT", "/me/player/play", body: ["context_uri": playlists[i].str("uri")])
+                try await note("Playing the playlist")
+                try await Task.sleep(for: .milliseconds(500))
+                return try await push()
+            }
+            view = items.compactMap { ($0["item"] ?? $0["track"]) as? [String: Any] }
             let now = track.str("id")
             try await send(list: "T", view.map { ($0.str("name"), artists($0), $0.str("id") == now) })
         case "T", "S":
@@ -156,7 +166,7 @@ import UIKit
         if p["shuffle_state"] as? Bool ?? false { flags |= SpotifyProto.shuffle }
         if track.isEmpty { flags |= SpotifyProto.idle }
         if let id = track["id"] as? String,
-           (try await call("GET", "/me/tracks/contains", query: ["ids": id]) as? [Bool]) == [true] {
+           (try? await call("GET", "/me/library/contains", query: ["uris": "spotify:track:\(id)"]) as? [Bool]) == [true] {
             flags |= SpotifyProto.liked
         }
         let dev = p["device"] as? [String: Any] ?? [:]
