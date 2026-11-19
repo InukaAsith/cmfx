@@ -3,8 +3,9 @@ import UIKit
 import WireKit
 
 // CMFX's phone side of the watch apps (cmf-watch-sdk sdk/examples): each app's messages go to its service here,
-// by the app's name in the loader. Nothing polls: RPCListener's link wakes the app (BLE notify) when a watch app
-// talks, and a service only works while its app is open on the watch, or while the user does something here.
+// by the app's name in the loader. RPCListener's link wakes the app (BLE notify) when a watch app talks, and a
+// service only works while its app is open on the watch, or while the user does something here (Mail alone checks
+// the inbox each minute, and only while Mail is open on the watch).
 
 /// A watch app's phone half.
 @MainActor protocol WatchService: AnyObject {
@@ -22,6 +23,8 @@ import WireKit
     let maps = MapsService()
     let nav = NavService()
     let photos = PhotosService()
+    let mail = MailService()
+    let notes = NotesService()
 
     /// slot → app name, from the loader (RPCListener).
     private(set) var apps: [Int: String] = [:]
@@ -34,7 +37,7 @@ import WireKit
 
     private var services: [String: WatchService] {
         [SpotifyService.app: spotify, GeminiService.app: gemini, MapsService.app: maps, NavService.app: nav,
-         PhotosService.app: photos]
+         PhotosService.app: photos, MailService.app: mail, NotesService.app: notes]
     }
 
     func attach(_ s: KSession?, apps: [Int: String]) {
@@ -89,6 +92,7 @@ enum Secrets {
     }
     static var spotifyBuilt: Bool { !built("CMFXSpotifyClientID").isEmpty }
     static var geminiBuilt: Bool { !built("CMFXGeminiKey").isEmpty }
+    static var googleBuilt: Bool { !built("CMFXGoogleClientID").isEmpty }
 
     static var spotifyClient: String {
         get { (Keychain.get("spotify-client")).flatMap { $0.isEmpty ? nil : $0 } ?? built("CMFXSpotifyClientID") }
@@ -97,6 +101,11 @@ enum Secrets {
     static var geminiKey: String {
         get { (Keychain.get("gemini-key")).flatMap { $0.isEmpty ? nil : $0 } ?? built("CMFXGeminiKey") }
         set { Keychain.set("gemini-key", newValue.isEmpty ? nil : newValue) }
+    }
+    /// A Google Cloud OAuth client of type iOS (Gmail).
+    static var googleClient: String {
+        get { (Keychain.get("google-client")).flatMap { $0.isEmpty ? nil : $0 } ?? built("CMFXGoogleClientID") }
+        set { Keychain.set("google-client", newValue.isEmpty ? nil : newValue) }
     }
 }
 

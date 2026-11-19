@@ -1,0 +1,229 @@
+import Foundation
+
+/// The chats app's protocol (cmf-watch-sdk sdk/examples/chats/src/model.rs; hosts/inboxhost.py is the reference for
+/// its Mail and Notes modes). Every message ≤ 128 bytes, text cut on a character.
+public enum ChatsProto {
+    public static let maxRows = 12, maxMsgs = 12, maxQuick = 6
+    /// Bytes of a message's text on the watch.
+    public static let text = 120
+    /// Message kinds: text, a reminder to do, a reminder done.
+    public static let plain: UInt8 = 0, todo: UInt8 = 3, done: UInt8 = 4
+
+    public struct Row: Equatable, Sendable {
+        public var id: UInt8, unread: Bool, name: String, preview: String
+        public init(id: UInt8, unread: Bool = false, name: String, preview: String) {
+            self.id = id; self.unread = unread; self.name = name; self.preview = preview
+        }
+    }
+
+    /// `L n`, then `C idx id unread nlen name… plen preview…` per row (12 at most).
+    public static func list(_ rows: [Row]) -> [Data] {
+        let rows = rows.prefix(maxRows)
+        var out = [Data([UInt8(ascii: "L"), UInt8(rows.count)])]
+        for (i, r) in rows.enumerated() {
+            out.append(Data([UInt8(ascii: "C"), UInt8(i), r.id, r.unread ? 1 : 0]) + field(r.name, 24) + field(r.preview, 40))
+        }
+        return out
+    }
+
+    /// `H id title…`: a chat opened, its messages follow and replace.
+    public static func open(_ id: UInt8, title: String) -> Data { Data([UInt8(ascii: "H"), id]) + utf8(title, 24) }
+
+    /// `M idx me kind text…`, idx 0 the oldest.
+    public static func message(_ idx: Int, me: Bool = false, kind: UInt8 = plain, _ text: String) -> Data {
+        Data([UInt8(ascii: "M"), UInt8(idx & 0xFF), me ? 1 : 0, kind]) + utf8(text, Self.text)
+    }
+
+    /// `A me kind text…`: one more at the end.
+    public static func append(me: Bool = false, kind: UInt8 = plain, _ text: String) -> Data {
+        Data([UInt8(ascii: "A"), me ? 1 : 0, kind]) + utf8(text, Self.text)
+    }
+
+    /// `H` then the last 12 messages as `M`.
+    public static func chat(_ id: UInt8, title: String, _ msgs: [(me: Bool, kind: UInt8, text: String)]) -> [Data] {
+        [open(id, title: title)] + msgs.suffix(maxMsgs).enumerated().map { message($0.offset, me: $0.element.me, kind: $0.element.kind, $0.element.text) }
+    }
+
+    /// `N id`: something new in id (the watch buzzes).
+    public static func buzz(_ id: UInt8) -> Data { Data([UInt8(ascii: "N"), id]) }
+
+    /// `Q idx text…` per quick reply (6 at most).
+    public static func quick(_ q: [String]) -> [Data] {
+        q.prefix(maxQuick).enumerated().map { Data([UInt8(ascii: "Q"), UInt8($0.offset)]) + utf8($0.element, 24) }
+    }
+
+    /// Text → pieces of at most `n` bytes, on spaces (a longer word is cut on a character).
+    public static func chunks(_ text: String, _ n: Int = text) -> [String] {
+        var out: [String] = [], cur = ""
+        for w in text.split(whereSeparator: \.isWhitespace) {
+            var w = String(w)
+            let next = cur.isEmpty ? w : cur + " " + w
+            if next.utf8.count <= n { cur = next; continue }
+            if !cur.isEmpty { out.append(cur); cur = "" }
+            while w.utf8.count > n {
+                let head = String(decoding: utf8(w, n), as: UTF8.self)
+                out.append(head)
+                w = String(w.dropFirst(head.count))
+            }
+            cur = w
+        }
+        return cur.isEmpty ? out : out + [cur]
+    }
+
+    /// Text → pieces of at most `n` bytes, whole sentences where they fit, else on spaces (a page of a note).
+    public static func page(_ text: String, _ n: Int = text) -> [String] {
+        var sentences: [String] = [], cur = ""
+        for w in text.split(whereSeparator: \.isWhitespace) {
+            cur += cur.isEmpty ? String(w) : " " + w
+            if let l = w.last, ".!?".contains(l) { sentences.append(cur); cur = "" }
+        }
+        if !cur.isEmpty { sentences.append(cur) }
+        var out: [String] = []
+        cur = ""
+        for s in sentences {
+            let next = cur.isEmpty ? s : cur + " " + s
+            if next.utf8.count <= n { cur = next; continue }
+            if !cur.isEmpty { out.append(cur); cur = "" }
+            if s.utf8.count <= n { cur = s; continue }
+            var parts = chunks(s, n)
+            cur = parts.removeLast()
+            out += parts
+        }
+        return cur.isEmpty ? out : out + [cur]
+    }
+
+    /// What the watch asked for.
+    public enum Ask: Equatable, Sendable {
+        case ready, open(UInt8), send(UInt8, String), tap(Int)
+    }
+
+    public static func parse(_ m: Data) -> Ask? {
+        let b = [UInt8](m)
+        switch (b.first, b.count) {
+        case (UInt8(ascii: "R"), 1): return .ready
+        case (UInt8(ascii: "o"), 2): return .open(b[1])
+        case (UInt8(ascii: "t"), 2): return .tap(Int(b[1]))
+        case (UInt8(ascii: "s"), 3...):
+            let t = String(decoding: b.dropFirst(2), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : .send(b[1], t)
+        default: return nil
+        }
+    }
+
+    /// A quick reply that is an action ("• Archive"), not text to send.
+    public static func action(_ text: String) -> String? {
+        text.hasPrefix("• ") ? String(text.dropFirst(2)) : nil
+    }
+
+    /// The phone's ids for the watch (a u8 each) ↔ its own keys (a Gmail thread, a note). An id stays with its key;
+    /// when they run out, the table starts again.
+    public struct Ids: Sendable {
+        let first: UInt8
+        var byKey: [String: UInt8] = [:]
+        var byId: [UInt8: String] = [:]
+        var next: UInt8
+
+        public init(first: UInt8 = 1) { self.first = first; next = first }
+
+        public mutating func id(_ key: String) -> UInt8 {
+            if let i = byKey[key] { return i }
+            if byId.count >= 256 - Int(first) { byKey.removeAll(); byId.removeAll(); next = first }
+            while byId[next] != nil { next = next == 255 ? first : next + 1 }
+            let i = next
+            byKey[key] = i; byId[i] = key
+            next = i == 255 ? first : i + 1
+            return i
+        }
+
+        public func key(_ id: UInt8) -> String? { byId[id] }
+    }
+}
+
+/// Email → what the watch shows, and a reply (Gmail's raw RFC 2822).
+public enum MailText {
+    /// HTML → text: no styles or scripts, breaks as new lines, entities decoded.
+    public static func strip(html: String) -> String {
+        var s = html
+        for (p, r) in [("(?is)<(style|script|head)[^>]*>.*?</\\1>", " "), ("(?i)<br\\s*/?>", "\n"),
+                       ("(?i)</(p|div|tr|li|h[1-6]|blockquote)>", "\n"), ("(?s)<[^>]+>", " ")] {
+            s = s.replacingOccurrences(of: p, with: r, options: .regularExpression)
+        }
+        return entities(s)
+    }
+
+    static func entities(_ s: String) -> String {
+        let named = ["amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ", "#39": "'", "zwnj": "",
+                     "hellip": "…", "mdash": "-", "ndash": "-", "rsquo": "’", "lsquo": "'", "ldquo": "“", "rdquo": "”"]
+        var out = "", rest = Substring(s)
+        while let amp = rest.firstIndex(of: "&") {
+            out += rest[..<amp]
+            let tail = rest[rest.index(after: amp)...]
+            if let semi = tail.prefix(10).firstIndex(of: ";") {
+                let name = String(tail[..<semi])
+                var rep: String? = named[name.lowercased()]
+                if rep == nil, name.hasPrefix("#") {
+                    let num = name.dropFirst()
+                    let v = num.lowercased().hasPrefix("x") ? UInt32(num.dropFirst(), radix: 16) : UInt32(num)
+                    rep = v.flatMap { Unicode.Scalar($0) }.map { String(Character($0)) }
+                }
+                if let rep {
+                    out += rep
+                    rest = tail[tail.index(after: semi)...]
+                    continue
+                }
+            }
+            out += "&"
+            rest = tail
+        }
+        return out + rest
+    }
+
+    /// The new part of a message: no quoted lines (">"), nothing from "On … wrote:" on, whitespace collapsed.
+    public static func body(_ text: String) -> String {
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix(">") }
+        var s = lines.joined(separator: "\n")
+        for p in ["(?s)\\bOn [^\\n]{1,200}?(\\n[^\\n]{0,120}?)?wrote:", "(?m)^-+ ?Original Message ?-+"] {
+            if let r = s.range(of: p, options: .regularExpression) { s = String(s[..<r.lowerBound]) }
+        }
+        return s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// `"Name" <a@b.c>` → Name; a bare address → the part before @.
+    public static func name(_ from: String) -> String {
+        let f = from.trimmingCharacters(in: .whitespaces)
+        if let lt = f.firstIndex(of: "<") {
+            let n = f[..<lt].trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
+            if !n.isEmpty { return n }
+        }
+        let a = address(f)
+        return String(a.split(separator: "@").first ?? Substring(a))
+    }
+
+    /// The address in a From/To header.
+    public static func address(_ h: String) -> String {
+        if let lt = h.firstIndex(of: "<"), let gt = h[lt...].firstIndex(of: ">") {
+            return String(h[h.index(after: lt)..<gt]).trimmingCharacters(in: .whitespaces)
+        }
+        return h.trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
+    }
+
+    /// RFC 2047 for a header word that is not ASCII.
+    static func word(_ s: String) -> String {
+        s.unicodeScalars.allSatisfy(\.isASCII) ? s : "=?UTF-8?B?\(Data(s.utf8).base64EncodedString())?="
+    }
+
+    /// A reply in the thread: "Re:" subject, In-Reply-To and References, UTF-8 text.
+    public static func reply(to: String, subject: String, messageID: String, references: String, text: String) -> Data {
+        let n = name(to), a = address(to)
+        let toH = n.isEmpty || n == String(a.split(separator: "@").first ?? "") ? a : "\(word(n)) <\(a)>"
+        let subj = subject.lowercased().hasPrefix("re:") ? subject : "Re: " + subject
+        var h = ["To: \(toH)", "Subject: \(word(subj))"]
+        if !messageID.isEmpty {
+            h += ["In-Reply-To: \(messageID)", "References: \((references + " " + messageID).trimmingCharacters(in: .whitespaces))"]
+        }
+        h += ["MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64"]
+        let b64 = Data(text.utf8).base64EncodedString(options: .lineLength76Characters)
+        return Data((h.joined(separator: "\r\n") + "\r\n\r\n" + b64 + "\r\n").utf8)
+    }
+}
