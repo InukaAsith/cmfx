@@ -50,6 +50,9 @@ targets:
         NSLocationAlwaysAndWhenInUseUsageDescription: Navigation keeps the turns coming on the watch while the phone is locked.
         NSPhotoLibraryUsageDescription: Your newest photos show as a gallery on the watch.
         ITSAppUsesNonExemptEncryption: false
+        # build-time keys (build.sh: CMFX_SPOTIFY_CLIENT_ID, CMFX_GEMINI_KEY; CI: the repo's secrets); empty = typed in the app
+        CMFXSpotifyClientID: $(CMFX_SPOTIFY_CLIENT_ID)
+        CMFXGeminiKey: $(CMFX_GEMINI_KEY)
         LSApplicationQueriesSchemes: [spotify, comgooglemaps]
         # fmc://install?url=… (fmc.tools), cmfx://spotify (Spotify sign-in), cmfx://nav?… (directions)
         CFBundleURLTypes:

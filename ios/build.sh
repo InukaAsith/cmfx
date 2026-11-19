@@ -9,6 +9,7 @@ xcodebuild -project CMFX.xcodeproj -scheme CMFX -configuration Release -sdk ipho
   -destination 'generic/platform=iOS' -derivedDataPath build \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
   ${VERSION:+MARKETING_VERSION=$VERSION} ${BUILD_NUMBER:+CURRENT_PROJECT_VERSION=$BUILD_NUMBER} \
+  CMFX_SPOTIFY_CLIENT_ID="${CMFX_SPOTIFY_CLIENT_ID:-}" CMFX_GEMINI_KEY="${CMFX_GEMINI_KEY:-}" \
   build | (command -v xcbeautify >/dev/null && xcbeautify || cat)
 APP=build/Build/Products/Release-iphoneos/CMFX.app
 mkdir -p dist/Payload

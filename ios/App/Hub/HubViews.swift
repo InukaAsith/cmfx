@@ -63,7 +63,7 @@ private struct Status: View {
 
 struct SpotifyPage: View {
     @State private var s = Hub.shared.spotify
-    @State private var client = Secrets.spotifyClient
+    @State private var client = Secrets.spotifyBuilt ? "" : Secrets.spotifyClient
     var body: some View {
         PageScroll(title: "Spotify") {
             VStack(alignment: .leading, spacing: 14) {
@@ -72,10 +72,10 @@ struct SpotifyPage: View {
                 if s.signedIn {
                     Button("Sign out", role: .destructive) { s.signOut() }.secondaryButton()
                 } else {
-                    TextField("Spotify app client ID", text: $client)
+                    TextField(Secrets.spotifyBuilt ? "Built in (type to replace)" : "Spotify app client ID", text: $client)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
                         .onChange(of: client) { Secrets.spotifyClient = $1.trimmingCharacters(in: .whitespaces) }
-                    Button("Sign in with Spotify") { Task { await s.signIn() } }.primaryButton().disabled(client.isEmpty)
+                    Button("Sign in with Spotify") { Task { await s.signIn() } }.primaryButton().disabled(Secrets.spotifyClient.isEmpty && client.isEmpty)
                 }
                 Status(text: s.status)
             }
@@ -91,13 +91,13 @@ struct SpotifyPage: View {
 }
 
 struct GeminiPage: View {
-    @State private var key = Secrets.geminiKey
+    @State private var key = Secrets.geminiBuilt ? "" : Secrets.geminiKey
     @State private var g = Hub.shared.gemini
     var body: some View {
         PageScroll(title: "Gemini") {
             VStack(alignment: .leading, spacing: 14) {
                 CardHeader(symbol: "sparkles", color: .blue, title: "Gemini on the watch", detail: "Model \(GeminiService.model)")
-                SecureField("Gemini API key", text: $key)
+                SecureField(Secrets.geminiBuilt ? "Built in (type to replace)" : "Gemini API key", text: $key)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .onChange(of: key) { Secrets.geminiKey = $1.trimmingCharacters(in: .whitespaces) }
                 Text("Get a free key at aistudio.google.com › Get API key. It stays in this iPhone's keychain.")

@@ -43,6 +43,9 @@ jobs:
       - name: Build
         env:
           BUILD_NUMBER: ${{ github.run_number }}
+          # Settings › Secrets and variables › Actions; empty: typed in the app instead
+          CMFX_SPOTIFY_CLIENT_ID: ${{ secrets.CMFX_SPOTIFY_CLIENT_ID }}
+          CMFX_GEMINI_KEY: ${{ secrets.CMFX_GEMINI_KEY }}
         run: bash ios/build.sh
       - uses: actions/upload-artifact@v4
         with:
