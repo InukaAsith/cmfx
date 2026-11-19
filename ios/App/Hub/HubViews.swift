@@ -23,7 +23,7 @@ struct HubTab: View {
                     row(NavPage(), "location.north.line.fill", TDColor.accent, "Navigation",
                         hub.nav.active ? "Navigating" : "Turn by turn on the watch", NavService.app)
                     row(PhotosPage(), "photo.fill", .purple, "Photos", "Your gallery on the watch", PhotosService.app)
-                    row(MailPage(), "envelope.fill", .red, "Mail", hub.mail.signedIn ? "Gmail, signed in" : "Sign in with Google", MailService.app)
+                    row(MailPage(), "envelope.fill", .red, "Mail", mailDetail, MailService.app)
                     row(NotesPage(), "note.text", .yellow, "Notes", "Your notes and reminders", NotesService.app)
                     row(WhatsAppPage(), "message.fill", Color(red: 0.15, green: 0.8, blue: 0.4), "WhatsApp", "Not linked yet", "WhatsApp")
                 }
@@ -31,6 +31,14 @@ struct HubTab: View {
                 Text("Each runs only while its app is open on the watch or while you use it here; Mail checks the inbox each minute while it is open.")
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 6)
             }
+        }
+    }
+
+    private var mailDetail: String {
+        let m = hub.mail
+        switch m.kind {
+        case .gmail: return m.gmail.signedIn ? "Gmail, signed in" : "Sign in with Google"
+        case .imap: return m.imap.configured ? (m.imap.address ?? "IMAP account") : "Add an IMAP account"
         }
     }
 
@@ -221,30 +229,135 @@ struct PhotosPage: View {
 
 struct MailPage: View {
     @State private var m = Hub.shared.mail
-    @State private var client = Secrets.googleBuilt ? "" : Secrets.googleClient
     var body: some View {
         PageScroll(title: "Mail") {
-            VStack(alignment: .leading, spacing: 14) {
-                CardHeader(symbol: "envelope.fill", color: .red, title: m.signedIn ? (m.email ?? "Signed in") : "Not signed in",
-                           detail: m.signedIn ? "Gmail: your newest inbox threads on the watch" : nil)
-                if m.signedIn {
-                    Button("Sign out", role: .destructive) { m.signOut() }.secondaryButton()
-                } else {
-                    TextField(Secrets.googleBuilt ? "Built in (type to replace)" : "Google OAuth client ID (iOS)", text: $client)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
-                        .onChange(of: client) { Secrets.googleClient = $1.trimmingCharacters(in: .whitespaces) }
-                    Button("Sign in with Google") { Task { await m.signIn() } }.primaryButton().disabled(Secrets.googleClient.isEmpty && client.isEmpty)
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Account", selection: $m.kind) {
+                    ForEach(MailKind.allCases) { Text($0.title).tag($0) }
                 }
+                .pickerStyle(.segmented)
+                Text(m.kind == .gmail ? "Gmail through Google sign-in and your own OAuth client."
+                     : "Any IMAP mailbox (Gmail, iCloud, Yahoo, Zoho, Fastmail, …) with an app password.")
+                    .font(.footnote).foregroundStyle(.secondary)
                 Status(text: m.status)
             }
             .glassCard()
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Setup, once").font(.headline)
-                Text("1. console.cloud.google.com › a project › enable the Gmail API.\n2. OAuth consent screen: add yourself as a test user.\n3. Credentials › Create OAuth client ID › iOS, bundle ID app.cmfx.ios.\n4. Paste its Client ID here and sign in.\n\nOn the watch: your 11 newest inbox threads, the latest email of one as text (it is marked read), quick or typed replies, • Archive and • Mark unread. A new email buzzes the watch while Mail is open.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
-            .glassCard()
+            if m.kind == .gmail { GmailSettings() } else { ImapSettings() }
         }
+    }
+}
+
+private struct GmailSettings: View {
+    @State private var g = Hub.shared.mail.gmail
+    @State private var client = Secrets.googleBuilt ? "" : Secrets.googleClient
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            CardHeader(symbol: "envelope.fill", color: .red, title: g.signedIn ? (g.email ?? "Signed in") : "Not signed in",
+                       detail: g.signedIn ? "Gmail: your newest inbox threads on the watch" : nil)
+            if g.signedIn {
+                Button("Sign out", role: .destructive) { g.signOut() }.secondaryButton()
+            } else {
+                TextField(Secrets.googleBuilt ? "Built in (type to replace)" : "Google OAuth client ID (iOS)", text: $client)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                    .onChange(of: client) { Secrets.googleClient = $1.trimmingCharacters(in: .whitespaces) }
+                Button("Sign in with Google") { Task { await g.signIn() } }.primaryButton().disabled(Secrets.googleClient.isEmpty && client.isEmpty)
+            }
+            Status(text: g.status)
+        }
+        .glassCard()
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Setup, once").font(.headline)
+            Text("1. console.cloud.google.com › a project › enable the Gmail API.\n2. OAuth consent screen: add yourself as a test user.\n3. Credentials › Create OAuth client ID › iOS, bundle ID app.cmfx.ios.\n4. Paste its Client ID here and sign in.\n\nOn the watch: your 11 newest inbox threads, the latest email of one as text (it is marked read), quick or typed replies, • Archive and • Mark unread. A new email buzzes the watch while Mail is open.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .glassCard()
+    }
+}
+
+private struct ImapSettings: View {
+    @State private var b = Hub.shared.mail.imap
+    @State private var a = ImapAccount.saved ?? ImapAccount()
+    @State private var password = ""
+    @State private var testing = false
+    @State private var result: (ok: Bool, text: String)?
+
+    private var hasPassword: Bool { !password.isEmpty || (b.account != nil && ImapAccount.password != nil) }
+    private var pw: String { password.isEmpty ? (ImapAccount.password ?? "") : password }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CardHeader(symbol: "envelope.fill", color: .red, title: b.configured ? (b.address ?? "IMAP account") : "No account yet",
+                       detail: b.configured ? "IMAP: your newest inbox emails on the watch" : nil)
+            TextField("Email address", text: $a.email)
+                .keyboardType(.emailAddress).textContentType(.username)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .onChange(of: a.email) { old, new in fill(old, new) }
+            SecureField(b.account != nil && ImapAccount.password != nil ? "Password saved (type to replace)" : "App password", text: $password)
+                .textContentType(.password).textInputAutocapitalization(.never).autocorrectionDisabled()
+            server("IMAP server", $a.imapHost, $a.imapPort)
+            server("SMTP server", $a.smtpHost, $a.smtpPort)
+            if ImapAccount.unsupported(a.email) {
+                Text("Outlook and Hotmail are not supported: Microsoft turned off password sign-in for IMAP.")
+                    .font(.footnote).foregroundStyle(.orange)
+            }
+            Button("Save account") {
+                b.save(a, password: password.isEmpty ? nil : password)
+                password = ""
+                result = nil
+            }
+            .primaryButton().disabled(!a.complete || !hasPassword)
+            Button(testing ? "Testing…" : "Test connection") {
+                testing = true
+                result = nil
+                let account = a, p = pw
+                Task {
+                    let err = await ImapBackend.test(account, password: p)
+                    result = err.map { (false, $0) } ?? (true, "Signed in to IMAP and SMTP.")
+                    testing = false
+                }
+            }
+            .secondaryButton().disabled(testing || !a.complete || !hasPassword)
+            if let result {
+                Label(result.text, systemImage: result.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.footnote).foregroundStyle(result.ok ? TDColor.good : Color.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if b.account != nil {
+                Button("Remove account", role: .destructive) {
+                    b.remove()
+                    a = ImapAccount()
+                    password = ""
+                    result = nil
+                }
+                .secondaryButton()
+            }
+        }
+        .glassCard()
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Use an app password").font(.headline)
+            Text("Your mail provider wants an app password here, not your account password.\n\nGmail: turn on 2-Step Verification, then make one at myaccount.google.com/apppasswords.\niCloud: appleid.apple.com › Sign-In and Security › App-Specific Passwords.\nYahoo: Account Info › Account Security › Generate app password.\nZoho and Fastmail: an app password from the account's security settings.\n\nOutlook and Hotmail are not supported (Microsoft turned off password sign-in).\n\nThe password stays in this iPhone's keychain. Ports: 993 for IMAP; 465 (TLS) or 587 (STARTTLS) for SMTP.\n\nOn the watch: your 11 newest inbox emails, one as text (it is marked read), quick or typed replies, • Archive and • Mark unread. A new email buzzes the watch while Mail is open.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .glassCard()
+    }
+
+    private func server(_ title: String, _ host: Binding<String>, _ port: Binding<Int>) -> some View {
+        HStack(spacing: 8) {
+            TextField(title, text: host)
+                .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+            TextField("Port", value: port, format: .number.grouping(.never))
+                .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 64)
+        }
+    }
+
+    /// A known domain fills its servers (when the domain changed, so a server typed by hand stays).
+    private func fill(_ old: String, _ new: String) {
+        func domain(_ e: String) -> Substring? { e.contains("@") ? e.split(separator: "@").last : nil }
+        guard domain(old)?.lowercased() != domain(new)?.lowercased(), let p = ImapAccount.preset(new) else { return }
+        a.imapHost = p.imap
+        a.imapPort = p.imapPort
+        a.smtpHost = p.smtp
+        a.smtpPort = p.smtpPort
     }
 }
 

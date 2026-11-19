@@ -213,17 +213,45 @@ public enum MailText {
         s.unicodeScalars.allSatisfy(\.isASCII) ? s : "=?UTF-8?B?\(Data(s.utf8).base64EncodedString())?="
     }
 
-    /// A reply in the thread: "Re:" subject, In-Reply-To and References, UTF-8 text.
-    public static func reply(to: String, subject: String, messageID: String, references: String, text: String) -> Data {
-        let n = name(to), a = address(to)
-        let toH = n.isEmpty || n == String(a.split(separator: "@").first ?? "") ? a : "\(word(n)) <\(a)>"
+    /// A reply in the thread: "Re:" subject, In-Reply-To and References, UTF-8 text. Sent by SMTP it also needs
+    /// `from`, `date` and its own `id` (Gmail's API adds them).
+    public static func reply(to: String, subject: String, messageID: String, references: String, text: String,
+                             from: String? = nil, date: Date? = nil, id: String? = nil) -> Data {
+        let toH = mailbox(to)
         let subj = subject.lowercased().hasPrefix("re:") ? subject : "Re: " + subject
-        var h = ["To: \(toH)", "Subject: \(word(subj))"]
+        var h: [String] = []
+        if let from { h.append("From: \(mailbox(from))") }
+        h += ["To: \(toH)", "Subject: \(word(subj))"]
+        if let date { h.append("Date: \(rfc5322(date))") }
+        if let id { h.append("Message-ID: \(id)") }
         if !messageID.isEmpty {
             h += ["In-Reply-To: \(messageID)", "References: \((references + " " + messageID).trimmingCharacters(in: .whitespaces))"]
         }
         h += ["MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64"]
         let b64 = Data(text.utf8).base64EncodedString(options: .lineLength76Characters)
         return Data((h.joined(separator: "\r\n") + "\r\n\r\n" + b64 + "\r\n").utf8)
+    }
+
+    /// `Zoë <z@example.com>` → `=?UTF-8?B?…?= <z@example.com>`; a bare address stays bare.
+    static func mailbox(_ s: String) -> String {
+        let n = name(s), a = address(s)
+        if n.isEmpty || n == String(a.split(separator: "@").first ?? "") { return a }
+        let special = n.unicodeScalars.allSatisfy(\.isASCII) && n.contains { "()<>[]:;@\\,.\"".contains($0) }
+        let shown = special ? "\"" + n.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" : word(n)
+        return "\(shown) <\(a)>"
+    }
+
+    /// A Date header: `Fri, 20 Nov 2026 09:05:00 +0000`.
+    public static func rfc5322(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        return f.string(from: d)
+    }
+
+    /// A new Message-ID at the sender's domain.
+    public static func newID(_ from: String) -> String {
+        let domain = address(from).split(separator: "@").last.map(String.init) ?? "cmfx.local"
+        return "<\(UUID().uuidString.lowercased())@\(domain)>"
     }
 }
