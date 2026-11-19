@@ -176,7 +176,7 @@ import UIKit
     /// Now playing, and the art when the track changed.
     private func push(art: Bool = false) async throws {
         let me = try await call("GET", "/me") as? [String: Any] ?? [:]
-        premium = me.str("product") == "premium"
+        premium = Self.premium(me)
         user = me["display_name"] as? String
         let p = try await call("GET", "/me/player") as? [String: Any] ?? [:]
         track = p["item"] as? [String: Any] ?? [:]
@@ -245,7 +245,7 @@ import UIKit
             let err = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? [String: Any]
             let reason = err?["reason"] as? String ?? "", message = err?["message"] as? String ?? String(decoding: data.prefix(200), as: UTF8.self)
             DevLog.shared.log("spotify 403 \(method) \(path): \(reason) \(message)")
-            if reason == "PREMIUM_REQUIRED" { throw SpotifyError.premium }
+            if reason == "PREMIUM_REQUIRED" { premium = false; throw SpotifyError.premium }
             if message.lowercased().contains("restriction violated") { throw SpotifyError.restricted }
             throw HubError.failed("Spotify: \(message.isEmpty ? "access refused (403)" : message)")
         }
@@ -321,7 +321,7 @@ import UIKit
                               "code_verifier": verifier])
             let me = try await call("GET", "/me") as? [String: Any] ?? [:]
             user = me["display_name"] as? String
-            premium = me.str("product") == "premium"
+            premium = Self.premium(me)
         } catch {
             status = error.localizedDescription
         }
@@ -339,6 +339,15 @@ extension SpotifyService: ASWebAuthenticationPresentationContextProviding {
         MainActor.assumeIsolated {
             UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first ?? ASPresentationAnchor()
         }
+    }
+}
+
+extension SpotifyService {
+    /// Feb 2026: Spotify stops sending `product` to development-mode apps. No word: taken as Premium (a Free
+    /// account is told so by its first refused command, PREMIUM_REQUIRED).
+    static func premium(_ me: [String: Any]) -> Bool {
+        guard let p = me["product"] as? String else { return true }
+        return p != "free" && p != "open"
     }
 }
 
