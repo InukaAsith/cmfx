@@ -108,10 +108,12 @@ public enum MapPack {
     }
 
     /// `idx`: WMP1, levels, the palette, per level z x0 y0 w h mm_per_px, then the centre in z20 world pixels.
-    public static func index(_ levels: [Level], lat: Double, lon: Double) -> Data {
+    /// `palette`: the pack's own 16 colours (an Apple Maps pack); none: the fixed OSM style.
+    public static func index(_ levels: [Level], lat: Double, lon: Double,
+                             palette: [(UInt8, UInt8, UInt8)]? = nil) -> Data {
         var d = Data("WMP1".utf8)
         d.append(UInt8(levels.count))
-        for c in palette565 { d.le(c) }
+        for c in palette.map({ $0.map { Rle.rgb565($0.0, $0.1, $0.2) } }) ?? palette565 { d.le(c) }
         for l in levels {
             d.append(UInt8(l.z)); d.le(UInt32(l.x0)); d.le(UInt32(l.y0)); d.append(UInt8(l.w)); d.append(UInt8(l.h))
             d.le(UInt32(l.mmPerPx))
