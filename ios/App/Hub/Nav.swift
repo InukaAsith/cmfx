@@ -46,35 +46,16 @@ import MapKit
         }
         let to = item.placemark.coordinate
         let src = MKMapItem(placemark: MKPlacemark(coordinate: here.coordinate))
-        // walking first (when chosen), then the roads. A pin off any path (a field, a building's middle) has no
-        // route itself: the nearest address to it is tried next. Only with none of these, a straight line.
-        var route: MKRoute?
-        var why: Error?
-        var targets = [item]
-        if let near = try? await CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: to.latitude, longitude: to.longitude)).first {
-            targets.append(MKMapItem(placemark: MKPlacemark(placemark: near)))
-        }
-        search: for target in targets {
-            for t: MKDirectionsTransportType in walking ? [.walking, .automobile] : [.automobile] {
-                let req = MKDirections.Request()
-                req.source = src
-                req.destination = target
-                req.transportType = t
-                do {
-                    if let r = try await MKDirections(request: req).calculate().routes.first {
-                        route = r
-                        if t != transport { status = "No walking route there: following the roads" }
-                        break search
-                    }
-                } catch {
-                    why = error
-                    DevLog.shared.log("route \(t == .walking ? "walk" : "drive") failed: \(error.localizedDescription)")
-                }
-            }
-        }
-        if let route { load(route) } else {
+        // OpenStreetMap's routes first: Apple has no directions in many countries (Sri Lanka among them). Then
+        // Apple's; a straight line only when neither has a route.
+        var why = ""
+        if let ok = await osrm(from: here.coordinate, to: to) {
+            if !ok { status = "No walking route there: following the roads" }
+        } else if let r = await appleRoute(src, item, &why) {
+            load(r)
+        } else {
             loadDirect(from: here.coordinate, to: to)
-            status = "Apple Maps found no route (\(why?.localizedDescription ?? "none")): the watch points straight at it. Pin at \(String(format: "%.5f, %.5f", to.latitude, to.longitude))"
+            status = "No route found\(why.isEmpty ? "" : " (\(why))"): the watch points straight at it"
         }
         active = true
         manager.allowsBackgroundLocationUpdates = true
@@ -82,6 +63,83 @@ import MapKit
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()
         do { try await sendRoute() } catch { status = error.localizedDescription }
+    }
+
+    /// Apple's route, walking (when chosen) then the roads.
+    private func appleRoute(_ src: MKMapItem, _ dest: MKMapItem, _ why: inout String) async -> MKRoute? {
+        for t: MKDirectionsTransportType in walking ? [.walking, .automobile] : [.automobile] {
+            let req = MKDirections.Request()
+            req.source = src
+            req.destination = dest
+            req.transportType = t
+            do {
+                if let r = try await MKDirections(request: req).calculate().routes.first { return r }
+            } catch { why = error.localizedDescription }
+        }
+        return nil
+    }
+
+    /// A route from OpenStreetMap (routing.openstreetmap.de, the FOSSGIS OSRM servers: the start and the end are
+    /// all they get). → nil: no answer; true: the chosen way; false: walking had none, the roads are used.
+    private func osrm(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) async -> Bool? {
+        for profile in walking ? ["foot", "car"] : ["car"] {
+            let url = URL(string: "https://routing.openstreetmap.de/routed-\(profile)/route/v1/driving/" +
+                "\(a.longitude),\(a.latitude);\(b.longitude),\(b.latitude)?steps=true&overview=full&geometries=geojson")!
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 12
+            req.setValue("CMFX (watch navigation)", forHTTPHeaderField: "User-Agent")
+            guard let (data, _) = try? await URLSession.shared.data(for: req),
+                  let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  j["code"] as? String == "Ok", let r = (j["routes"] as? [[String: Any]])?.first,
+                  let line = (r["geometry"] as? [String: Any])?["coordinates"] as? [[Double]], line.count >= 2
+            else { continue }
+            let coords = line.map { CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) }
+            origin = coords[0]
+            pts = coords.map(local)
+            cum = [0]
+            for i in 1..<pts.count { cum.append(cum[i - 1] + hypot(pts[i].0 - pts[i - 1].0, pts[i].1 - pts[i - 1].1)) }
+            expected = r["duration"] as? Double ?? 0
+            // each maneuver where it happens: the step's start along the route
+            var at = 0.0
+            steps = []
+            for leg in r["legs"] as? [[String: Any]] ?? [] {
+                for st in leg["steps"] as? [[String: Any]] ?? [] {
+                    let m = st["maneuver"] as? [String: Any] ?? [:]
+                    let type = m["type"] as? String ?? "", modifier = m["modifier"] as? String ?? ""
+                    if type != "depart" {
+                        let (kind, dir) = Self.osrmManeuver(type, modifier)
+                        let name = st["name"] as? String ?? ""
+                        steps.append((at, kind, dir, kind == 2 ? "Arrive" : name.isEmpty ? "Continue" : name))
+                    }
+                    at += st["distance"] as? Double ?? 0
+                }
+            }
+            if steps.isEmpty || steps.last?.kind != 2 { steps.append((cum.last ?? at, 2, 0, "Arrive")) }
+            return profile == "foot" || !walking
+        }
+        return nil
+    }
+
+    /// OSRM's maneuver → the watch's (kind, dir): kinds 0 turn, 1 roundabout, 2 arrive, 3 straight, 4 ramp;
+    /// dir 1-3 slight/plain/sharp left, 4-6 right, 7 u-turn.
+    static func osrmManeuver(_ type: String, _ modifier: String) -> (UInt8, UInt8) {
+        let dir: UInt8 = switch modifier {
+        case "slight left": 1
+        case "left": 2
+        case "sharp left": 3
+        case "slight right": 4
+        case "right": 5
+        case "sharp right": 6
+        case "uturn": 7
+        default: 0
+        }
+        switch type {
+        case "arrive": return (2, 0)
+        case "roundabout", "rotary", "roundabout turn", "exit roundabout", "exit rotary":
+            return (1, dir == 0 ? 5 : (dir <= 3 ? 2 : 5))
+        case "on ramp", "off ramp", "fork": return (4, dir)
+        default: return dir == 0 ? (3, 0) : (0, dir)
+        }
     }
 
     /// A pin with no route to it: one straight leg.
