@@ -41,6 +41,9 @@ actor KLock {
     private var apps: [Int: String] = [:]
     /// The stub's release, from the same read: PUSH needs 7.
     private var stub: UInt32 = 1
+    /// The open session, and when the listening loop last went round: `wake()` tells a stuck loop from a quiet one.
+    private var session: KSession?
+    private var beat = Date.now
 
     /// CoreBluetooth state restoration: the listener's link only.
     static let restoreID = "app.cmfx.watch"
@@ -66,6 +69,31 @@ actor KLock {
         let link = BLELink(restore: restoreID)
         link.onReconnect = { DevLog.shared.log("link back") }
         return link
+    }
+
+    /// CMFX came to the front: costs nothing in the background (no timer). A loop stuck for 45 s starts again; a
+    /// working one registers with the watch again (one PING), which is what relaunching Nothing X used to do for it.
+    /// Nothing while stopped on purpose (a watch face install).
+    func wake() {
+        guard task != nil else { return }
+        if session != nil, Date.now.timeIntervalSince(beat) > 45 {
+            DevLog.shared.log("listener stuck: starting again")
+            return restart()
+        }
+        guard let session else { return }
+        Task {
+            do {
+                _ = try await withDeadline(.seconds(8)) { try await KLock.shared.run { try await session.ping() } }
+            } catch {
+                DevLog.shared.log("watch did not answer: starting again")
+                if self.session === session, self.task != nil { self.restart() }
+            }
+        }
+    }
+
+    private func restart() {
+        stop()
+        start()
     }
 
     func stop() {
@@ -104,13 +132,41 @@ actor KLock {
             WatchModel.shared.linkCameBack()
             _ = try await KLock.shared.run { try await session.ping() } // registers: the stub sends us EVENTs
             _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+            // a restart's old loop ends late: it must not detach the new session
+            self.session = session
             Hub.shared.attach(session, apps: apps)
-            defer { Hub.shared.attach(nil, apps: apps) }
+            defer {
+                if self.session === session {
+                    self.session = nil
+                    Hub.shared.attach(nil, apps: apps)
+                }
+            }
             DevLog.shared.log("listening")
+            var pinged = Date.now
             while up, !Task.isCancelled {
+                beat = .now
+                // while CMFX is open only (iOS freezes it in the background): once a minute, is the watch still
+                // hearing us? No answer: start again.
+                if UIApplication.shared.applicationState == .active, Date.now.timeIntervalSince(pinged) > 60 {
+                    pinged = .now
+                    do {
+                        _ = try await withDeadline(.seconds(8)) { try await KLock.shared.run { try await session.ping() } }
+                    } catch {
+                        DevLog.shared.log("watch did not answer: starting again")
+                        Task { @MainActor in if self.task != nil { self.restart() } }
+                        return .failed
+                    }
+                }
                 await runDueJobs(session)
                 guard let m = try? await session.recvFrom(timeout: .seconds(5)) else { continue }
-                await handle(m.data, slot: Int(m.slot), session)
+                beat = .now
+                // one request that hangs (a server, a service) must not stop the watch's next ones being heard
+                let data = m.data, slot = Int(m.slot)
+                do {
+                    try await withDeadline(.seconds(30)) { @MainActor in await self.handle(data, slot: slot, session) }
+                } catch {
+                    DevLog.shared.log("slot \(slot): no answer in 30 s, listening on")
+                }
             }
             DevLog.shared.log("link dropped")
             return up ? .failed : .dropped
@@ -198,7 +254,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         RPCListener.shared.start()
         NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil,
                                                queue: .main) { _ in
-            Task { @MainActor in await PhoneServices.shared.refresh(within: .seconds(10)) }
+            Task { @MainActor in
+                RPCListener.shared.wake()
+                await PhoneServices.shared.refresh(within: .seconds(10))
+            }
         }
         return true
     }
