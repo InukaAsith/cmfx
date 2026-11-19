@@ -67,6 +67,26 @@ public enum Rle {
     }
 }
 
+extension Rle {
+    /// An opened photo in `bands` horizontal bands, each with its own 16 colours (Quantize.refined): `P n`, then
+    /// per band `I` (its row as y0) / `D`… / `E` (cmf-watch-sdk photos proto.rs). Many more colours on the watch
+    /// than one palette for the whole picture, for about a third more bytes.
+    public static func bandedPicture(rgb: [UInt8], width: Int, height: Int, scale: UInt8 = 1, x0: Int16 = 0,
+                                     y0: Int16 = 0, bands: Int = 8) -> [Data] {
+        var out = [Data([UInt8(ascii: "P"), UInt8(bands)])]
+        for k in 0..<bands {
+            let r0 = height * k / bands, r1 = height * (k + 1) / bands
+            let part = Array(rgb[(3 * width * r0)..<(3 * width * r1)])
+            let (palette, idx) = Quantize.refined(rgb: part, colours: 16)
+            let pal = palette.map { rgb565($0.0, $0.1, $0.2) }
+            let hdr = header(width: width, height: r1 - r0, scale: scale, x0: x0,
+                             y0: y0 + Int16(r0) * Int16(scale), palette: pal)
+            out += messages(header: hdr, tokens: tokens(idx, width: width, height: r1 - r0))
+        }
+        return out
+    }
+}
+
 extension Data {
     mutating func le(_ v: UInt16) { append(UInt8(v & 0xFF)); append(UInt8(v >> 8)) }
     mutating func le(_ v: UInt32) { for k in 0..<4 { append(UInt8(v >> (8 * k) & 0xFF)) } }

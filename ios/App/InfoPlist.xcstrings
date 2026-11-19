@@ -8,7 +8,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "FMC Companion"
+            "value" : "CMFX"
           }
         }
       }
@@ -18,31 +18,31 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "FMC Companion connects to your watch to install watch faces and to read which apps are on it."
+            "value" : "CMFX connects to your watch to install watch faces and to read which apps are on it."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "FMC Companion подключается к часам, чтобы устанавливать циферблаты и видеть, какие приложения на них есть."
+            "value" : "CMFX подключается к часам, чтобы устанавливать циферблаты и видеть, какие приложения на них есть."
           }
         },
         "uk" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "FMC Companion підключається до годинника, щоб установлювати циферблати й бачити, які застосунки на ньому є."
+            "value" : "CMFX підключається до годинника, щоб установлювати циферблати й бачити, які застосунки на ньому є."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "FMC Companion se conecta a tu reloj para instalar esferas y ver qué apps tiene."
+            "value" : "CMFX se conecta a tu reloj para instalar esferas y ver qué apps tiene."
           }
         },
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "FMC Companion आपकी घड़ी से कनेक्ट होकर वॉच फ़ेस इंस्टॉल करता है और देखता है कि उस पर कौन-से ऐप हैं।"
+            "value" : "CMFX आपकी घड़ी से कनेक्ट होकर वॉच फ़ेस इंस्टॉल करता है और देखता है कि उस पर कौन-से ऐप हैं।"
           }
         }
       }

@@ -34,8 +34,29 @@ public enum Quantize {
         return (palette, nearest(rgb: rgb, palette: palette))
     }
 
+    /// Median cut, then `rounds` of k-means (each colour moves to the mean of its pixels): colours that fit the
+    /// picture better than the median boxes' averages, at the same 16. Weighted towards green, as the eye is.
+    public static func refined(rgb: [UInt8], colours: Int, rounds: Int = 4) -> ([(UInt8, UInt8, UInt8)], [UInt8]) {
+        var (palette, idx) = medianCut(rgb: rgb, colours: colours)
+        let n = rgb.count / 3
+        for _ in 0..<rounds {
+            var sum = [(Int, Int, Int, Int)](repeating: (0, 0, 0, 0), count: palette.count)
+            for p in 0..<n {
+                let k = Int(idx[p])
+                sum[k].0 += Int(rgb[3 * p]); sum[k].1 += Int(rgb[3 * p + 1]); sum[k].2 += Int(rgb[3 * p + 2]); sum[k].3 += 1
+            }
+            for k in palette.indices where sum[k].3 > 0 {
+                let c = sum[k].3
+                palette[k] = (UInt8(sum[k].0 / c), UInt8(sum[k].1 / c), UInt8(sum[k].2 / c))
+            }
+            idx = nearest(rgb: rgb, palette: palette, weighted: true)
+        }
+        return (palette, idx)
+    }
+
     /// Each pixel's nearest palette entry (squared RGB distance).
-    public static func nearest(rgb: [UInt8], palette: [(UInt8, UInt8, UInt8)]) -> [UInt8] {
+    public static func nearest(rgb: [UInt8], palette: [(UInt8, UInt8, UInt8)], weighted: Bool = false) -> [UInt8] {
+        let (wr, wg, wb) = weighted ? (3, 6, 1) : (1, 1, 1)
         let n = rgb.count / 3
         var out = [UInt8](repeating: 0, count: n)
         var memo: [UInt32: UInt8] = [:]
@@ -45,7 +66,7 @@ public enum Quantize {
             if let hit = memo[key] { out[p] = hit; continue }
             var best = 0, bestD = Int.max
             for (i, c) in palette.enumerated() {
-                let d = (r - Int(c.0)) * (r - Int(c.0)) + (g - Int(c.1)) * (g - Int(c.1)) + (b - Int(c.2)) * (b - Int(c.2))
+                let d = wr * (r - Int(c.0)) * (r - Int(c.0)) + wg * (g - Int(c.1)) * (g - Int(c.1)) + wb * (b - Int(c.2)) * (b - Int(c.2))
                 if d < bestD { (best, bestD) = (i, d) }
             }
             memo[key] = UInt8(best)
