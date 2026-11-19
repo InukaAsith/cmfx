@@ -56,6 +56,8 @@ enum Checks {
         let tile = MapPack.tileFile([UInt8](repeating: 4, count: 256 * 256))
         if tile.first != 1 || tile.count != 1 + 2 * 256 { bad.append("tile file \(tile.count)") }
         chats(&bad)
+        mime(&bad)
+        imap(&bad)
         return bad
     }
 
@@ -117,5 +119,152 @@ enum Checks {
                 .hasPrefix("To: a@b.c\r\nSubject: Re: x\r\n") {
             bad.append("reply bare")
         }
+    }
+
+    /// MIME (Mime): sample emails as IMAP gives them.
+    static func mime(_ bad: inout [String]) {
+        func eq(_ name: String, _ a: String?, _ b: String) { if a != b { bad.append("\(name):\n  got  \(a ?? "nil")\n  want \(b)") } }
+        func crlf(_ s: String) -> Data { Data(s.replacingOccurrences(of: "\n", with: "\r\n").utf8) }
+        // multipart/alternative, quoted-printable plain, Q- and B-encoded headers
+        let alt = crlf("""
+            From: =?UTF-8?B?Wm/DqyBNw7xsbGVy?= <zoe@example.com>
+            To: Sam <sam@example.org>
+            Subject: =?iso-8859-1?Q?R=E9union_de?=
+             =?iso-8859-1?Q?_lundi?= ok
+            Message-ID: <abc@example.com>
+            MIME-Version: 1.0
+            Content-Type: multipart/alternative;
+             boundary="b1=_x"
+
+            This is a multi-part message.
+            --b1=_x
+            Content-Type: text/plain; charset="utf-8"
+            Content-Transfer-Encoding: quoted-printable
+
+            Caf=C3=A9 at 10? It's a long line that goes on and on and gets a soft =
+            break.
+            --b1=_x
+            Content-Type: text/html; charset="utf-8"
+
+            <p>HTML version</p>
+            --b1=_x--
+            """)
+        let m = Mime.parse(alt)
+        eq("mime from", m.header("From"), "Zoë Müller <zoe@example.com>")
+        eq("mime name", MailText.name(m.header("From") ?? ""), "Zoë Müller")
+        eq("mime subject", m.header("subject"), "Réunion de lundi ok")
+        eq("mime message-id", m.header("message-id"), "<abc@example.com>")
+        eq("mime alternative", Mime.text(m), "Café at 10? It's a long line that goes on and on and gets a soft break.")
+        // HTML only, base64, Windows-1252
+        let html = "<html><head><style>p{}</style></head><body><p>Price \u{2013} €5</p><p>See you&nbsp;soon</p></body></html>"
+        let b64 = html.data(using: .windowsCP1252)!.base64EncodedString(options: .lineLength76Characters)
+        let h = crlf("From: shop@example.com\nSubject: Order\nContent-Type: text/html; charset=windows-1252\nContent-Transfer-Encoding: base64\n\n" + b64 + "\n")
+        eq("mime html only", Mime.text(h).map(MailText.body), "Price \u{2013} \u{20AC}5 See you soon")
+        // nested: mixed > (alternative > plain, html) + an attachment; LF line ends, 8-bit
+        let nested = Data("""
+            From: "Doe, Jane" <jane@example.com>
+            Subject: =?utf-8?q?Caf=C3=A9_?= =?utf-8?b?4pyT?=
+            Content-Type: multipart/mixed; boundary=outer
+
+            --outer
+            Content-Type: multipart/alternative; boundary="inner"
+
+            --inner
+            Content-Type: text/plain; charset=utf-8
+            Content-Transfer-Encoding: 8bit
+
+            Hello ✓ ünïcode
+            --inner
+            Content-Type: text/html
+
+            <b>no</b>
+            --inner--
+
+            --outer
+            Content-Type: text/plain; name="notes.txt"
+            Content-Disposition: attachment; filename="notes.txt"
+
+            not this
+            --outer--
+            """.utf8)
+        let n = Mime.parse(nested)
+        eq("mime nested", Mime.text(n), "Hello ✓ ünïcode")
+        eq("mime adjacent words", n.header("subject"), "Café ✓")
+        eq("mime quoted name", MailText.name(n.header("from") ?? ""), "Doe, Jane")
+        // a UTF-8 character split across two B words; Q underscores; ISO-8859-1 plain body
+        eq("mime split word", Mime.words("=?UTF-8?B?w6k=?= =?UTF-8?B?w6k=?= x"), "éé x")
+        eq("mime split char", Mime.words("=?UTF-8?B?4pw=?= =?UTF-8?B?kw==?="), "✓")
+        eq("mime plain words", Mime.words("Re: hello =?ISO-8859-1?Q?J=F6rg?= there"), "Re: hello Jörg there")
+        eq("mime bad word", Mime.words("=?bogus"), "=?bogus")
+        let latin = Data("Content-Type: text/plain; charset=ISO-8859-1\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\nGr=FC=DFe".utf8)
+        eq("mime latin1 qp", Mime.text(latin), "Grüße")
+        // cut short (the first bytes fetched): base64 mid-group, no closing boundary
+        let cut = crlf("Content-Type: multipart/mixed; boundary=zz\n\n--zz\nContent-Type: text/plain\nContent-Transfer-Encoding: base64\n\n"
+                       + Data("Hello there, general.".utf8).base64EncodedString().dropLast(3))
+        eq("mime cut", Mime.text(cut), "Hello there, gener")
+        eq("mime no type", Mime.text(Data("Subject: x\n\nJust text".utf8)), "Just text")
+        eq("mime rfc2231", Mime.param("attachment; filename*=UTF-8''na%C3%AFve.txt", "filename"), "naïve.txt")
+        // a reply for SMTP
+        let r = String(decoding: MailText.reply(to: "\"Doe, Jane\" <jane@example.com>", subject: "Café ✓", messageID: "<m@x>",
+                                                references: "", text: "ok", from: "me@example.org",
+                                                date: Date(timeIntervalSince1970: 0), id: "<id@example.org>"), as: UTF8.self)
+        for want in ["From: me@example.org\r\n", "To: \"Doe, Jane\" <jane@example.com>\r\n", "Subject: =?UTF-8?B?",
+                     "Date: Thu, 01 Jan 1970", "Message-ID: <id@example.org>\r\n", "References: <m@x>\r\n"] where !r.contains(want) {
+            bad.append("smtp reply lacks \(want.debugDescription)")
+        }
+        if !MailText.newID("Me <me@example.org>").hasSuffix("@example.org>") { bad.append("new id") }
+    }
+
+    /// IMAP and SMTP wire pieces (Imap, Smtp).
+    static func imap(_ bad: inout [String]) {
+        func eq(_ name: String, _ a: String?, _ b: String) { if a != b { bad.append("\(name):\n  got  \(a ?? "nil")\n  want \(b)") } }
+        var r = Imap.Reader()
+        let env = "* 7 FETCH (UID 4242 FLAGS (\\Answered) ENVELOPE (\"Thu, 19 Nov 2026 10:00:00 +0000\" {26}\r\n=?UTF-8?Q?Caf=C3=A9_time?= "
+            + "((\"Priya \\\"P\\\" Perera\" NIL \"priya\" \"example.com\")) NIL NIL ((NIL NIL \"me\" \"example.org\")) NIL NIL NIL \"<id1@example.com>\"))\r\n"
+        let whole = Data(env.utf8) + Data("* 8 FETCH (UID 4243 FLAGS (\\Seen) BODY[]<0> {5}\r\nHi)\r\n)\r\nA4 OK Fetch completed\r\n".utf8)
+        // in two pieces, cut inside the literal
+        r.feed(whole.prefix(60))
+        if r.next() != nil { bad.append("imap reader: a response before its literal came") }
+        r.feed(whole.dropFirst(60))
+        let first = r.next(), second = r.next(), third = r.next()
+        if first != Data(env.utf8) { bad.append("imap reader first: \(String(decoding: first ?? Data(), as: UTF8.self))") }
+        if let f = first.flatMap(Imap.fetch), let s = Imap.summary(f.items) {
+            if f.seq != 7 || s.uid != 4242 || s.seen { bad.append("imap fetch \(f.seq) \(s)") }
+            eq("imap envelope subject", s.subject, "Café time")
+            eq("imap envelope from", s.from, "Priya P Perera <priya@example.com>")
+            eq("imap envelope id", s.messageID, "<id1@example.com>")
+        } else { bad.append("imap fetch parse") }
+        if let f = second.flatMap(Imap.fetch) {
+            eq("imap body literal", f.items["BODY[]<0>"]?.text, "Hi)\r\n")
+            if Imap.summary(f.items)?.seen != true { bad.append("imap seen") }
+        } else { bad.append("imap fetch 2") }
+        if let t = third, let st = Imap.status(t, tag: "A4") { if !st.ok { bad.append("imap status ok") } } else { bad.append("imap third") }
+        if r.next() != nil { bad.append("imap reader leftover") }
+        let no = Imap.status(Data("A1 NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)\r\n".utf8), tag: "A1")
+        if no?.ok != false || no?.kind != "NO" || no?.text != "Invalid credentials (Failure)" { bad.append("imap status no \(String(describing: no))") }
+        if Imap.status(Data("A10 OK x".utf8), tag: "A1") != nil { bad.append("imap status tag") }
+        let l = Imap.list(Data("* LIST (\\HasNoChildren \\All) \"/\" \"[Gmail]/All Mail\"\r\n".utf8))
+        if l?.flags != ["\\hasnochildren", "\\all"] || l?.name != "[Gmail]/All Mail" { bad.append("imap list \(String(describing: l))") }
+        if Imap.list(Data("* LIST () \".\" INBOX\r\n".utf8))?.name != "INBOX" { bad.append("imap list atom") }
+        if Imap.list(Data("* LIST (\\Archive) \"/\" {7}\r\nArchive\r\n".utf8))?.flags != ["\\archive"] { bad.append("imap list literal") }
+        if Imap.search(Data("* SEARCH 3 9 12\r\n".utf8)) != [3, 9, 12] { bad.append("imap search") }
+        if Imap.exists(Data("* 23 EXISTS\r\n".utf8)) != 23 { bad.append("imap exists") }
+        eq("imap uidvalidity", Imap.code(Data("* OK [UIDVALIDITY 3857529045] UIDs valid\r\n".utf8), "UIDVALIDITY"), "3857529045")
+        if Imap.capabilities(Data("* CAPABILITY IMAP4rev1 MOVE UIDPLUS literal+\r\n".utf8)) != ["IMAP4REV1", "MOVE", "UIDPLUS", "LITERAL+"] {
+            bad.append("imap capabilities")
+        }
+        eq("imap quote", Imap.quote("pa\"ss\\word"), "\"pa\\\"ss\\\\word\"")
+        if Imap.quote("pässword") != nil || Imap.quote("a\r\nb") != nil { bad.append("imap quote needs literal") }
+        if Imap.values(Data("* 1 FETCH (BODY[HEADER.FIELDS (FROM)] \"x\")".utf8)).last?.list?.first?.atom != "BODY[HEADER.FIELDS (FROM)]" {
+            bad.append("imap section atom")
+        }
+        _ = Imap.values(Data("* OK [ALERT] don't \"unbalanced ( {99}\r\nab".utf8))  // must not trap
+        // SMTP
+        if Smtp.reply(["250-smtp.example.com", "250-AUTH PLAIN LOGIN"]) != nil { bad.append("smtp reply partial") }
+        let rep = Smtp.reply(["250-smtp.example.com", "250-AUTH PLAIN LOGIN", "250 STARTTLS"])
+        if rep?.code != 250 || rep?.text != "smtp.example.com\nAUTH PLAIN LOGIN\nSTARTTLS" { bad.append("smtp reply \(String(describing: rep))") }
+        if Smtp.reply(["535 5.7.8 Bad credentials"])?.code != 535 { bad.append("smtp 535") }
+        eq("smtp data", String(decoding: Smtp.data(Data("a\n.b\r\n..\nc\n".utf8)), as: UTF8.self), "a\r\n..b\r\n...\r\nc\r\n.\r\n")
+        eq("smtp plain", Smtp.plain(user: "u@x", password: "p"), "AHVAeABw")
     }
 }
