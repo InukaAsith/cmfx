@@ -25,3 +25,18 @@ func TestIPhonePhotos(t *testing.T) {
 		t.Fatal("a pdf stays a document")
 	}
 }
+
+func TestPictureKinds(t *testing.T) {
+	webp := append([]byte("RIFF\x00\x00\x00\x00WEBP"), 0)
+	if !isPicture(webp) || !isPicture([]byte{0xFF, 0xD8, 0}) || isPicture([]byte("PK\x03\x04lottie")) {
+		t.Fatal("isPicture")
+	}
+	lottie := &waE2E.Message{StickerMessage: &waE2E.StickerMessage{IsLottie: proto.Bool(true), PngThumbnail: []byte("png")}}
+	if f, p := mediaOf(lottie); f == nil || string(p) != "png" {
+		t.Fatal("a sticker's preview")
+	}
+	hd := &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{Mimetype: proto.String("image/heic"), JPEGThumbnail: []byte("j")}}
+	if f, p := mediaOf(hd); f == nil || string(p) != "j" {
+		t.Fatal("a photo sent as a file")
+	}
+}

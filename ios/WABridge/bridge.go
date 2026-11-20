@@ -414,6 +414,8 @@ func handle(c *whatsmeow.Client, evt any) {
 		if l := current(); l != nil {
 			l.OnReceipt(chat.String())
 		}
+	case *events.MediaRetry:
+		retried(e)
 	case *events.Presence:
 		chat := chatOf(c, e.From)
 		if l := current(); !chat.IsEmpty() && l != nil {
@@ -451,44 +453,6 @@ func Unwatch() {
 	ctx, cancel := timeout(10 * time.Second)
 	defer cancel()
 	c.SendPresence(ctx, types.PresenceUnavailable)
-}
-
-// Media: the picture of sticker or photo id in jid, downloaded from WhatsApp (webp or jpeg); a photo whose file
-// cannot be had gives its small preview.
-func Media(jid, id string) ([]byte, error) {
-	c := client()
-	if c == nil {
-		return nil, errNotOpen
-	}
-	raw := own.mediaOf(jid, id)
-	if len(raw) == 0 {
-		return nil, errors.New("no picture for this message")
-	}
-	var whole waE2E.Message
-	if err := proto.Unmarshal(raw, &whole); err != nil {
-		return nil, err
-	}
-	m := unwrap(&whole)
-	ctx, cancel := timeout(30 * time.Second)
-	defer cancel()
-	if d := imageDoc(m); d != nil {
-		b, err := c.Download(ctx, d)
-		if err != nil && len(d.GetJPEGThumbnail()) > 0 {
-			return d.GetJPEGThumbnail(), nil
-		}
-		return b, err
-	}
-	if s := m.GetStickerMessage(); s != nil {
-		return c.Download(ctx, s)
-	}
-	if im := m.GetImageMessage(); im != nil {
-		b, err := c.Download(ctx, im)
-		if err != nil && len(im.GetJPEGThumbnail()) > 0 {
-			return im.GetJPEGThumbnail(), nil
-		}
-		return b, err
-	}
-	return nil, errors.New("not a sticker or photo")
 }
 
 // chatOf: the chat's JID as CMFX keys it (a phone number rather than a LID when known), "" for chats not shown
