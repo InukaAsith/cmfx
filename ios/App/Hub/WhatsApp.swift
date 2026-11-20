@@ -463,16 +463,19 @@ private struct WAMsg: Decodable {
 
     /// A tap on a sticker or photo: its picture, downloaded from WhatsApp, into the bubble.
     private func picture(_ idx: Int) async {
-        guard let id = open, let jid = ids.key(id), idx < shown.count, [1, 2].contains(shown[idx].kind),
-              let mid = shown[idx].id else { return }
+        guard let id = open, let jid = ids.key(id), idx < shown.count, [1, 2].contains(shown[idx].kind) else { return }
+        // `e` alone: the watch says "No picture"
+        let none = [Data([UInt8(ascii: "e"), UInt8(idx & 0xFF)])]
+        guard let mid = shown[idx].id else { return await out(none) }
         let sticker = shown[idx].kind == 1
-        guard await online() else { return }
+        guard await online() else { return await out(none) }
         let data = await Self.go { () -> Data? in
             var e: NSError?
             let d = WabridgeMedia(jid, mid, &e)
             return e == nil ? d : nil
         }
-        guard open == id, let data, let img = UIImage(data: data) else { return }
+        guard open == id else { return }
+        guard let data, let img = UIImage(data: data) else { return await out(none) }
         // a sticker 120 px as it is, a photo 96 px drawn doubled
         let side = sticker ? 120 : 96
         let rgb = await Task.detached { Self.fitted(img, side: side) }.value
