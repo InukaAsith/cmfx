@@ -107,6 +107,12 @@ final class BLELink: NSObject, Link, @unchecked Sendable {
         finish(BLEError.failed(String(localized: "The watch disconnected."))) // a connect waiting on a pending reconnect
     }
 
+    /// Ends whatever waits (a step, queued writes) and keeps the link: its loop starts again on it.
+    @MainActor func unstick() {
+        failQueued(BLEError.failed(String(localized: "The watch did not answer.")))
+        finish(BLEError.failed(String(localized: "The watch did not answer.")))
+    }
+
     /// Ends a step that never finished (the watch went quiet).
     @MainActor func abort() {
         finish(BLEError.failed(String(localized: "The watch did not answer.")))

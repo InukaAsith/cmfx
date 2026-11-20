@@ -36,6 +36,9 @@ public actor KSession: Channel {
     private let frames = Inbox<(UInt16, Data)>()
     private let events = Inbox<Data>()
     private var parser = FrameParser()
+    /// When another host (Nothing X) last talked on the link: its bind changes the stock session, and the stub
+    /// stops sending us the apps' messages until a K frame comes again (cmf-watch-sdk wp2-core chan.rs `listening`).
+    private var foreignAt: ContinuousClock.Instant?
 
     init(link: Link, key: Data, poll: Duration?) {
         (self.link, self.key, self.poll) = (link, key, poll)
@@ -83,13 +86,24 @@ public actor KSession: Channel {
     }
 
     func feed(_ value: Data) async {
-        for f in parser.feed(value) where f.c1 == system {
+        for f in parser.feed(value) {
+            guard f.c1 == system, WireKit.open(key, f.body) != nil else {
+                foreignAt = .now
+                continue
+            }
             // another host's frames (Nothing X, the stock session) do not open with K: dropped where they are read
             if f.c2 == Cmd.event { await events.put(f.body) } else { await frames.put((f.c2, f.body)) }
         }
     }
 
     public func setPoll(_ p: Duration?) { poll = p }
+
+    /// true once, when another host talked and has been quiet for `quiet`: time to register again (one PING).
+    public func takeForeign(quiet: Duration = .seconds(2)) -> Bool {
+        guard let t = foreignAt, ContinuousClock.now - t >= quiet else { return false }
+        foreignAt = nil
+        return true
+    }
 
     /// One system request; the reply that opens with K.
     func request(_ c2: UInt16, _ payload: Data, timeout: Duration = .seconds(6)) async throws -> Data {
