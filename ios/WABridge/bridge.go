@@ -387,10 +387,12 @@ func handle(c *whatsmeow.Client, evt any) {
 		}()
 	case *events.Message:
 		if m, ok := keepMessage(c, e, true); ok && !m.fromMe {
+			// the catch-up after a reconnect (the server replays what came while offline) goes in quietly: the
+			// watch gets one list at "synced", not a buzz and a list per old message
 			mu.Lock()
-			l := listener
+			l, live := listener, synced
 			mu.Unlock()
-			if l != nil {
+			if l != nil && live {
 				l.OnMessage(m.jid)
 			}
 		}
