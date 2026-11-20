@@ -1,8 +1,8 @@
 import Foundation
 
-/// Bytes that fit `n` without cutting a character.
+/// Bytes that fit `n` without cutting a character; emoji as text (the watch font has none).
 func utf8(_ s: String, _ n: Int) -> Data {
-    var d = Data(s.utf8.prefix(n))
+    var d = Data(Emoji.text(s).utf8.prefix(n))
     while !d.isEmpty, String(data: d, encoding: .utf8) == nil { d.removeLast() }
     return d
 }
