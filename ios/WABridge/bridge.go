@@ -464,12 +464,20 @@ func Media(jid, id string) ([]byte, error) {
 	if len(raw) == 0 {
 		return nil, errors.New("no picture for this message")
 	}
-	var m waE2E.Message
-	if err := proto.Unmarshal(raw, &m); err != nil {
+	var whole waE2E.Message
+	if err := proto.Unmarshal(raw, &whole); err != nil {
 		return nil, err
 	}
+	m := unwrap(&whole)
 	ctx, cancel := timeout(30 * time.Second)
 	defer cancel()
+	if d := imageDoc(m); d != nil {
+		b, err := c.Download(ctx, d)
+		if err != nil && len(d.GetJPEGThumbnail()) > 0 {
+			return d.GetJPEGThumbnail(), nil
+		}
+		return b, err
+	}
 	if s := m.GetStickerMessage(); s != nil {
 		return c.Download(ctx, s)
 	}
