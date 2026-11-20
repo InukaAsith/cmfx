@@ -44,8 +44,6 @@ actor KLock {
     /// The open session, and when the listening loop last went round: `wake()` tells a stuck loop from a quiet one.
     private var session: KSession?
     private var beat = Date.now
-    /// Bumped at each `wake()`: a stuck check from an earlier opening does nothing.
-    private var wakes = 0
 
     /// CoreBluetooth state restoration: the listener's link only.
     static let restoreID = "app.cmfx.watch"
@@ -73,19 +71,14 @@ actor KLock {
         return link
     }
 
-    /// CMFX came to the front: costs nothing in the background (no timer). The listener registers with the watch
-    /// again (one PING), which is what relaunching Nothing X used to do for it. Stuck: a loop that has not gone round
-    /// in 40 s on screen (it goes round every 5 s, a request at most 30 s) starts again on the same link. Time
-    /// suspended does not count: the loop sleeps with the app. Nothing while stopped on purpose (a watch face install).
+    /// CMFX came to the front: costs nothing in the background (no timer). A loop stuck for 45 s starts again; a
+    /// working one registers with the watch again (one PING, never a restart), which is what relaunching Nothing X used to do for it.
+    /// Nothing while stopped on purpose (a watch face install).
     func wake() {
         guard task != nil else { return }
-        wakes += 1
-        let (gen, woke) = (wakes, Date.now)
-        Task {
-            try? await Task.sleep(for: .seconds(40))
-            guard gen == wakes, task != nil, UIApplication.shared.applicationState == .active, beat < woke else { return }
+        if session != nil, Date.now.timeIntervalSince(beat) > 45 {
             DevLog.shared.log("listener stuck: starting again")
-            restart()
+            return restart()
         }
         guard let session else { return }
         Task {
@@ -98,12 +91,8 @@ actor KLock {
         }
     }
 
-    /// A new loop on the same link: a second central with the restore id would stop iOS waking CMFX for the watch
-    /// (only a relaunch fixed that). The old loop's waiting step ends with an error and the loop with its task.
     private func restart() {
-        task?.cancel()
-        task = nil
-        link?.unstick()
+        stop()
         start()
     }
 
@@ -156,17 +145,7 @@ actor KLock {
             while up, !Task.isCancelled {
                 beat = .now
                 await runDueJobs(session)
-                // Nothing X talked (its bind changes the watch's session): register again, or the watch apps
-                // wait for the phone until CMFX is relaunched. Costs nothing while Nothing X is quiet.
-                if await session.takeForeign() {
-                    do {
-                        _ = try await withDeadline(.seconds(8)) { try await KLock.shared.run { try await session.ping() } }
-                        DevLog.shared.log("Nothing X talked: registered again")
-                    } catch {
-                        DevLog.shared.log("register after Nothing X: \(error)")
-                    }
-                }
-                guard let m = try? await session.recvFrom(timeout: .seconds(2)) else { continue }
+                guard let m = try? await session.recvFrom(timeout: .seconds(5)) else { continue }
                 beat = .now
                 // one request that hangs (a server, a service) must not stop the watch's next ones being heard
                 let data = m.data, slot = Int(m.slot)
