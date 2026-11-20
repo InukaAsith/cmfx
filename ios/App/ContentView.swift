@@ -46,23 +46,23 @@ struct CMFXApp: App {
 
 /// CMFX's own features in the bar; the rest (and FMC Companion's watch faces) under More.
 enum RootTab: Hashable, CaseIterable {
-    case overview, whatsapp, navigation, mail, more
+    case overview, navigation, notes, watch, faces
     var title: String {
         switch self {
         case .overview: "Overview"
-        case .whatsapp: "WhatsApp"
         case .navigation: "Navigation"
-        case .mail: "Mail"
-        case .more: "More"
+        case .notes: "Notes"
+        case .watch: "Watch"
+        case .faces: "Faces"
         }
     }
     var icon: String {
         switch self {
         case .overview: "circle.grid.2x2.fill"
-        case .whatsapp: "message.fill"
         case .navigation: "location.north.line.fill"
-        case .mail: "envelope.fill"
-        case .more: "ellipsis.circle.fill"
+        case .notes: "note.text"
+        case .watch: "applewatch"
+        case .faces: "square.grid.2x2.fill"
         }
     }
 }
@@ -77,10 +77,10 @@ struct RootTabs: View {
     @ViewBuilder private func page(_ t: RootTab) -> some View {
         switch t {
         case .overview: OverviewTab(tab: $tab, faces: $faces)
-        case .whatsapp: NavigationStack { WhatsAppPage() }
-        case .mail: NavigationStack { MailPage() }
         case .navigation: NavigationStack { NavPage() }
-        case .more: MoreTab(faces: $faces)
+        case .notes: NavigationStack { NotesPage() }
+        case .watch: ContentView()
+        case .faces: CatalogView(path: $path)
         }
     }
 
@@ -92,12 +92,21 @@ struct RootTabs: View {
                 }
             }
             .tabBarMinimizeBehavior(.onScrollDown)
-            .fullScreenCover(isPresented: $faces) { FacesSheet(path: $path) }
+            .onChange(of: faces) { showFaces() }
         } else {
             page(tab)
                 .safeAreaInset(edge: .bottom, spacing: 0) { OwnTabBar(current: $tab) }
-                .fullScreenCover(isPresented: $faces) { FacesSheet(path: $path) }
+                .onChange(of: faces) { showFaces() }
         }
+    }
+}
+
+extension RootTabs {
+    /// A link to a face (or "watch faces" anywhere) opens the Faces tab.
+    fileprivate func showFaces() {
+        guard faces else { return }
+        tab = .faces
+        faces = false
     }
 }
 
