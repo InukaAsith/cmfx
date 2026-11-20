@@ -79,6 +79,15 @@ enum Checks {
         eq("chats message", hex(ChatsProto.message(2, kind: ChatsProto.todo, "Milk")), "4d020003" + hex(Data("Milk".utf8)))
         eq("chats append", hex(ChatsProto.append(me: true, "On it")), "410100" + hex(Data("On it".utf8)))
         if ChatsProto.message(0, String(repeating: "€", count: 50)).count != 4 + 120 { bad.append("chats message cut") }
+        eq("chats read", hex(ChatsProto.message(1, me: true, state: 2, "ok")), "4d010500" + hex(Data("ok".utf8)))
+        eq("chats delivered", hex(ChatsProto.append(me: true, state: 1, "x")), "410300" + hex(Data("x".utf8)))
+        eq("chats state", hex(ChatsProto.state(3, 2)), "530302")
+        eq("chats online", hex(ChatsProto.online(true)), "5001")
+        var st = ChatsProto.Row(id: 1, name: "Syncing...", preview: "")
+        st.status = true
+        eq("chats status row", String(hex(ChatsProto.list([st])[1]).prefix(8)), "430001ff")
+        let pic = ChatsProto.picture(2, rgb: [UInt8](repeating: 200, count: 8 * 8 * 3), width: 8, height: 8)
+        if pic.first?.prefix(3) != Data([0x69, 2, 0x49]) || pic.last != Data([0x65, 2]) || pic.count < 3 { bad.append("chats picture") }
         let q = ChatsProto.quick(["• Archive", "a", "b", "c", "d", "e", "f"])
         if q.count != 6 || q[0] != Data([0x51, 0]) + Data("• Archive".utf8) { bad.append("chats quick") }
         let words = (0..<60).map { "w\($0)" }.joined(separator: " ")
