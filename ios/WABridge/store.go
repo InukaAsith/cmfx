@@ -45,6 +45,8 @@ type msg struct {
 	ts          time.Time
 	unread      bool
 	group       bool
+	state       int    // ours: 0 sent, 1 delivered, 2 read
+	media       []byte // a sticker's or photo's message (protobuf)
 }
 
 func openStore(path string) (*store, error) {
@@ -57,6 +59,10 @@ func openStore(path string) (*store, error) {
 		db.Close()
 		return nil, err
 	}
+	// added later: our messages' state (0 sent, 1 delivered, 2 read), a sticker's or photo's message (to download
+	// its picture when the watch asks); an existing store errors "duplicate column", fine
+	db.Exec(`ALTER TABLE msgs ADD COLUMN state INTEGER NOT NULL DEFAULT 0`)
+	db.Exec(`ALTER TABLE msgs ADD COLUMN media BLOB`)
 	return &store{db}, nil
 }
 
@@ -78,8 +84,9 @@ func preview(m msg) string {
 // live: counts as unread when it is not ours.
 func (s *store) add(m msg, live bool) bool {
 	unread := live && !m.fromMe
-	res, err := s.db.Exec(`INSERT OR IGNORE INTO msgs (jid, id, from_me, kind, text, sender, who, ts, unread)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, m.jid, m.id, m.fromMe, m.kind, m.text, m.sender, m.who, m.ts.Unix(), unread || m.unread)
+	res, err := s.db.Exec(`INSERT OR IGNORE INTO msgs (jid, id, from_me, kind, text, sender, who, ts, unread, state, media)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, m.jid, m.id, m.fromMe, m.kind, m.text, m.sender, m.who, m.ts.Unix(),
+		unread || m.unread, m.state, m.media)
 	if err != nil {
 		return false
 	}
@@ -144,7 +151,9 @@ func (s *store) chats(n int) []chatRow {
 }
 
 type msgRow struct {
+	ID     string `json:"id"`
 	FromMe bool   `json:"fromMe"`
+	State  int    `json:"state"`
 	Kind   int    `json:"kind"`
 	Text   string `json:"text"`
 	Who    string `json:"who,omitempty"`
@@ -154,8 +163,8 @@ type msgRow struct {
 // messages: the last n, oldest first.
 func (s *store) messages(jid string, n int) []msgRow {
 	out := []msgRow{}
-	rows, err := s.db.Query(`SELECT from_me, kind, text, who, ts FROM
-		(SELECT from_me, kind, text, who, ts, rowid r FROM msgs WHERE jid = ? ORDER BY ts DESC, rowid DESC LIMIT ?)
+	rows, err := s.db.Query(`SELECT id, from_me, state, kind, text, who, ts FROM
+		(SELECT id, from_me, state, kind, text, who, ts, rowid r FROM msgs WHERE jid = ? ORDER BY ts DESC, rowid DESC LIMIT ?)
 		ORDER BY ts, r`, jid, n)
 	if err != nil {
 		return out
@@ -163,7 +172,7 @@ func (s *store) messages(jid string, n int) []msgRow {
 	defer rows.Close()
 	for rows.Next() {
 		var m msgRow
-		if rows.Scan(&m.FromMe, &m.Kind, &m.Text, &m.Who, &m.Time) == nil {
+		if rows.Scan(&m.ID, &m.FromMe, &m.State, &m.Kind, &m.Text, &m.Who, &m.Time) == nil {
 			out = append(out, m)
 		}
 	}
@@ -219,4 +228,26 @@ func (s *store) edit(jid, id, text string) {
 func (s *store) clear() {
 	s.db.Exec(`DELETE FROM msgs`)
 	s.db.Exec(`DELETE FROM chats`)
+}
+
+// raise: our messages ids in jid are now at least `state` (receipts come in any order). Whether any changed.
+func (s *store) raise(jid string, ids []string, state int) bool {
+	changed := false
+	for _, id := range ids {
+		res, err := s.db.Exec(`UPDATE msgs SET state = ? WHERE jid = ? AND id = ? AND from_me = 1 AND state < ?`,
+			state, jid, id, state)
+		if err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+// mediaOf: the stored message of a sticker or photo.
+func (s *store) mediaOf(jid, id string) []byte {
+	var b []byte
+	s.db.QueryRow(`SELECT media FROM msgs WHERE jid = ? AND id = ?`, jid, id).Scan(&b)
+	return b
 }

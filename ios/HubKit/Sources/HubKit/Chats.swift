@@ -13,6 +13,8 @@ public enum ChatsProto {
         public var id: UInt8, unread: Bool, name: String, preview: String
         /// How many are unread (the watch shows the number; 0: `unread` alone, as 1).
         public var count: Int = 0
+        /// A status line ("Syncing..."): red on the watch, not a chat.
+        public var status = false
         public init(id: UInt8, unread: Bool = false, name: String, preview: String) {
             self.id = id; self.unread = unread; self.name = name; self.preview = preview
         }
@@ -20,7 +22,7 @@ public enum ChatsProto {
             self.init(id: id, unread: unreadCount > 0, name: name, preview: preview)
             count = unreadCount
         }
-        var unreadByte: UInt8 { count > 0 ? UInt8(min(count, 255)) : (unread ? 1 : 0) }
+        var unreadByte: UInt8 { status ? 255 : count > 0 ? UInt8(min(count, 254)) : (unread ? 1 : 0) }
     }
 
     /// `L n`, then `C idx id unread nlen name… plen preview…` per row (12 at most).
@@ -36,14 +38,45 @@ public enum ChatsProto {
     /// `H id title…`: a chat opened, its messages follow and replace.
     public static func open(_ id: UInt8, title: String) -> Data { Data([UInt8(ascii: "H"), id]) + utf8(title, 24) }
 
+    /// The `me` byte: bit 0 ours, bits 1–2 its state (0 sent, 1 delivered, 2 read).
+    static func meByte(_ me: Bool, _ state: Int) -> UInt8 { me ? 1 | UInt8(min(max(state, 0), 2)) << 1 : 0 }
+
     /// `M idx me kind text…`, idx 0 the oldest.
-    public static func message(_ idx: Int, me: Bool = false, kind: UInt8 = plain, _ text: String) -> Data {
-        Data([UInt8(ascii: "M"), UInt8(idx & 0xFF), me ? 1 : 0, kind]) + utf8(text, Self.text)
+    public static func message(_ idx: Int, me: Bool = false, state: Int = 0, kind: UInt8 = plain, _ text: String) -> Data {
+        Data([UInt8(ascii: "M"), UInt8(idx & 0xFF), meByte(me, state), kind]) + utf8(text, Self.text)
     }
 
     /// `A me kind text…`: one more at the end.
-    public static func append(me: Bool = false, kind: UInt8 = plain, _ text: String) -> Data {
-        Data([UInt8(ascii: "A"), me ? 1 : 0, kind]) + utf8(text, Self.text)
+    public static func append(me: Bool = false, state: Int = 0, kind: UInt8 = plain, _ text: String) -> Data {
+        Data([UInt8(ascii: "A"), meByte(me, state), kind]) + utf8(text, Self.text)
+    }
+
+    /// `S idx state`: our message idx was delivered (1) or read (2).
+    public static func state(_ idx: Int, _ state: Int) -> Data {
+        Data([UInt8(ascii: "S"), UInt8(idx & 0xFF), UInt8(min(max(state, 0), 2))])
+    }
+
+    /// `P online`: the open chat's contact is online.
+    public static func online(_ on: Bool) -> Data { Data([UInt8(ascii: "P"), on ? 1 : 0]) }
+
+    /// Message idx's picture: `i idx <I header>`, `d idx seq tokens…` (125 bytes each), `e idx`; 16 colours.
+    public static func picture(_ idx: Int, rgb: [UInt8], width: Int, height: Int, scale: UInt8 = 1) -> [Data] {
+        let (palette, px) = Quantize.medianCut(rgb: rgb, colours: 16)
+        let header = Rle.header(width: width, height: height, scale: scale,
+                                palette: palette.map { Rle.rgb565($0.0, $0.1, $0.2) })
+        let tokens = Rle.tokens(px, width: width, height: height)
+        let i = UInt8(idx & 0xFF)
+        var out = [Data([UInt8(ascii: "i"), i]) + header]
+        var seq: UInt8 = 0
+        var at = tokens.startIndex
+        while at < tokens.endIndex {
+            let end = min(at + 125, tokens.endIndex)
+            out.append(Data([UInt8(ascii: "d"), i, seq]) + tokens[at..<end])
+            seq &+= 1
+            at = end
+        }
+        out.append(Data([UInt8(ascii: "e"), i]))
+        return out
     }
 
     /// `H` then the last 12 messages as `M`.

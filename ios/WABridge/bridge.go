@@ -18,6 +18,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/proto/waWeb"
 	wastore "go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
@@ -33,6 +34,10 @@ type Listener interface {
 	// OnState: "connected", "synced" (the offline messages are in), "disconnected", "paired", "pair-failed",
 	// "logged-out".
 	OnState(s string)
+	// OnReceipt: our messages in jid were delivered or read.
+	OnReceipt(jid string)
+	// OnPresence: jid (watched with Watch) came online or went offline.
+	OnPresence(jid string, online bool)
 }
 
 const (
@@ -391,7 +396,91 @@ func handle(c *whatsmeow.Client, evt any) {
 		}
 	case *events.HistorySync:
 		history(c, e.Data)
+	case *events.Receipt:
+		st := 0
+		switch e.Type {
+		case types.ReceiptTypeDelivered:
+			st = 1
+		case types.ReceiptTypeRead, types.ReceiptTypePlayed:
+			st = 2
+		}
+		if st == 0 || e.IsFromMe {
+			return
+		}
+		chat := chatOf(c, e.Chat)
+		if chat.IsEmpty() || !own.raise(chat.String(), e.MessageIDs, st) {
+			return
+		}
+		if l := current(); l != nil {
+			l.OnReceipt(chat.String())
+		}
+	case *events.Presence:
+		chat := chatOf(c, e.From)
+		if l := current(); !chat.IsEmpty() && l != nil {
+			l.OnPresence(chat.String(), !e.Unavailable)
+		}
 	}
+}
+
+func current() Listener {
+	mu.Lock()
+	defer mu.Unlock()
+	return listener
+}
+
+// Watch: CMFX shows as online and asks for jid's online state (WhatsApp tells only those online themselves; while
+// online, the phone's own WhatsApp may hold its notifications back, as with WhatsApp Web open). Unwatch ends it.
+func Watch(jid string) {
+	c := client()
+	j, err := types.ParseJID(jid)
+	if c == nil || err != nil || j.Server == types.GroupServer || !c.IsConnected() {
+		return
+	}
+	ctx, cancel := timeout(10 * time.Second)
+	defer cancel()
+	if c.SendPresence(ctx, types.PresenceAvailable) == nil {
+		c.SubscribePresence(ctx, j)
+	}
+}
+
+func Unwatch() {
+	c := client()
+	if c == nil || !c.IsConnected() {
+		return
+	}
+	ctx, cancel := timeout(10 * time.Second)
+	defer cancel()
+	c.SendPresence(ctx, types.PresenceUnavailable)
+}
+
+// Media: the picture of sticker or photo id in jid, downloaded from WhatsApp (webp or jpeg); a photo whose file
+// cannot be had gives its small preview.
+func Media(jid, id string) ([]byte, error) {
+	c := client()
+	if c == nil {
+		return nil, errNotOpen
+	}
+	raw := own.mediaOf(jid, id)
+	if len(raw) == 0 {
+		return nil, errors.New("no picture for this message")
+	}
+	var m waE2E.Message
+	if err := proto.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	ctx, cancel := timeout(30 * time.Second)
+	defer cancel()
+	if s := m.GetStickerMessage(); s != nil {
+		return c.Download(ctx, s)
+	}
+	if im := m.GetImageMessage(); im != nil {
+		b, err := c.Download(ctx, im)
+		if err != nil && len(im.GetJPEGThumbnail()) > 0 {
+			return im.GetJPEGThumbnail(), nil
+		}
+		return b, err
+	}
+	return nil, errors.New("not a sticker or photo")
 }
 
 // chatOf: the chat's JID as CMFX keys it (a phone number rather than a LID when known), "" for chats not shown
@@ -444,6 +533,10 @@ func keepMessage(c *whatsmeow.Client, e *events.Message, live bool) (msg, bool) 
 	}
 	m := msg{jid: jid, id: e.Info.ID, fromMe: e.Info.IsFromMe, kind: kind, text: text, ts: e.Info.Timestamp,
 		group: chat.Server == types.GroupServer}
+	if kind == kindSticker || kind == kindPhoto {
+		// kept to download the picture if the watch asks
+		m.media, _ = proto.Marshal(e.Message)
+	}
 	if m.group && !m.fromMe {
 		m.sender = e.Info.Sender.ToNonAD().String()
 		m.who = shortName(displayName(c, chatOf(c, e.Info.Sender).String(), e.Info.PushName))
@@ -541,6 +634,15 @@ func history(c *whatsmeow.Client, h *waHistorySync.HistorySync) {
 				push = e.Info.PushName
 			}
 			keepMessage(c, e, false)
+			if e.Info.IsFromMe {
+				// how far it got, as of the sync
+				switch st := hm.GetMessage().GetStatus(); {
+				case st >= waWeb.WebMessageInfo_READ:
+					own.raise(jid, []string{e.Info.ID}, 2)
+				case st == waWeb.WebMessageInfo_DELIVERY_ACK:
+					own.raise(jid, []string{e.Info.ID}, 1)
+				}
+			}
 		}
 		if own.name(jid) == "" && !stampless(conv) {
 			own.setName(jid, nameFor(c, chat, push, false))

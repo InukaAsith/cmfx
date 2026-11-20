@@ -21,10 +21,22 @@ private final class WAEvents: NSObject, WabridgeListenerProtocol {
         guard let s else { return }
         Task { @MainActor in Hub.shared.whatsapp.changed(s) }
     }
+
+    func onReceipt(_ jid: String?) {
+        guard let jid else { return }
+        Task { @MainActor in Hub.shared.whatsapp.receipts(jid) }
+    }
+
+    func onPresence(_ jid: String?, online: Bool) {
+        guard let jid else { return }
+        Task { @MainActor in Hub.shared.whatsapp.presence(jid, online) }
+    }
 }
 
 private struct WAChat: Decodable { let jid: String, name: String, unread: Int, preview: String }
-private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who: String? }
+private struct WAMsg: Decodable {
+    let id: String?, fromMe: Bool, state: Int?, kind: Int, text: String, who: String?
+}
 
 @MainActor @Observable final class WhatsAppService: WatchService {
     static let app = "WhatsApp"
@@ -115,8 +127,9 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
                 enqueue {
                     await self.sendList()
                     if let id = self.open, id != Self.info, let jid = self.ids.key(id) {
-                        await self.out(ChatsProto.chat(id, title: self.names[jid] ?? "Chat", self.messages(jid).map(self.bubble)))
+                        await self.out(self.opened(id, jid))
                         await Self.go { WabridgeMarkRead(jid) }
+                        Task.detached { WabridgeWatch(jid) }
                     }
                 }
             }
@@ -198,7 +211,10 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
         idleTask?.cancel()
         idleTask = nil
         if opened, connection != "disconnected", connection != "unlinked" {
-            Task.detached { WabridgeDisconnect() }
+            Task.detached {
+                WabridgeUnwatch()
+                WabridgeDisconnect()
+            }
         }
         if opened { connection = linked ? "disconnected" : "unlinked" }
         if bg != .invalid {
@@ -309,7 +325,7 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
             await sendList(quick: true)
         case .open(let id): await show(id)
         case .send(let id, let text): await send(id, text)
-        case .tap: break
+        case .tap(let idx): await picture(idx)
         }
     }
 
@@ -329,7 +345,9 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
         } else {
             // the saved chats show at once; while WhatsApp catches up, the top row says so
             if WabridgeState() != "synced", connecting != nil {
-                rows.append(.init(id: Self.info, name: "Syncing...", preview: "Saved chats below"))
+                var row = ChatsProto.Row(id: Self.info, name: "Syncing...", preview: "Saved chats below")
+                row.status = true
+                rows.append(row)
             }
             for c in chats() {
                 names[c.jid] = c.name
@@ -337,8 +355,10 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
             }
             if rows.isEmpty || rows.allSatisfy({ $0.id == Self.info }) {
                 let syncing = WabridgeState() != "synced" && connecting != nil
-                rows = [.init(id: Self.info, name: syncing ? "Syncing..." : "WhatsApp",
-                              preview: syncing ? "Getting your chats" : connection == "disconnected" ? "Offline" : "No chats yet")]
+                var row = ChatsProto.Row(id: Self.info, name: syncing ? "Syncing..." : "WhatsApp",
+                                         preview: syncing ? "Getting your chats" : connection == "disconnected" ? "Offline" : "No chats yet")
+                row.status = syncing
+                rows = [row]
             }
         }
         await out(ChatsProto.list(rows) + (quick ? ChatsProto.quick(Self.quick) : []))
@@ -351,14 +371,29 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
         return (m.fromMe, UInt8(clamping: m.kind), text)
     }
 
+    /// The open chat's messages as the watch has them (its idx is the place in here).
+    private var shown: [WAMsg] = []
+
+    /// `H` and the last messages, with our messages' states; `shown` follows.
+    private func opened(_ id: UInt8, _ jid: String) -> [Data] {
+        shown = Array(messages(jid).suffix(ChatsProto.maxMsgs))
+        return [ChatsProto.open(id, title: names[jid] ?? "Chat")] + shown.enumerated().map { i, m in
+            let b = bubble(m)
+            return ChatsProto.message(i, me: b.me, state: m.state ?? 0, kind: b.kind, b.text)
+        }
+    }
+
     private func show(_ id: UInt8) async {
         open = id
+        shown = []
         guard id != Self.info, let jid = ids.key(id) else {
             let text = linked ? "Your chats show here once WhatsApp is reachable." :
                 "Open CMFX on the iPhone › Hub › WhatsApp, and link it with a pairing code."
             return await out([ChatsProto.open(id, title: "WhatsApp"), ChatsProto.message(0, text)])
         }
-        await out(ChatsProto.chat(id, title: names[jid] ?? "Chat", messages(jid).map(bubble)))
+        await out(opened(id, jid))
+        // online: a green dot on the watch while this chat is open (see WabridgeWatch)
+        if WabridgeState() != "disconnected" { Task.detached { WabridgeWatch(jid) } }
         if WabridgeState() == "synced" {
             await Self.go { WabridgeMarkRead(jid) }
             await sendList()
@@ -381,6 +416,9 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
         if let err {
             status = err
             await out([ChatsProto.append("Not sent: \(err)")])
+        } else if open == id {
+            // the watch added its own bubble at the end; it is in the store now, with its id for receipts
+            shown = Array(messages(jid).suffix(ChatsProto.maxMsgs))
         }
         await sendList()
     }
@@ -394,9 +432,67 @@ private struct WAMsg: Decodable { let fromMe: Bool, kind: Int, text: String, who
             await self.sendList()
             if self.open == id, let last = self.messages(jid).last {
                 let b = self.bubble(last)
-                await self.out([ChatsProto.append(me: b.me, kind: b.kind, b.text)])
+                self.shown = Array((self.shown + [last]).suffix(ChatsProto.maxMsgs))
+                await self.out([ChatsProto.append(me: b.me, state: last.state ?? 0, kind: b.kind, b.text)])
             }
         }
+    }
+
+    /// From Go: our messages in jid were delivered or read: the open chat's dots.
+    fileprivate func receipts(_ jid: String) {
+        guard live, let id = open, ids.key(id) == jid else { return }
+        enqueue {
+            guard self.open == id else { return }
+            let now = self.messages(jid)
+            var msgs: [Data] = []
+            for (i, m) in self.shown.enumerated() where m.fromMe {
+                guard let new = now.first(where: { $0.id != nil && $0.id == m.id }), (new.state ?? 0) > (m.state ?? 0)
+                else { continue }
+                self.shown[i] = new
+                msgs.append(ChatsProto.state(i, new.state ?? 0))
+            }
+            if !msgs.isEmpty { await self.out(msgs) }
+        }
+    }
+
+    /// From Go: the open chat's contact came online or went offline.
+    fileprivate func presence(_ jid: String, _ on: Bool) {
+        guard live, let id = open, ids.key(id) == jid else { return }
+        enqueue { await self.out([ChatsProto.online(on)]) }
+    }
+
+    /// A tap on a sticker or photo: its picture, downloaded from WhatsApp, into the bubble.
+    private func picture(_ idx: Int) async {
+        guard let id = open, let jid = ids.key(id), idx < shown.count, [1, 2].contains(shown[idx].kind),
+              let mid = shown[idx].id else { return }
+        let sticker = shown[idx].kind == 1
+        guard await online() else { return }
+        let data = await Self.go { () -> Data? in
+            var e: NSError?
+            let d = WabridgeMedia(jid, mid, &e)
+            return e == nil ? d : nil
+        }
+        guard open == id, let data, let img = UIImage(data: data) else { return }
+        // a sticker 120 px as it is, a photo 96 px drawn doubled
+        let side = sticker ? 120 : 96
+        let rgb = await Task.detached { Self.fitted(img, side: side) }.value
+        await out(ChatsProto.picture(idx, rgb: rgb, width: side, height: side, scale: sticker ? 1 : 2))
+    }
+
+    /// The picture inside side×side on black (a sticker's see-through parts black too), RGB.
+    private nonisolated static func fitted(_ img: UIImage, side: Int) -> [UInt8] {
+        let f = UIGraphicsImageRendererFormat()
+        f.scale = 1
+        let s = CGFloat(side)
+        let r = UIGraphicsImageRenderer(size: CGSize(width: s, height: s), format: f).image { ctx in
+            UIColor.black.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: s, height: s))
+            let k = min(s / max(img.size.width, 1), s / max(img.size.height, 1))
+            let (w, h) = (img.size.width * k, img.size.height * k)
+            img.draw(in: CGRect(x: (s - w) / 2, y: (s - h) / 2, width: w, height: h))
+        }
+        guard let cg = r.cgImage else { return [UInt8](repeating: 0, count: side * side * 3) }
+        return Pixels.bytes(cg, side: side)
     }
 
     private func out(_ msgs: [Data]) async {
