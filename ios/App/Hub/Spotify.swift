@@ -44,9 +44,17 @@ import UIKit
 
     // MARK: watch
 
+    /// The watch's asks, one at a time and in order: two at once (a double tap, a tap during a refresh) raced
+    /// on the play state.
+    private var line: Task<Void, Never>?
+
     func receive(_ m: Data) {
         guard let ask = SpotifyProto.parse(m) else { return }
-        Task { await handle(ask) }
+        let before = line
+        line = Task {
+            await before?.value
+            await handle(ask)
+        }
     }
 
     private func handle(_ ask: SpotifyProto.Ask) async {
@@ -61,14 +69,17 @@ import UIKit
                 // what plays now, from Spotify (the watch's idea may be old): "play" while playing is refused
                 let now = try? await call("GET", "/me/player") as? [String: Any]
                 let isPlaying = now?["is_playing"] as? Bool ?? playing
+                var want = !isPlaying
                 do {
                     try await call("PUT", isPlaying ? "/me/player/pause" : "/me/player/play")
                 } catch SpotifyError.restricted {
+                    want = isPlaying
                     try await call("PUT", isPlaying ? "/me/player/play" : "/me/player/pause")
                 } catch SpotifyError.noDevice {
+                    want = true
                     try await playOnADevice()
                 }
-                try await Task.sleep(for: .milliseconds(400))
+                await settle(playing: want)
                 try await push()
             case .next, .previous:
                 do {
@@ -114,7 +125,10 @@ import UIKit
             status = error.localizedDescription
             let m = error.localizedDescription.lowercased()
             try? await note(m.contains("not registered") || m.contains("user may not") ? "Add you in User Management"
-                : m.contains("404") || m.contains("no active device") ? "Open Spotify on a device" : "Spotify error")
+                : m.contains("404") || m.contains("no active device") ? "Open Spotify on a device"
+                : error is URLError ? "No connection to Spotify" : "Spotify error")
+            // the watch changed its button at once: back to what really plays
+            try? await push()
         }
     }
 
@@ -209,7 +223,7 @@ import UIKit
             } catch SpotifyError.noDevice {
                 try await playOnADevice(body)
             }
-            try await Task.sleep(for: .milliseconds(500))
+            await settle(playing: true)
             try await push()
         case "D":
             guard i < devices.count else { return }
@@ -257,6 +271,15 @@ import UIKit
         }
     }
 
+    /// Spotify's player state trails a command by up to about a second: read until it shows the change (2 s at
+    /// most), so the watch is not sent the old state and its button does not flip back.
+    private func settle(playing want: Bool) async {
+        for _ in 0..<8 {
+            try? await Task.sleep(for: .milliseconds(250))
+            if let p = try? await call("GET", "/me/player") as? [String: Any], (p["is_playing"] as? Bool) == want { return }
+        }
+    }
+
     private func idle() -> Data {
         SpotifyProto.now(flags: SpotifyProto.idle, pos: 0, dur: 0, vol: 0, title: "", artist: "", device: "")
     }
@@ -288,7 +311,7 @@ import UIKit
         } else if method == "PUT" || method == "POST" {
             req.httpBody = Data()
         }
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await Self.send(req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if code == 404, String(decoding: data, as: UTF8.self).contains("NO_ACTIVE_DEVICE") { throw SpotifyError.noDevice }
         if code == 403 {
@@ -396,6 +419,25 @@ extension SpotifyService: ASWebAuthenticationPresentationContextProviding {
 }
 
 extension SpotifyService {
+    /// Some networks drop a TLS connection now and then (seen on the owner's Wi-Fi with Spotify and OSRM): tried
+    /// again twice. A command that may have reached Spotify (the answer was lost) is only tried again when it is
+    /// safe to repeat (GET, PUT, DELETE); next/previous (POST) only when the connection never opened.
+    nonisolated static func send(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        var attempt = 0
+        while true {
+            do { return try await URLSession.shared.data(for: req) }
+            catch let e as URLError {
+                let never: Set<URLError.Code> = [.secureConnectionFailed, .cannotConnectToHost, .cannotFindHost,
+                                                 .dnsLookupFailed]
+                let maybe: Set<URLError.Code> = [.networkConnectionLost, .timedOut]
+                let again = never.contains(e.code) || (maybe.contains(e.code) && req.httpMethod != "POST")
+                attempt += 1
+                guard again, attempt <= 2 else { throw e }
+                try await Task.sleep(for: .milliseconds(300 * attempt))
+            }
+        }
+    }
+
     /// Feb 2026: Spotify stops sending `product` to development-mode apps. No word: taken as Premium (a Free
     /// account is told so by its first refused command, PREMIUM_REQUIRED).
     static func premium(_ me: [String: Any]) -> Bool {
