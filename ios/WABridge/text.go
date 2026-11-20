@@ -32,11 +32,46 @@ func label(l, s string) string {
 
 // content: what the watch shows for m; ok false for what is not a message to show (reactions, receipts of keys,
 // protocol messages).
+// unwrap: the message inside the wrappers whatsmeow leaves (an iPhone album's photos come as associated children).
+func unwrap(m *waE2E.Message) *waE2E.Message {
+	for i := 0; i < 4 && m != nil; i++ {
+		switch {
+		case m.GetAssociatedChildMessage().GetMessage() != nil:
+			m = m.GetAssociatedChildMessage().GetMessage()
+		case m.GetDocumentWithCaptionMessage().GetMessage() != nil:
+			m = m.GetDocumentWithCaptionMessage().GetMessage()
+		case m.GetEphemeralMessage().GetMessage() != nil:
+			m = m.GetEphemeralMessage().GetMessage()
+		case m.GetViewOnceMessage().GetMessage() != nil:
+			m = m.GetViewOnceMessage().GetMessage()
+		case m.GetViewOnceMessageV2().GetMessage() != nil:
+			m = m.GetViewOnceMessageV2().GetMessage()
+		default:
+			return m
+		}
+	}
+	return m
+}
+
+// imageDoc: a picture sent as a file (an iPhone's HD or "as document" photo).
+func imageDoc(m *waE2E.Message) *waE2E.DocumentMessage {
+	if d := m.GetDocumentMessage(); d != nil && strings.HasPrefix(d.GetMimetype(), "image/") {
+		return d
+	}
+	return nil
+}
+
 func content(m *waE2E.Message) (kind int, text string, ok bool) {
+	m = unwrap(m)
 	if m == nil {
 		return 0, "", false
 	}
 	switch {
+	case m.AlbumMessage != nil:
+		// the album itself; its photos come one by one
+		return 0, "", false
+	case imageDoc(m) != nil:
+		return kindPhoto, imageDoc(m).GetCaption(), true
 	case m.Conversation != nil:
 		return kindText, m.GetConversation(), true
 	case m.ExtendedTextMessage != nil:
