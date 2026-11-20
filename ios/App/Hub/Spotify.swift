@@ -15,7 +15,7 @@ import UIKit
     static let redirect = "cmfx://spotify"
     static let scopes = "user-read-playback-state user-modify-playback-state user-read-currently-playing " +
         "user-library-read user-library-modify playlist-read-private playlist-read-collaborative " +
-        "playlist-modify-private playlist-modify-public user-read-private"
+        "playlist-modify-private playlist-modify-public user-read-private user-read-recently-played"
 
     private(set) var user: String?
     private(set) var premium = false
@@ -67,8 +67,9 @@ import UIKit
             case .ready: try await push(art: true)
             case .playPause:
                 // what plays now, from Spotify (the watch's idea may be old): "play" while playing is refused
+                // nothing active (an empty answer): paused, so the tap plays (the remembered state could say playing)
                 let now = try? await call("GET", "/me/player") as? [String: Any]
-                let isPlaying = now?["is_playing"] as? Bool ?? playing
+                let isPlaying = now?["is_playing"] as? Bool ?? false
                 var want = !isPlaying
                 do {
                     try await call("PUT", isPlaying ? "/me/player/pause" : "/me/player/play")
@@ -247,6 +248,13 @@ import UIKit
         let p = try await call("GET", "/me/player") as? [String: Any] ?? [:]
         track = p["item"] as? [String: Any] ?? [:]
         playing = p["is_playing"] as? Bool ?? false
+        if track.isEmpty {
+            // nothing active (Spotify answers empty after a while paused): the last song played, paused, so the
+            // watch shows it at once and play picks it up again
+            let r = try? await call("GET", "/me/player/recently-played", query: ["limit": "1"]) as? [String: Any]
+            track = ((r?["items"] as? [[String: Any]])?.first?["track"] as? [String: Any]) ?? [:]
+            playing = false
+        }
         var flags: UInt8 = (playing ? SpotifyProto.playing : 0) | (premium ? SpotifyProto.premium : 0)
         if p["shuffle_state"] as? Bool ?? false { flags |= SpotifyProto.shuffle }
         if track.isEmpty { flags |= SpotifyProto.idle }
