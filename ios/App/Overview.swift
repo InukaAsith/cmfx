@@ -1,8 +1,7 @@
 import SwiftUI
 
-// CMFX's start: the watch at a glance and every feature as a tile. The bar holds Overview, WhatsApp, Navigation
-// and Mail; More has the rest, the watch (connection, faces on it) and Settings. FMC Companion's watch faces catalog,
-// the one part of it kept, opens as a sheet.
+// CMFX's start: the watch, Navigation and recent notes as cards, the other apps as icons. The bar holds Overview,
+// Navigation, Notes, Watch and Watch faces (FMC Companion's catalog, the one part of it kept).
 
 /// A feature: its page, look and one line of state.
 private struct Feature: Identifiable {
@@ -52,124 +51,122 @@ struct OverviewTab: View {
     @Binding var faces: Bool
     @Environment(WatchModel.self) private var watch
     @State private var hub = Hub.shared
-    @State private var sheet: Sheet?
+    @State private var settings = false
 
-    enum Sheet: String, Identifiable { case watch, settings; var id: String { rawValue } }
+    /// The apps not in the bar, as icons at the bottom.
+    private var apps: [Feature] { features(hub).filter { !["Navigation", "Notes"].contains($0.id) } }
 
     var body: some View {
         NavigationStack {
             PageScroll(title: "Overview") {
-                Button { sheet = .watch } label: { watchCard }.buttonStyle(PressScale())
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                    ForEach(features(hub)) { f in
-                        NavigationLink { page(f.id) } label: { tile(f) }.buttonStyle(PressScale())
+                Button { tab = .watch } label: { watchCard }.buttonStyle(PressScale())
+                Button { tab = .navigation } label: { navCard }.buttonStyle(PressScale())
+                Button { tab = .notes } label: { notesCard }.buttonStyle(PressScale())
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 16) {
+                    ForEach(apps) { f in
+                        NavigationLink { page(f.id) } label: { icon(f) }.buttonStyle(PressScale())
                     }
-                    Button { faces = true } label: {
-                        tile(Feature(id: "Watch faces", symbol: "square.grid.2x2.fill", color: .gray, app: "",
-                                     detail: "From fmc.tools"))
-                    }
-                    .buttonStyle(PressScale())
-                    Button { sheet = .settings } label: {
-                        tile(Feature(id: "Settings", symbol: "gearshape.fill", color: .gray, app: "", detail: "Look, accent"))
+                    Button { settings = true } label: {
+                        icon(Feature(id: "Settings", symbol: "gearshape.fill", color: .gray, app: "", detail: ""))
                     }
                     .buttonStyle(PressScale())
                 }
+                .padding(.vertical, 6)
+                .glassCard(22)
                 Text("Each feature runs only while its app is open on the watch, or while you use it here.")
-                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 6)
+                    .font(.caption).foregroundStyle(TDColor.muted).padding(.horizontal, 6)
             }
             // the watch is usually there: read it on opening
             .task { if watch.phase == .idle { await watch.check() } }
         }
-        .fullScreenCover(item: $sheet) { s in
-            Closable { if s == .watch { ContentView() } else { SettingsTab() } }
-        }
+        .fullScreenCover(isPresented: $settings) { Closable { SettingsTab() } }
     }
 
     private var connected: Bool { if case .checked = watch.phase { true } else { false } }
 
     private var watchCard: some View {
         HStack(spacing: 14) {
-            AppMark(size: 48)
+            Image(systemName: "applewatch")
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(TDColor.accent.gradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 Text("CMF Watch Pro 2").font(.headline).foregroundStyle(TDColor.text)
                 HStack(spacing: 6) {
                     Circle().fill(hub.linked || connected ? TDColor.good : TDColor.muted).frame(width: 8, height: 8)
-                    Text(hub.linked || connected ? "Connected" : "Not connected").font(.subheadline).foregroundStyle(.secondary)
+                    Text(hub.linked || connected ? "Connected" : "Not connected").font(.subheadline).foregroundStyle(TDColor.muted)
                 }
             }
             Spacer()
             if let a = hub.lastApp { Pill(text: a, color: TDColor.accent) }
-            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(TDColor.muted)
         }
         .glassCard(22)
     }
 
-    private func tile(_ f: Feature) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                FeatureIcon(symbol: f.symbol, color: f.color, size: 34)
-                Spacer()
-                if !f.app.isEmpty, !hub.apps.isEmpty, !hub.installed(f.app) {
-                    Image(systemName: "applewatch.slash").font(.caption).foregroundStyle(.tertiary)
+    /// Navigation, one tap from the start: where it is going, or a search to start.
+    private var navCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                FeatureIcon(symbol: "location.north.line.fill", color: TDColor.accent, size: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(hub.nav.active ? "Navigating" : "Navigate").font(.headline).foregroundStyle(TDColor.text)
+                    Text(hub.nav.active ? (hub.nav.destination?.name ?? "Turns on the watch") : "Turn by turn on the watch")
+                        .font(.caption).foregroundStyle(TDColor.muted).lineLimit(1)
                 }
+                Spacer()
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(TDColor.muted)
             }
-            Text(f.id).font(.headline).foregroundStyle(TDColor.text).lineLimit(1)
-            Text(f.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(TDColor.muted)
+                Text(hub.nav.active ? "Change destination" : "Where to?").foregroundStyle(TDColor.muted)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 44)
+            .background(TDColor.muted.opacity(0.12), in: Capsule())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(20)
+        .glassCard(22)
     }
-}
 
-/// More: the features not in the bar, the watch and Settings; watch faces as a sheet.
-struct MoreTab: View {
-    @Binding var faces: Bool
-    @State private var hub = Hub.shared
-    @State private var sheet: OverviewTab.Sheet?
-
-    var body: some View {
-        NavigationStack {
-            PageScroll(title: "More") {
-                VStack(spacing: 0) {
-                    ForEach(Array(features(hub).filter { !["WhatsApp", "Mail", "Navigation"].contains($0.id) }.enumerated()), id: \.element.id) { i, f in
-                        if i > 0 { Divider().overlay(TDColor.line).padding(.vertical, 8) }
-                        NavigationLink { page(f.id) } label: { row(f.symbol, f.color, f.id, f.detail) }
+    /// The three notes changed last.
+    private var notesCard: some View {
+        let recent = Array(hub.notes.store.notes.sorted { $0.modified > $1.modified }.prefix(3))
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                FeatureIcon(symbol: "note.text", color: .yellow, size: 34)
+                Text("Recent notes").font(.headline).foregroundStyle(TDColor.text)
+                Spacer()
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(TDColor.muted)
+            }
+            if recent.isEmpty {
+                Text("No notes yet. Write one here or on the watch.").font(.footnote).foregroundStyle(TDColor.muted)
+            }
+            ForEach(recent) { n in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(n.title.isEmpty ? "Untitled" : n.title).font(.subheadline.weight(.semibold))
+                        .foregroundStyle(TDColor.text).lineLimit(1)
+                    if let first = n.lines.first(where: { !$0.isEmpty }) {
+                        Text(first).font(.caption).foregroundStyle(TDColor.muted).lineLimit(1)
                     }
                 }
-                .glassCard(22)
-                VStack(spacing: 0) {
-                    Button { faces = true } label: { row("square.grid.2x2.fill", .gray, "Watch faces", "From fmc.tools") }
-                    Divider().overlay(TDColor.line).padding(.vertical, 8)
-                    Button { sheet = .watch } label: { row("applewatch", .gray, "Watch", "Connection, faces on the watch") }
-                    Divider().overlay(TDColor.line).padding(.vertical, 8)
-                    Button { sheet = .settings } label: { row("gearshape.fill", .gray, "Settings", "Look, accent") }
-                }
-                .glassCard(22)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .fullScreenCover(item: $sheet) { s in
-            Closable { if s == .watch { ContentView() } else { SettingsTab() } }
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard(22)
     }
 
-    private func row(_ symbol: String, _ color: Color, _ title: String, _ detail: String) -> some View {
-        HStack(spacing: 12) {
-            FeatureIcon(symbol: symbol, color: color, size: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline).foregroundStyle(TDColor.text)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+    private func icon(_ f: Feature) -> some View {
+        VStack(spacing: 6) {
+            FeatureIcon(symbol: f.symbol, color: f.color, size: 52)
+            Text(f.id == "Offline Maps" ? "Maps" : f.id).font(.caption2.weight(.medium)).foregroundStyle(TDColor.text)
+                .lineLimit(1).minimumScaleFactor(0.8)
         }
-        .contentShape(Rectangle())
+        .frame(maxWidth: .infinity)
     }
-}
-
-/// FMC Companion's watch faces catalog in a sheet (it keeps its own navigation).
-struct FacesSheet: View {
-    @Binding var path: [String]
-    var body: some View { Closable { CatalogView(path: $path) } }
 }
 
 /// A full-screen sheet's content with a close button over its top corner.

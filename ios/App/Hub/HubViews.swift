@@ -161,8 +161,36 @@ struct MapsPage: View {
     @State private var m = Hub.shared.maps
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var centre = CLLocationCoordinate2D(latitude: 51.508, longitude: -0.128)
+    @State private var query = ""
+    @State private var results: [Place] = []
+    @State private var searching = false
+    @State private var picked: String?
+
     var body: some View {
         PageScroll(title: "Offline Maps") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(TDColor.muted)
+                    TextField("Search a place", text: $query).onSubmit(search).submitLabel(.search)
+                    if !query.isEmpty {
+                        Button { query = ""; results = [] } label: { Image(systemName: "xmark.circle.fill") }
+                            .foregroundStyle(TDColor.muted)
+                    }
+                }
+                if searching { Working(text: "Searching…") }
+                ForEach(results) { p in
+                    Button { show(p) } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.name).foregroundStyle(TDColor.text)
+                            Text(p.detail).font(.caption).foregroundStyle(TDColor.muted).lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .glassCard()
             ZStack {
                 Map(position: $camera)
                     .onMapCameraChange(frequency: .onEnd) { centre = $0.region.center }
@@ -171,25 +199,56 @@ struct MapsPage: View {
             }
             .frame(height: 320)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            if let picked { Text(picked).font(.footnote).foregroundStyle(TDColor.muted).padding(.horizontal, 6) }
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Radius")
                     Slider(value: $m.radiusKm, in: 0.5...5, step: 0.5)
                     Text(String(format: "%.1f km", m.radiusKm)).monospacedDigit().frame(width: 60, alignment: .trailing)
                 }
-                Text("\(m.tileCount(centre)) tiles, zoom \(m.zooms.lowerBound)–\(m.zooms.upperBound). Open Offline Maps on the watch, then save.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                // zoom 10 shows a city, 18 single houses
+                Stepper(value: Binding(get: { m.zooms.lowerBound },
+                                       set: { m.zooms = $0...max($0, m.zooms.upperBound) }), in: 10...18) {
+                    HStack { Text("Farthest zoom"); Spacer(); Text("\(m.zooms.lowerBound)").monospacedDigit() }
+                }
+                Stepper(value: Binding(get: { m.zooms.upperBound },
+                                       set: { m.zooms = min($0, m.zooms.lowerBound)...$0 }), in: 10...18) {
+                    HStack { Text("Closest zoom"); Spacer(); Text("\(m.zooms.upperBound)").monospacedDigit() }
+                }
+                let tiles = m.tileCount(centre)
+                Text(tiles > 400 ? "\(tiles) tiles: too many (400 at most). Make the radius smaller or the closest zoom lower."
+                     : "\(tiles) tiles. Open Offline Maps on the watch, then save.")
+                    .font(.footnote).foregroundStyle(tiles > 400 ? TDColor.accent : TDColor.muted)
                 if let p = m.progress {
+                    if let s = m.status { Working(text: s) }
                     ProgressView(value: Double(p.done), total: Double(max(p.total, 1)))
                     Button("Stop", role: .destructive) { m.cancel() }.secondaryButton()
                 } else {
-                    Button("Save to watch") { m.build(at: centre) }.primaryButton()
+                    Button("Save to watch") { m.build(at: centre) }.primaryButton().disabled(tiles > 400)
+                    Status(text: m.status)
                 }
-                Status(text: m.status)
-                Text("Map data © OpenStreetMap contributors").font(.caption2).foregroundStyle(.tertiary)
             }
             .glassCard()
         }
+    }
+
+    private func search() {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return }
+        searching = true
+        Task {
+            defer { searching = false }
+            results = await Place.search(q)
+        }
+    }
+
+    private func show(_ p: Place) {
+        let c = CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon)
+        withAnimation { camera = .region(MKCoordinateRegion(center: c, latitudinalMeters: 4000, longitudinalMeters: 4000)) }
+        centre = c
+        picked = p.detail.isEmpty ? p.name : "\(p.name), \(p.detail)"
+        results = []
+        query = ""
     }
 }
 
