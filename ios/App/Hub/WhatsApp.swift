@@ -1,6 +1,7 @@
 import Foundation
 import HubKit
 import UIKit
+import ImageIO
 import WABridge
 
 // The watch's WhatsApp app (the chats app; cmf-watch-sdk hosts/wahost.py is the reference). CMFX is a WhatsApp
@@ -325,7 +326,9 @@ private struct WAMsg: Decodable {
             await sendList(quick: true)
         case .open(let id): await show(id)
         case .send(let id, let text): await send(id, text)
-        case .tap(let idx): await picture(idx)
+        case .tap(let idx):
+            // beside the queue: a download can take a while, messages go on meanwhile
+            Task { await self.picture(idx) }
         }
     }
 
@@ -468,6 +471,9 @@ private struct WAMsg: Decodable {
         let none = [Data([UInt8(ascii: "e"), UInt8(idx & 0xFF)])]
         guard let mid = shown[idx].id else { return await out(none) }
         let sticker = shown[idx].kind == 1
+        // no going offline during the download (the sender's phone may be asked to upload it again)
+        idleTask?.cancel()
+        defer { if live { touch() } }
         guard await online() else { return await out(none) }
         let data = await Self.go { () -> Data? in
             var e: NSError?
@@ -475,11 +481,21 @@ private struct WAMsg: Decodable {
             return e == nil ? d : nil
         }
         guard open == id else { return }
-        guard let data, let img = UIImage(data: data) else { return await out(none) }
+        guard let data, let img = Self.firstFrame(data) else { return await out(none) }
         // a sticker 120 px as it is, a photo 96 px drawn doubled
         let side = sticker ? 120 : 96
         let rgb = await Task.detached { Self.fitted(img, side: side) }.value
         await out(ChatsProto.picture(idx, rgb: rgb, width: side, height: side, scale: sticker ? 1 : 2))
+    }
+
+    /// The first frame (an animated sticker's too), at most 512 px: an HD photo is not decoded whole.
+    private nonisolated static func firstFrame(_ data: Data) -> UIImage? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return UIImage(data: data) }
+        let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                     kCGImageSourceCreateThumbnailWithTransform: true,
+                                     kCGImageSourceThumbnailMaxPixelSize: 512]
+        if let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) { return UIImage(cgImage: cg) }
+        return UIImage(data: data)
     }
 
     /// The picture inside side×side on black (a sticker's see-through parts black too), RGB.

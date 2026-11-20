@@ -249,6 +249,17 @@ func (s *store) raise(jid string, ids []string, state int) bool {
 	return changed
 }
 
+// mediaInfo: a sticker's or photo's stored message, whether ours, and its sender (groups).
+func (s *store) mediaInfo(jid, id string) (media []byte, fromMe bool, sender string) {
+	s.db.QueryRow(`SELECT media, from_me, sender FROM msgs WHERE jid = ? AND id = ?`, jid, id).Scan(&media, &fromMe, &sender)
+	return
+}
+
+// setMedia: the stored message again (a new download path after the sender uploaded it again).
+func (s *store) setMedia(jid, id string, media []byte) {
+	s.db.Exec(`UPDATE msgs SET media = ? WHERE jid = ? AND id = ?`, media, jid, id)
+}
+
 // mediaOf: the stored message of a sticker or photo.
 func (s *store) mediaOf(jid, id string) []byte {
 	var b []byte
