@@ -97,3 +97,14 @@ final class FakeStub: Link, @unchecked Sendable {
     let got = try await s.recvFrom(timeout: .seconds(2))
     #expect(got.slot == 3 && got.data == Data("R1Q".utf8))
 }
+
+@Test func anotherHostTalkingAsksToRegisterOnce() async throws {
+    let stub = FakeStub()
+    let (s, _) = try await KSession.open(link: stub, secretHex: stub.secret)
+    #expect(await s.takeForeign(quiet: .zero) == false, "our own frames are not another host's")
+    stub.notify(Uuid.cmdNotify, frame(c2: 0x0049, payload: Data([1, 2, 3]), key: Data(count: 16)))
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(await s.takeForeign(quiet: .seconds(5)) == false, "not while it is still talking")
+    #expect(await s.takeForeign(quiet: .zero) == true)
+    #expect(await s.takeForeign(quiet: .zero) == false, "once per burst")
+}
