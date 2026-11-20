@@ -87,6 +87,10 @@ func (s *store) add(m msg, live bool) bool {
 	res, err := s.db.Exec(`INSERT OR IGNORE INTO msgs (jid, id, from_me, kind, text, sender, who, ts, unread, state, media)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, m.jid, m.id, m.fromMe, m.kind, m.text, m.sender, m.who, m.ts.Unix(),
 		unread || m.unread, m.state, m.media)
+	if err == nil && len(m.media) > 0 {
+		// saved before pictures were kept: the sticker or photo can be downloaded now
+		s.db.Exec(`UPDATE msgs SET media = ? WHERE jid = ? AND id = ? AND media IS NULL`, m.media, m.jid, m.id)
+	}
 	if err != nil {
 		return false
 	}
