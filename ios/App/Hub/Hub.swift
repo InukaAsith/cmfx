@@ -93,6 +93,14 @@ import WireKit
         return try await KLock.shared.run { try await session.sendWindow(msgs, slot: UInt8(slot)) }
     }
 
+    /// The sliding window (WireKit stream): 4 frames in flight, refilled as replies come; the ones refused or lost
+    /// come back to be sent again.
+    func stream(_ app: String, pull: @escaping @Sendable () async -> Data?) async throws -> [Data] {
+        guard let session else { throw HubError.noWatch }
+        guard let slot = slot(of: app) else { throw HubError.notInstalled(app) }
+        return try await KLock.shared.run { try await session.stream(slot: UInt8(slot), pull: pull) }
+    }
+
     /// A PING: the watch sends its apps' messages after a frame from the phone, so a stream waiting for credit
     /// asks with this.
     func ping() async throws {

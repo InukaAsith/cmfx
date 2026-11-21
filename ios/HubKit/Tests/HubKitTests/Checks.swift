@@ -20,6 +20,22 @@ enum Checks {
         let v = try JSONDecoder().decode(V.self, from: json)
         var bad: [String] = []
         func eq(_ name: String, _ a: String, _ b: String) { if a != b { bad.append("\(name):\n  swift  \(a)\n  python \(b)") } }
+        // YouTube Music's credit with held, and the song heard (not the last one sent) is the current one
+        if YTMusicProto.parse(Data([0x46, 0x2C, 0x01, 9, 3, 0x40, 0x01])) != .credit(next: 300, room: 9, gen: 3, held: 320) {
+            bad.append("ytmusic credit with held")
+        }
+        var st = YTStream(gen: 3)
+        let one = YTSong(id: "a", title: "A", artist: "x", seconds: 3)
+        st.add(one, index: 0, from: 0, samples: [Int16](repeating: 0, count: 244 * 200))
+        st.add(one, index: 1, from: 0, samples: [Int16](repeating: 0, count: 244 * 200))
+        st.setCredit(next: 300, room: 20, held: 250)
+        if st.playing(-1) != 0 { bad.append("ytmusic: song 1 is sent, song 0 still heard") }
+        st.setCredit(next: 300, room: 20, held: 50)
+        if st.playing(-1) != 1 { bad.append("ytmusic: song 1 heard") }
+        _ = st.take(4)
+        let before = st.sent
+        st.requeue([Data([1]), Data([2])])
+        if st.sent != before - 2 || st.take(1) != [Data([1])] { bad.append("ytmusic requeue") }
         eq("tokens", hex(Rle.tokens(v.tokens.px, width: v.tokens.w, height: v.tokens.h)), v.tokens.out)
         eq("long run", hex(Rle.tokens(v.long.px, width: v.long.w, height: v.long.h)), v.long.out)
         for c in v.rgb565 {
