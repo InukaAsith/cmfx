@@ -150,6 +150,23 @@ public actor KSession: Channel {
         }
     }
 
+    /// Several messages in flight at once (the Python hosts' Pipe): all written, then their replies in order. A
+    /// status per message, nil when its reply was lost; the caller sends refused and lost ones again. For streams
+    /// (YouTube Music's audio): one at a time a round trip each is slower than the speaker plays.
+    public func sendWindow(_ msgs: [Data], slot: UInt8) async throws -> [UInt8?] {
+        await frames.drain()
+        for m in msgs { try await link.write(Uuid.cmdWrite, frame(c2: Cmd.msg, payload: Data([slot]) + m, key: key)) }
+        var got: [UInt8?] = []
+        let deadline = ContinuousClock.now + .seconds(3)
+        while got.count < msgs.count {
+            let left = deadline - ContinuousClock.now
+            guard left > .zero, let (c2, body) = await frames.next(timeout: left) else { break }
+            if c2 == Cmd.msg | 0xA000, let plain = WireKit.open(key, body) { got.append(plain.first) }
+        }
+        if got.contains(Status.noApp.rawValue) { throw WireError.noApp }
+        return got + Array(repeating: nil, count: msgs.count - got.count)
+    }
+
     public func recv(timeout: Duration) async throws -> Data {
         try await recvFrom(timeout: timeout).data
     }

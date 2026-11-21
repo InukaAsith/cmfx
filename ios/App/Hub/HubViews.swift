@@ -18,6 +18,8 @@ struct HubTab: View {
                 .glassCard(22)
                 VStack(spacing: 0) {
                     row(SpotifyPage(), "music.note", .green, "Spotify", hub.spotify.signedIn ? "Signed in" : "Sign in", SpotifyService.app, first: true)
+                    row(YouTubeMusicPage(), "play.circle.fill", .red, "YouTube Music",
+                        hub.youtube.signedIn ? "Signed in: plays on the watch" : "Sign in to play on the watch", YouTubeMusicService.app)
                     row(GeminiPage(), "sparkles", .blue, "Gemini", Secrets.geminiKey.isEmpty ? "Add API key" : "Ready", GeminiService.app)
                     row(MapsPage(), "map.fill", .orange, "Offline Maps", "Save a region to the watch", MapsService.app)
                     row(NavPage(), "location.north.line.fill", TDColor.accent, "Navigation",

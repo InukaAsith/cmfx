@@ -26,6 +26,7 @@ import WireKit
     let mail = MailService()
     let notes = NotesService()
     let whatsapp = WhatsAppService()
+    let youtube = YouTubeMusicService()
 
     /// slot → app name, from the loader (RPCListener).
     private(set) var apps: [Int: String] = [:]
@@ -38,7 +39,8 @@ import WireKit
 
     private var services: [String: WatchService] {
         [SpotifyService.app: spotify, GeminiService.app: gemini, MapsService.app: maps, NavService.app: nav,
-         PhotosService.app: photos, MailService.app: mail, NotesService.app: notes, WhatsAppService.app: whatsapp]
+         PhotosService.app: photos, MailService.app: mail, NotesService.app: notes, WhatsAppService.app: whatsapp,
+         YouTubeMusicService.app: youtube]
     }
 
     func attach(_ s: KSession?, apps: [Int: String]) {
@@ -64,6 +66,8 @@ import WireKit
         guard let service = services[name] else { return }
         lastApp = name
         lastHeard = .now
+        // YouTube Music's credit comes 10 times a second while it plays: straight through
+        if name == YouTubeMusicService.app, m.first == UInt8(ascii: "F") { return service.receive(m) }
         // the watch runs one app at a time: WhatsApp goes offline when another talks
         if name != WhatsAppService.app { whatsapp.otherApp() }
         let bg = UIApplication.shared.beginBackgroundTask(withName: "hub")
@@ -81,6 +85,20 @@ import WireKit
     }
 
     func send(_ app: String, _ m: Data) async throws { try await send(app, [m]) }
+
+    /// Several messages to `app` in flight at once (WireKit sendWindow): a status each, nil when lost.
+    func sendWindow(_ app: String, _ msgs: [Data]) async throws -> [UInt8?] {
+        guard let session else { throw HubError.noWatch }
+        guard let slot = slot(of: app) else { throw HubError.notInstalled(app) }
+        return try await KLock.shared.run { try await session.sendWindow(msgs, slot: UInt8(slot)) }
+    }
+
+    /// A PING: the watch sends its apps' messages after a frame from the phone, so a stream waiting for credit
+    /// asks with this.
+    func ping() async throws {
+        guard let session else { throw HubError.noWatch }
+        _ = try await KLock.shared.run { try await session.ping() }
+    }
 }
 
 enum HubError: LocalizedError {
