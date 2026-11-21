@@ -71,6 +71,9 @@ import WireKit
         }
         // the watch runs one app at a time: WhatsApp goes offline when another talks
         if name != WhatsAppService.app { whatsapp.otherApp() }
+        // and music stops when its app is closed: YouTube Music, Spotify
+        if name != YouTubeMusicService.app { youtube.otherApp() }
+        if name != SpotifyPlayerService.app { spotifyPlayer.otherApp() }
         let bg = UIApplication.shared.beginBackgroundTask(withName: "hub")
         service.receive(m)
         Task { try? await Task.sleep(for: .seconds(8)); UIApplication.shared.endBackgroundTask(bg) }

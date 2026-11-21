@@ -160,6 +160,11 @@ import WireKit
         }
     }
 
+    /// Another watch app talks: this one was closed (the watch runs one at a time), so its song stops.
+    func otherApp() {
+        if stream != nil { stop() }
+    }
+
     private func stop() {
         feeder?.cancel()
         sender?.cancel()
