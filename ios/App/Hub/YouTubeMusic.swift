@@ -348,3 +348,97 @@ struct YouTubeSignIn: UIViewRepresentable {
         return YTSong(id: yt.id, title: song.title, artist: song.artist, seconds: yt.seconds)
     }
 }
+
+// MARK: sign-in cards
+
+/// YouTube's sign-in, as a card: on the Spotify pages (the watch's Spotify app plays from YouTube).
+struct YouTubeAccountCard: View {
+    var why = "The watch's Spotify app plays each song from YouTube."
+    @State private var y = Hub.shared.youtube
+    @State private var signingIn = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            CardHeader(symbol: "play.circle.fill", color: .red, title: y.signedIn ? "YouTube: signed in" : "YouTube: not signed in",
+                       detail: why)
+            if y.signedIn {
+                Button("Sign out of YouTube", role: .destructive) { y.signOut() }.secondaryButton()
+            } else {
+                Button("Sign in to YouTube") { signingIn = true }.primaryButton()
+            }
+            if let t = y.status { Text(t).font(.footnote).foregroundStyle(.secondary) }
+        }
+        .glassCard()
+        .sheet(isPresented: $signingIn) {
+            NavigationStack {
+                YouTubeSignIn { cookies in
+                    if y.save(cookies: cookies) { signingIn = false }
+                }
+                .navigationTitle("Sign in").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { signingIn = false } } }
+            }
+        }
+    }
+}
+
+/// The watch's Spotify app, laid out as YouTube Music's page: Spotify (search) and YouTube (the sound), each
+/// signed in here.
+struct SpotifyPlayerPage: View {
+    @State private var sp = Hub.shared.spotify
+    @State private var y = Hub.shared.youtube
+    @State private var player = Hub.shared.spotifyPlayer
+    @State private var signingIn = false
+    @State private var pasted = ""
+    private var ready: Bool { sp.signedIn && y.signedIn }
+    var body: some View {
+        PageScroll(title: "Spotify player") {
+            VStack(alignment: .leading, spacing: 14) {
+                CardHeader(symbol: "music.note.list", color: .green, title: ready ? "Signed in" : "Not signed in",
+                           detail: ready ? "Spotify's songs play on the watch's speaker, from YouTube"
+                               : "Sign in to Spotify (search) and to YouTube (the sound)")
+                if sp.signedIn {
+                    Button("Sign out of Spotify\(sp.user.map { " (\($0))" } ?? "")", role: .destructive) { sp.signOut() }
+                        .secondaryButton()
+                } else if Secrets.spotifyClient.isEmpty {
+                    NavigationLink("Set up Spotify (client ID)") { SpotifyPage() }.primaryButton()
+                } else {
+                    BusyButton(title: "Sign in with Spotify", busy: "Signing in…") { await sp.signIn() }
+                }
+                if y.signedIn {
+                    Button("Sign out of YouTube", role: .destructive) { y.signOut() }.secondaryButton()
+                } else {
+                    Button("Sign in to YouTube") { signingIn = true }.primaryButton()
+                }
+                if let p = player.playing { Text("Now: \(p)").font(.footnote).foregroundStyle(.secondary) }
+                if let t = player.status ?? sp.status ?? y.status { Text(t).font(.footnote).foregroundStyle(.secondary) }
+            }
+            .glassCard()
+            if !y.signedIn {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("If Google refuses the sign-in page").font(.headline)
+                    Text("Sign in at music.youtube.com in a browser, copy the request's Cookie header (developer tools › Network) and paste it here.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    TextField("SAPISID=…; __Secure-3PAPISID=…; …", text: $pasted, axis: .vertical)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().font(.footnote.monospaced())
+                    Button("Use these cookies") { y.save(header: pasted); pasted = "" }
+                        .secondaryButton().disabled(pasted.isEmpty)
+                }
+                .glassCard()
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("On the watch").font(.headline)
+                Text("Open Spotify, search with the keyboard or the dial, tap a song: it plays on the watch, then its radio. Spotify doesn't let other players stream its songs, so each one plays from YouTube Music (the same title and artist). Play and pause, previous and next, tap the ring to seek, the crown for the volume, Up next to jump ahead. Keep CMFX running.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            .glassCard()
+        }
+        .sheet(isPresented: $signingIn) {
+            NavigationStack {
+                YouTubeSignIn { cookies in
+                    if y.save(cookies: cookies) { signingIn = false }
+                }
+                .navigationTitle("Sign in").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { signingIn = false } } }
+            }
+        }
+    }
+}
