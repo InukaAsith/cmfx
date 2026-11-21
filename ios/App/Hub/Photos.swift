@@ -47,7 +47,7 @@ import UIKit
     func receive(_ m: Data) {
         let b = [UInt8](m)
         switch (b.first, b.count) {
-        case (UInt8(ascii: "R"), _): galleryDue = true; thumbs = []; viewing = false
+        case (UInt8(ascii: "R"), _): galleryDue = true; thumbs = []; viewing = false; anyOrder = b.count >= 2 && b[1] >= 1
         case (UInt8(ascii: "q"), 2): if !thumbs.contains(Int(b[1])) { thumbs.append(Int(b[1])) }
         case (UInt8(ascii: "o"), 2): round = true; open(Int(b[1]))
         case (UInt8(ascii: "o"), 3): round = b[2] == 1; open(Int(b[1]))
@@ -161,11 +161,45 @@ import UIKit
         await out(Rle.bandedPicture(rgb: f.rgb, width: f.w, height: f.h, scale: UInt8(Self.scale), x0: f.x0, y0: f.y0), gen: gen)
     }
 
-    /// The same picture in up to 256 colours (the watch shows a progress ring while it comes).
+    /// The same picture in up to 256 colours (the watch shows a progress ring while it comes). To a watch app that
+    /// takes chunks in any order (`R 1`), its header and palette go first, then the chunks over the sliding window,
+    /// several in flight.
     private func sendSharp(_ i: Int, gen: Int) async {
         guard let f = await framed(i), gen == self.gen else { return }
         sharpSent = true
-        await out(Rle.sharpPicture(rgb: f.rgb, width: f.w, height: f.h, scale: UInt8(Self.scale), x0: f.x0, y0: f.y0), gen: gen)
+        let msgs = Rle.sharpPicture(rgb: f.rgb, width: f.w, height: f.h, scale: UInt8(Self.scale), x0: f.x0, y0: f.y0,
+                                    anyOrder: anyOrder)
+        guard anyOrder else { return await out(msgs, gen: gen) }
+        let head = msgs.prefix { $0.first != UInt8(ascii: "y") }
+        await out(Array(head), gen: gen)
+        await window(Array(msgs.dropFirst(head.count)), gen: gen)
+    }
+
+    /// The watch takes the sharp version's `y` chunks in any order.
+    @ObservationIgnored private var anyOrder = false
+    @ObservationIgnored private var queue: [Data] = []
+
+    /// Over the sliding window (4 in flight); refused or lost ones go again. Ends when the watch asks for another
+    /// picture (`gen`), or after 30 s.
+    private func window(_ msgs: [Data], gen g: Int) async {
+        queue = msgs
+        let start = ContinuousClock.now
+        while g == gen, !queue.isEmpty, ContinuousClock.now - start < .seconds(30) {
+            do {
+                let again = try await Hub.shared.stream(Self.app) { @MainActor [weak self] in
+                    guard let self, self.gen == g, !self.queue.isEmpty else { return nil }
+                    return self.queue.removeFirst()
+                }
+                guard g == gen else { return }
+                if !again.isEmpty {
+                    queue.insert(contentsOf: again, at: 0)
+                    try? await Task.sleep(for: .milliseconds(40))
+                }
+            } catch {
+                status = error.localizedDescription
+                return
+            }
+        }
     }
 
     private func out(_ msgs: [Data], gen: Int) async {

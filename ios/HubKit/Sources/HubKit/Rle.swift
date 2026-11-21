@@ -106,9 +106,10 @@ extension Rle {
     }
 
     /// The sharp version of an opened photo: up to 255 colours, fewer when it would not fit the watch's `cap`;
-    /// `S total:u16 w:u16 h:u16 scale x0:i16 y0:i16`, `K first count rgb565…`, `Y seq tokens…`, `Z`.
+    /// `S total:u16 w:u16 h:u16 scale x0:i16 y0:i16`, `K first count rgb565…`, `Y seq tokens…`, `Z`; `anyOrder`
+    /// (a watch that said `R 1`): `y seq:u16 tokens…` chunks of 124 at seq × 124 and no `Z`.
     public static func sharpPicture(rgb: [UInt8], width: Int, height: Int, scale: UInt8, x0: Int16, y0: Int16,
-                                    cap: Int = 40 * 1024) -> [Data] {
+                                    cap: Int = 40 * 1024, anyOrder: Bool = false) -> [Data] {
         var palette: [(UInt8, UInt8, UInt8)] = [], data = Data()
         for colours in [255, 192, 128, 96, 64] {
             let (p, idx) = Quantize.medianCut(rgb: rgb, colours: colours)
@@ -126,6 +127,20 @@ extension Rle {
             for c in palette[first..<(first + n)] { k.le(rgb565(c.0, c.1, c.2)) }
             out.append(k)
             first += n
+        }
+        if anyOrder {
+            // `y seq:u16` at seq × 124: they may land in any order (the sliding window), the watch ends it itself
+            var seq: UInt16 = 0
+            var i = data.startIndex
+            while i < data.endIndex {
+                let j = min(i + 124, data.endIndex)
+                var y = Data([UInt8(ascii: "y")])
+                y.le(seq)
+                out.append(y + data[i..<j])
+                seq += 1
+                i = j
+            }
+            return out
         }
         var seq: UInt8 = 0
         var i = data.startIndex
