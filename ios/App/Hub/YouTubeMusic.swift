@@ -222,28 +222,35 @@ import WireKit
 
     /// The stream's messages as the watch's credit allows, 4 in flight all the time (a sliding window: a new one
     /// goes out as each reply comes, never waiting for a batch).
+    /// Messages handed to the link in the current round of `send` (taken or refused).
+    @ObservationIgnored private var handed = 0
+
     private func send(_ gen: UInt8) async {
-        // refused (the watch's inbox full) or failing: back off 25 → 250 ms; after 10 s of nothing taken, stop,
-        // so a watch that can't keep up isn't flooded until the link drops
+        // refused (the watch's inbox full) or failing: back off 25 → 250 ms; after 10 s with the watch taking
+        // nothing at all, stop, so a watch that can't keep up isn't flooded until the link drops
         var delay = 25
         var stuckSince: ContinuousClock.Instant?
         while !Task.isCancelled, let s = stream, s.gen == gen, !s.done {
             do {
-                let before = s.sent
+                handed = 0
                 let again = try await Hub.shared.stream(Self.app) { @MainActor [weak self] in
-                    guard let self, self.stream?.gen == gen else { return nil }
-                    return self.stream?.take(1).first
+                    guard let self, self.stream?.gen == gen, let m = self.stream?.take(1).first else { return nil }
+                    self.handed += 1
+                    return m
                 }
                 if stream?.gen == gen { stream?.requeue(again) }
+                // the watch took some (new or sent again)
+                let progressed = handed > again.count
+                // stuck only while the watch takes nothing: a full buffer refuses some and takes others, which is
+                // normal near the end of buffering and while playing
+                if progressed || again.isEmpty { stuckSince = nil } else { stuckSince = stuckSince ?? .now }
                 if again.isEmpty {
                     delay = 25
-                    stuckSince = nil
                 } else {
-                    stuckSince = stuckSince ?? .now
                     try? await Task.sleep(for: .milliseconds(delay))
-                    delay = min(delay * 2, 250)
+                    delay = progressed ? 25 : min(delay * 2, 250)
                 }
-                if (stream?.sent ?? 0) <= before, again.isEmpty {
+                if !progressed {
                     // waiting for credit or the next song: the watch's messages come after a frame from here
                     try? await Hub.shared.ping()
                     try? await Task.sleep(for: .milliseconds(30))
