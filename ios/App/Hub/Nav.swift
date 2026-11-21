@@ -8,9 +8,16 @@ import MapKit
 // the end: nothing in the background otherwise.
 
 @MainActor @Observable final class NavService: NSObject, WatchService, CLLocationManagerDelegate {
-    static let app = "Navigation"
-    var walking = true
-    private var transport: MKDirectionsTransportType { walking ? .walking : .automobile }
+    nonisolated static let app = "Navigation"
+    enum Mode: Int { case drive, bike, walk }
+    var mode: Mode = .walk
+    /// Navigation's page picker: walking or the roads.
+    var walking: Bool {
+        get { mode == .walk }
+        set { mode = newValue ? .walk : .drive }
+    }
+    /// The watch app the turns go to (Navigation, or Maps' own copy of this service).
+    let target: String
     private(set) var destination: MKMapItem?
     private(set) var active = false
     var status: String?
@@ -21,12 +28,16 @@ import MapKit
     private var origin = CLLocationCoordinate2D()
     private var pts: [(Double, Double)] = []
     private var cum: [Double] = []
-    private var steps: [(at: Double, kind: UInt8, dir: UInt8, name: String)] = []
-    private var expected: TimeInterval = 0
+    /// The route as planned: its line, its steps (where along it, the watch's kind and dir, the street), the time.
+    private(set) var coords: [CLLocationCoordinate2D] = []
+    private(set) var steps: [(at: Double, kind: UInt8, dir: UInt8, name: String)] = []
+    private(set) var expected: TimeInterval = 0
+    var length: Double { cum.last ?? 0 }
     private var last: Date = .distantPast
     private var lastIdx = -1
 
-    override init() {
+    init(target: String = NavService.app) {
+        self.target = target
         super.init()
         manager.delegate = self
         manager.activityType = .otherNavigation
@@ -39,6 +50,12 @@ import MapKit
     }
 
     func start(to item: MKMapItem) async {
+        guard await plan(to: item) else { return }
+        await begin()
+    }
+
+    /// The route to `item` from here, not started (Maps shows it first). false: we don't know where we are.
+    func plan(to item: MKMapItem) async -> Bool {
         destination = item
         status = nil
         working = "Finding where you are…"
@@ -46,7 +63,7 @@ import MapKit
         guard let here = await here() else {
             status = manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted
                 ? "Location is off for CMFX: turn it on in Settings › CMFX › Location" : "Couldn't find where you are"
-            return
+            return false
         }
         let to = item.placemark.coordinate
         let src = MKMapItem(placemark: MKPlacemark(coordinate: here.coordinate))
@@ -55,13 +72,18 @@ import MapKit
         var why = ""
         working = "Finding a route…"
         if let ok = await osrm(from: here.coordinate, to: to) {
-            if !ok { status = "No walking route there: following the roads" }
+            if !ok { status = "No \(mode == .bike ? "cycling" : "walking") route there: following the roads" }
         } else if let r = await appleRoute(src, item, &why) {
             load(r)
         } else {
             loadDirect(from: here.coordinate, to: to)
             status = "No route found\(why.isEmpty ? "" : " (\(why))"): the watch points straight at it"
         }
+        return true
+    }
+
+    /// Turns to the watch from now on, as the phone moves.
+    func begin() async {
         active = true
         manager.allowsBackgroundLocationUpdates = true
         manager.showsBackgroundLocationIndicator = true
@@ -72,7 +94,7 @@ import MapKit
 
     /// Apple's route, walking (when chosen) then the roads.
     private func appleRoute(_ src: MKMapItem, _ dest: MKMapItem, _ why: inout String) async -> MKRoute? {
-        for t: MKDirectionsTransportType in walking ? [.walking, .automobile] : [.automobile] {
+        for t: MKDirectionsTransportType in mode == .drive ? [.automobile] : [.walking, .automobile] {
             let req = MKDirections.Request()
             req.source = src
             req.destination = dest
@@ -90,8 +112,12 @@ import MapKit
         // the FOSSGIS servers now and then fail a connection: each is tried twice; the OSRM demo server (roads
         // only) last
         let base = "https://routing.openstreetmap.de/routed-"
-        let tries: [(String, String)] = (walking ? [("foot", base + "foot"), ("foot", base + "foot")] : [])
-            + [("car", base + "car"), ("car", base + "car"), ("car", "https://router.project-osrm.org")]
+        let own: [(String, String)] = switch mode {
+        case .walk: [("foot", base + "foot"), ("foot", base + "foot")]
+        case .bike: [("bike", base + "bike"), ("bike", base + "bike")]
+        case .drive: []
+        }
+        let tries = own + [("car", base + "car"), ("car", base + "car"), ("car", "https://router.project-osrm.org")]
         for (profile, server) in tries {
             let url = URL(string: server + "/route/v1/driving/" +
                 "\(a.longitude),\(a.latitude);\(b.longitude),\(b.latitude)?steps=true&overview=full&geometries=geojson")!
@@ -103,7 +129,7 @@ import MapKit
                   j["code"] as? String == "Ok", let r = (j["routes"] as? [[String: Any]])?.first,
                   let line = (r["geometry"] as? [String: Any])?["coordinates"] as? [[Double]], line.count >= 2
             else { continue }
-            let coords = line.map { CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) }
+            coords = line.map { CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) }
             origin = coords[0]
             pts = coords.map(local)
             cum = [0]
@@ -125,7 +151,7 @@ import MapKit
                 }
             }
             if steps.isEmpty || steps.last?.kind != 2 { steps.append((cum.last ?? at, 2, 0, "Arrive")) }
-            return profile == "foot" || !walking
+            return profile != "car" || mode == .drive
         }
         return nil
     }
@@ -155,10 +181,11 @@ import MapKit
     /// A pin with no route to it: one straight leg.
     private func loadDirect(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) {
         origin = a
+        coords = [a, b]
         pts = [local(a), local(b)]
         let d = hypot(pts[1].0, pts[1].1)
         cum = [0, d]
-        expected = d / (walking ? 1.4 : 11)
+        expected = d / (mode == .walk ? 1.4 : mode == .bike ? 4.5 : 11)
         steps = [(d, 2, 0, "Straight to the pin")]
     }
 
@@ -166,7 +193,7 @@ import MapKit
     private var authWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// Where the phone is now: asks for location access the first time, then one fix (10 s at most).
-    private func here() async -> CLLocation? {
+    func here() async -> CLLocation? {
         if manager.authorizationStatus == .notDetermined {
             await withCheckedContinuation { c in
                 authWaiters.append(c)
@@ -216,6 +243,7 @@ import MapKit
         let n = r.polyline.pointCount
         var coords = [CLLocationCoordinate2D](repeating: .init(), count: n)
         r.polyline.getCoordinates(&coords, range: NSRange(location: 0, length: n))
+        self.coords = coords
         origin = coords.first ?? .init()
         pts = coords.map(local)
         cum = [0]
@@ -246,7 +274,17 @@ import MapKit
     }
 
     private func sendRoute() async throws {
-        try await Hub.shared.send(Self.app, NavProto.route(NavProto.simplify(pts)))
+        try await Hub.shared.send(target, NavProto.route(NavProto.simplify(pts)))
+    }
+
+    /// The point `s` metres along the route (Maps centres a step's picture on it).
+    func coordinate(at s: Double) -> CLLocationCoordinate2D? {
+        guard coords.count == cum.count, let first = coords.first else { return coords.first }
+        guard let i = cum.firstIndex(where: { $0 >= s }) else { return coords.last }
+        if i == 0 { return first }
+        let t = (s - cum[i - 1]) / max(cum[i] - cum[i - 1], 1e-9)
+        let (a, b) = (coords[i - 1], coords[i])
+        return .init(latitude: a.latitude + (b.latitude - a.latitude) * t, longitude: a.longitude + (b.longitude - a.longitude) * t)
     }
 
     /// Distance along the route nearest to `p`.
@@ -279,12 +317,12 @@ import MapKit
         let (s, off) = along(p)
         let length = cum.last ?? 0
         if off > 60, let destination {
-            try? await Hub.shared.send(Self.app, NavProto.rerouting)
+            try? await Hub.shared.send(target, NavProto.rerouting)
             await start(to: destination)
             return
         }
         if length - s < 20 {
-            try? await Hub.shared.send(Self.app, NavProto.arrived)
+            try? await Hub.shared.send(target, NavProto.arrived)
             stop()
             return
         }
@@ -294,7 +332,7 @@ import MapKit
         let secs = expected * left / max(length, 1)
         let eta = Calendar.current.dateComponents([.hour, .minute], from: .now + secs)
         let heading = loc.course >= 0 ? loc.course : 0
-        try? await Hub.shared.send(Self.app, [
+        try? await Hub.shared.send(target, [
             NavProto.position(x: p.0, y: p.1, heading: heading),
             NavProto.step(idx: idx, kind: st.kind, dir: st.dir, distM: Int(st.at - s), etaMin: Int(secs / 60),
                           leftM: Int(left), arrive: (eta.hour ?? 0, eta.minute ?? 0), street: st.name),

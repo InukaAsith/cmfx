@@ -28,6 +28,8 @@ private struct Feature: Identifiable {
         Feature(id: "Gemini", symbol: "sparkles", color: .blue, app: GeminiService.app,
                 detail: Secrets.geminiKey.isEmpty ? "Add key" : "Ready"),
         Feature(id: "Offline Maps", symbol: "map.fill", color: .orange, app: MapsService.app, detail: "Save a region"),
+        Feature(id: "Maps", symbol: "map", color: TDColor.accent, app: AtlasService.app,
+                detail: hub.atlas.nav.active ? "Navigating" : "Search, routes"),
         Feature(id: "Navigation", symbol: "location.north.line.fill", color: TDColor.accent, app: NavService.app,
                 detail: hub.nav.active ? "Navigating" : "Turn by turn"),
     ]
@@ -42,6 +44,7 @@ private struct Feature: Identifiable {
     case "Spotify": SpotifyPage()
     case "Gemini": GeminiPage()
     case "Offline Maps": MapsPage()
+    case "Maps": AtlasPage()
     default: NavPage()
     }
 }
@@ -162,7 +165,7 @@ struct OverviewTab: View {
     private func icon(_ f: Feature) -> some View {
         VStack(spacing: 6) {
             FeatureIcon(symbol: f.symbol, color: f.color, size: 52)
-            Text(f.id == "Offline Maps" ? "Maps" : f.id).font(.caption2.weight(.medium)).foregroundStyle(TDColor.text)
+            Text(f.id == "Offline Maps" ? "Offline" : f.id).font(.caption2.weight(.medium)).foregroundStyle(TDColor.text)
                 .lineLimit(1).minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)

@@ -49,8 +49,8 @@ targets:
         NSBluetoothAlwaysUsageDescription: CMFX talks to your CMF Watch Pro 2 next to Nothing X.
         NSCalendarsFullAccessUsageDescription: Watch apps you allow show your upcoming events on the watch.
         NSRemindersFullAccessUsageDescription: Watch apps you allow show your reminders on the watch and mark them done.
-        NSLocationWhenInUseUsageDescription: Navigation, the offline map's position and the weather use where you are.
-        NSLocationAlwaysAndWhenInUseUsageDescription: Navigation keeps the turns coming on the watch while the phone is locked.
+        NSLocationWhenInUseUsageDescription: Maps, Navigation, the offline map's position and the weather use where you are.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Maps and Navigation keep the turns coming on the watch while the phone is locked.
         NSPhotoLibraryUsageDescription: Your newest photos show as a gallery on the watch.
         ITSAppUsesNonExemptEncryption: false
         # build-time keys (build.sh: CMFX_SPOTIFY_CLIENT_ID, CMFX_GEMINI_KEY, CMFX_GOOGLE_CLIENT_ID; CI: the repo's

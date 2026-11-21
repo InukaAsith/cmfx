@@ -21,6 +21,27 @@ enum Checks {
         let v = try JSONDecoder().decode(V.self, from: json)
         var bad: [String] = []
         func eq(_ name: String, _ a: String, _ b: String) { if a != b { bad.append("\(name):\n  swift  \(a)\n  python \(b)") } }
+        // Maps: a picture's messages fit, its chunks add up to the announced tokens, which decode to every pixel
+        do {
+            let (w, h) = (90, 64)
+            var rgb = [UInt8](repeating: 0, count: w * h * 3)
+            for y in 0..<h { for x in 0..<w { rgb[3 * (y * w + x)] = UInt8(x * 2); rgb[3 * (y * w + x) + 1] = UInt8(y * 3) } }
+            let msgs = AtlasProto.picture(id: 7, rgb: rgb, width: w, height: h, bands: 4)
+            let m = msgs[0]
+            if m.count != 14 || m[0] != UInt8(ascii: "M") || m[1] != 7 { bad.append("atlas: M header") }
+            if msgs[1...4].contains(where: { $0.count != 37 || $0[0] != UInt8(ascii: "K") }) { bad.append("atlas: K") }
+            let ds = msgs[5...]
+            if ds.contains(where: { $0.count > 128 || $0[0] != UInt8(ascii: "d") }) { bad.append("atlas: d size") }
+            let tokens = ds.reduce(Data()) { $0 + $1.dropFirst(4) }
+            if tokens.count != Int(m[12]) | Int(m[13]) << 8 { bad.append("atlas: total") }
+            var px = 0, i = tokens.startIndex
+            while i < tokens.endIndex { let t = tokens[i]; px += t & 15 == 15 ? 16 + Int(tokens[i + 1]) : Int(t & 15) + 1; i += t & 15 == 15 ? 2 : 1 }
+            if px != w * h { bad.append("atlas: \(px) pixels, not \(w * h)") }
+            if AtlasProto.parse(Data([UInt8(ascii: "D"), 1, 3])) != .directions(mode: 1, idx: 3)
+                || AtlasProto.parse(Data("Qcafe".utf8)) != .search("cafe") { bad.append("atlas: parse") }
+            let r = AtlasProto.results([(name: String(repeating: "N", count: 80), sub: String(repeating: "s", count: 120), dist: 5)])
+            if r[1].count > 128 { bad.append("atlas: result row too long") }
+        }
         // YouTube Music's credit with held, and the song heard (not the last one sent) is the current one
         if YTMusicProto.parse(Data([0x46, 0x2C, 0x01, 9, 3, 0x40, 0x01])) != .credit(next: 300, room: 9, gen: 3, held: 320) {
             bad.append("ytmusic credit with held")

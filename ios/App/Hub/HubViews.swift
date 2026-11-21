@@ -25,6 +25,8 @@ struct HubTab: View {
                             : "Sign in to Spotify and YouTube", SpotifyPlayerService.app)
                     row(GeminiPage(), "sparkles", .blue, "Gemini", Secrets.geminiKey.isEmpty ? "Add API key" : "Ready", GeminiService.app)
                     row(MapsPage(), "map.fill", .orange, "Offline Maps", "Save a region to the watch", MapsService.app)
+                    row(AtlasPage(), "map", TDColor.accent, "Maps",
+                        hub.atlas.nav.active ? "Navigating" : "Search, routes and turns on the watch", AtlasService.app)
                     row(NavPage(), "location.north.line.fill", TDColor.accent, "Navigation",
                         hub.nav.active ? "Navigating" : "Turn by turn on the watch", NavService.app)
                     row(PhotosPage(), "photo.fill", .purple, "Photos", "Your gallery on the watch", PhotosService.app)
@@ -255,6 +257,25 @@ struct MapsPage: View {
         picked = p.detail.isEmpty ? p.name : "\(p.name), \(p.detail)"
         results = []
         query = ""
+    }
+}
+
+struct AtlasPage: View {
+    @State private var a = Hub.shared.atlas
+    var body: some View {
+        PageScroll(title: "Maps") {
+            VStack(alignment: .leading, spacing: 12) {
+                CardHeader(symbol: "map", color: TDColor.accent,
+                           title: a.nav.active ? (a.nav.destination?.name ?? "Navigating") : (a.place?.name ?? "Maps on the watch"),
+                           detail: "Open Maps on the watch: search, pick Drive, Bike or Walk, turn the crown through the route, then Start. Apple Maps pictures come from here.")
+                if a.nav.active {
+                    Button("Stop", role: .destructive) { a.nav.stop() }.primaryButton()
+                }
+                if let w = a.nav.working { Working(text: w) }
+                Status(text: a.status ?? a.nav.status)
+            }
+            .glassCard()
+        }
     }
 }
 
