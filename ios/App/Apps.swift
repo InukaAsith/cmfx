@@ -87,15 +87,13 @@ struct WatchApp: Identifiable {
     /// Every loader the phone installs goes through here, or an update would put the menu back in slot order.
     func patched(_ loader: Data) -> Data { (try? setOrder(loader, names: Array(names.prefix(16)))) ?? loader }
 
-    /// The order goes inside the loader: the store's loader with the table patched, installed to slot 0xFF.
+    /// The order goes inside the loader: the bundled loader with the table patched, installed to slot 0xFF.
     func send(_ watch: WatchModel) async {
         guard unsent, !sending, watch.loader?.loader != nil else { return }
         sending = true
         defer { sending = false }
-        let fw = FirmwareModel.shared
-        if fw.check?.loaderPackage == nil { await fw.refresh() }
-        guard let loader = fw.check?.loaderPackage else {
-            status = String(localized: "Couldn't load the App Loader from fmc.tools to send the order. Pull to refresh to try again.")
+        guard let loader = BundledLoader.package else {
+            status = String(localized: "This build of CMFX has no App Loader in it, so the order can't be sent.")
             return
         }
         do {
@@ -108,7 +106,7 @@ struct WatchApp: Identifiable {
             // the menu holds the loader while it is open; tried again on the next read of the watch
             status = String(localized: "The Apps menu or an app is open on the watch. The order goes when you're back on the watch face and pull to refresh.")
         } catch OrderError.noTable {
-            status = String(localized: "The App Loader on fmc.tools is older than the app order. The order stays on this phone for now.")
+            status = String(localized: "The App Loader in this build of CMFX is older than the app order. The order stays on this phone for now.")
         } catch {
             status = String(localized: "Couldn't send the order: \(error.localizedDescription)")
         }
@@ -253,38 +251,32 @@ struct AppIcon: View {
     }
 }
 
-/// The Apps tab: the list, and an app's page over it.
-struct AppsTab: View {
-    // DEBUG screenshots: `-app <name>` opens that app's page
-    @State private var path: [String] = {
-        let a = CommandLine.arguments
-        guard let i = a.firstIndex(of: "-app"), i + 1 < a.count else { return [] }
-        return [a[i + 1]]
-    }()
+/// The Apps page under More: the list, and an app's page over it.
+struct AppsPage: View {
+    /// The ask notification's app: its page over the list.
+    @State private var asked: String?
 
     var body: some View {
         @Bindable var perms = Permissions.shared
-        NavigationStack(path: $path) {
-            AppsView()
-                .navigationDestination(for: String.self) { value in
-                    // "store:<name>" from All: the store page; a bare name: the app's settings
-                    // "headers:<name>|<host>": the headers its requests to that host carry
-                    if value.hasPrefix("store:") { AppView(name: String(value.dropFirst(6)), store: true) }
-                    else if value.hasPrefix("headers:") {
-                        let p = value.dropFirst(8).split(separator: "|", maxSplits: 1).map(String.init)
-                        HeadersView(package: p[0], host: p.count > 1 ? p[1] : "")
-                    } else { AppView(name: value) }
-                }
-        }
-        .alert("Couldn't update", isPresented: Binding { AppUpdates.shared.error != nil } set: { if !$0 { AppUpdates.shared.error = nil } }) {
-            Button("OK") {}
-        } message: { Text(AppUpdates.shared.error ?? "") }
-        // the ask notification: that app's page
-        .onChange(of: perms.open, initial: true) { _, name in
-            guard let name else { return }
-            path = [name]
-            perms.open = nil
-        }
+        AppsView()
+            .navigationDestination(for: String.self) { value in
+                // "store:<name>" from All: the store page; a bare name: the app's settings
+                // "headers:<name>|<host>": the headers its requests to that host carry
+                if value.hasPrefix("store:") { AppView(name: String(value.dropFirst(6)), store: true) }
+                else if value.hasPrefix("headers:") {
+                    let p = value.dropFirst(8).split(separator: "|", maxSplits: 1).map(String.init)
+                    HeadersView(package: p[0], host: p.count > 1 ? p[1] : "")
+                } else { AppView(name: value) }
+            }
+            .navigationDestination(item: $asked) { AppView(name: $0) }
+            .alert("Couldn't update", isPresented: Binding { AppUpdates.shared.error != nil } set: { if !$0 { AppUpdates.shared.error = nil } }) {
+                Button("OK") {}
+            } message: { Text(AppUpdates.shared.error ?? "") }
+            .onChange(of: perms.open, initial: true) { _, name in
+                guard let name else { return }
+                asked = name
+                perms.open = nil
+            }
     }
 }
 

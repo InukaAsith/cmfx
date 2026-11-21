@@ -2,9 +2,24 @@ import SwiftUI
 import UIKit
 import WireKit
 
-// Firmware: what the watch runs (the patched stub and the App Loader) against what fmc.tools publishes (`firmwares`,
-// kinds `patched` and `loader`), checked right after each connect. The App Loader updates from here over K; the
-// patched firmware goes over the stock OTA (WireKit Ota.swift, as fmc.tools' flashFirmware).
+// Firmware: what the watch runs (the patched stub and the App Loader). The patched firmware is what fmc.tools
+// publishes (`firmwares`, kind `patched`) and goes over the stock OTA (WireKit Ota.swift, as fmc.tools'
+// flashFirmware). The App Loader is the one bundled in this build (BundledLoader), installed over K.
+
+/// The App Loader that came with this build of CMFX: CI puts the newest `loader.wp2app` release of cmf-watch-sdk in
+/// the app (ios/fetch-loader.sh), with `loader.json` saying which release it is.
+enum BundledLoader {
+    struct Info: Decodable { var tag: String; var published: String?; var commit: String? }
+    static let package: Data? = Bundle.main.url(forResource: "loader", withExtension: "wp2app").flatMap { try? Data(contentsOf: $0) }
+    static let header: PackageHeader? = package.flatMap(parseHeader)
+    static let info: Info? = Bundle.main.url(forResource: "loader", withExtension: "json")
+        .flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(Info.self, from: $0) }
+    /// "v2 · 2c4fe408 · loader-2-2c4fe408"
+    static var label: String {
+        guard let header else { return String(localized: "Not in this build") }
+        return "v\(header.version) · \(String(format: "%08x", header.crc))" + (info.map { " · \($0.tag)" } ?? "")
+    }
+}
 
 @MainActor @Observable final class FirmwareModel {
     static let shared = FirmwareModel()
@@ -19,10 +34,6 @@ import WireKit
 
     struct Check {
         var firmware: Release?
-        var loader: Release?
-        /// the store's loader package: its CRC tells whether the watch has it, and it is what Update installs
-        var loaderPackage: Data?
-        var loaderHeader: PackageHeader?
     }
 
     private(set) var check: Check?
@@ -46,9 +57,12 @@ import WireKit
         }
     }
 
-    /// Never: CMFX watches run their own App Loader (cmf-watch-sdk's, with the FILE service Photos and Offline Maps
-    /// use); the fmc.tools one would replace it, so the store's loader is not offered.
-    func loaderUpdate(_ state: LoaderState?) -> Bool { false }
+    /// The bundled loader (with the phone's app order in it, as Update installs it) differs from the watch's, or the
+    /// watch has none. Never the fmc.tools one: it lacks the FILE service Photos and Offline Maps use.
+    func loaderUpdate(_ state: LoaderState?) -> Bool {
+        guard let state, let pkg = BundledLoader.package, let want = parseHeader(AppOrder.shared.patched(pkg)) else { return false }
+        return state.loader?.crc != want.crc
+    }
 
     /// The store's patched firmware has a newer stub than the watch.
     func firmwareUpdate(_ state: LoaderState?) -> Bool {
@@ -68,7 +82,7 @@ import WireKit
             struct Record: Decodable { var id, collectionId, name, kind, version, image: String; var stub: Int; var published: Bool }
             var url = Account.base.appending(path: "api/collections/firmwares/records")
             url.append(queryItems: [
-                .init(name: "filter", value: "device = 'watch_pro_2' && (kind = 'patched' || kind = 'loader')"),
+                .init(name: "filter", value: "device = 'watch_pro_2' && kind = 'patched'"),
                 // newest first by creation: a download bumps the live record's `updated`, which hid a moderator's draft
                 .init(name: "sort", value: "-created"),
                 .init(name: "fields", value: "id,collectionId,name,kind,version,image,stub,published"),
@@ -83,13 +97,7 @@ import WireKit
                             file: Account.base.appending(path: "api/files/\($0.collectionId)/\($0.id)/\($0.image)"))
                 }
             }
-            var c = Check(firmware: release("patched"), loader: release("loader"))
-            if let loader = c.loader {
-                let (pkg, _) = try await URLSession.shared.data(from: loader.file)
-                c.loaderPackage = pkg
-                c.loaderHeader = parseHeader(pkg)
-            }
-            check = c
+            check = Check(firmware: release("patched"))
             error = nil
         } catch {
             self.error = String(localized: "Couldn't check for updates: \(error.localizedDescription)")
@@ -159,10 +167,10 @@ import WireKit
         }
     }
 
-    /// Installs the store's App Loader over K, then reads the watch again.
+    /// Installs the bundled App Loader over K (with the app order in it), then reads the watch again.
     func updateLoader(_ watch: WatchModel) async {
-        guard let store = check?.loaderPackage else { return }
-        let pkg = AppOrder.shared.patched(store)
+        guard let bundled = BundledLoader.package else { return }
+        let pkg = AppOrder.shared.patched(bundled)
         progress = 0
         defer { progress = nil }
         do {
@@ -208,6 +216,35 @@ struct FirmwareView: View {
                 Text("On the watch")
             } footer: {
                 if !connected { Text("Connect on the Watch tab to read the watch.") }
+            }
+
+            Section {
+                LabeledContent {
+                    if let p = model.progress {
+                        ProgressView(value: p).frame(width: 80)
+                    } else if model.loaderUpdate(state) {
+                        Button(state?.loader == nil ? "Install" : "Update") {
+                            Task { await model.updateLoader(watch) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(model.flash != nil)
+                    } else {
+                        Text(state == nil ? "" : "Up to date").foregroundStyle(.secondary)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("App Loader")
+                        Text(BundledLoader.label).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Bundled with CMFX")
+            } footer: {
+                if let d = BundledLoader.info?.published {
+                    Text("cmf-watch-sdk's loader, released \(d). It keeps your app order. The watch's apps stay installed.")
+                } else {
+                    Text("cmf-watch-sdk's loader. It keeps your app order. The watch's apps stay installed.")
+                }
             }
 
             Section {

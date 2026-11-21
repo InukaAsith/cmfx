@@ -5,6 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 # whatsmeow for the WhatsApp watch app (Go + gomobile); CI builds it in its own step
 [ -d WABridge/WABridge.xcframework ] || bash WABridge/build.sh
+# the App Loader the Firmware page installs: the newest cmf-watch-sdk release of it
+bash fetch-loader.sh
 xcodegen generate --quiet
 rm -rf build dist
 xcodebuild -project CMFX.xcodeproj -scheme CMFX -configuration Release -sdk iphoneos \
