@@ -222,35 +222,17 @@ import WireKit
 
     /// The stream's messages as the watch's credit allows, 4 in flight all the time (a sliding window: a new one
     /// goes out as each reply comes, never waiting for a batch).
-    /// Messages handed to the link in the current round of `send` (taken or refused).
-    @ObservationIgnored private var handed = 0
-
     private func send(_ gen: UInt8) async {
-        // refused (the watch's inbox full) or failing: back off 25 → 250 ms; after 10 s with the watch taking
-        // nothing at all, stop, so a watch that can't keep up isn't flooded until the link drops
-        var delay = 25
-        var stuckSince: ContinuousClock.Instant?
         while !Task.isCancelled, let s = stream, s.gen == gen, !s.done {
             do {
-                handed = 0
+                let before = s.sent
                 let again = try await Hub.shared.stream(Self.app) { @MainActor [weak self] in
-                    guard let self, self.stream?.gen == gen, let m = self.stream?.take(1).first else { return nil }
-                    self.handed += 1
-                    return m
+                    guard let self, self.stream?.gen == gen else { return nil }
+                    return self.stream?.take(1).first
                 }
                 if stream?.gen == gen { stream?.requeue(again) }
-                // the watch took some (new or sent again)
-                let progressed = handed > again.count
-                // stuck only while the watch takes nothing: a full buffer refuses some and takes others, which is
-                // normal near the end of buffering and while playing
-                if progressed || again.isEmpty { stuckSince = nil } else { stuckSince = stuckSince ?? .now }
-                if again.isEmpty {
-                    delay = 25
-                } else {
-                    try? await Task.sleep(for: .milliseconds(delay))
-                    delay = progressed ? 25 : min(delay * 2, 250)
-                }
-                if !progressed {
+                if !again.isEmpty { try? await Task.sleep(for: .milliseconds(25)) } // refused: the watch catches up
+                if (stream?.sent ?? 0) <= before {
                     // waiting for credit or the next song: the watch's messages come after a frame from here
                     try? await Hub.shared.ping()
                     try? await Task.sleep(for: .milliseconds(30))
@@ -259,13 +241,7 @@ import WireKit
                 return stop()
             } catch {
                 DevLog.shared.log("YouTube stream: \(error.localizedDescription)")
-                stuckSince = stuckSince ?? .now
                 try? await Task.sleep(for: .milliseconds(500))
-            }
-            if let t = stuckSince, ContinuousClock.now - t > .seconds(10) {
-                DevLog.shared.log("YouTube stream: the watch took nothing for 10 s, stopped")
-                status = "The watch stopped taking the song: open it again."
-                return stop()
             }
         }
     }
