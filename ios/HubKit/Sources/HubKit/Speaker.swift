@@ -18,8 +18,12 @@ public struct ADPCMEncoder: Sendable {
 
     var predictor = 0
     var index = 0
+    /// > 0: a trellis search over each block (wp2apps adpcm.Encoder(paths), byte for byte): every kept path tries
+    /// the standard code and its magnitude ±1 (and the other sign when the standard one is 0); paths reaching the
+    /// same (predictor, index) keep the lower squared error; the `paths` best go on. ~1 dB less noise, same decoder.
+    let paths: Int
 
-    public init() {}
+    public init(paths: Int = 0) { self.paths = paths }
 
     static func step(_ predictor: Int, _ index: Int, _ code: Int) -> (Int, Int) {
         let step = steps[index]
@@ -50,12 +54,69 @@ public struct ADPCMEncoder: Sendable {
         out.reserveCapacity(3 + samples.count / 2)
         let p = UInt16(bitPattern: Int16(predictor))
         out.append(UInt8(p & 0xFF)); out.append(UInt8(p >> 8)); out.append(UInt8(index))
+        if paths > 0 {
+            let codes = trellis(samples)
+            for k in stride(from: 0, to: codes.count, by: 2) { out.append(codes[k] | codes[k + 1] << 4) }
+            return out
+        }
         var i = samples.startIndex
         while i < samples.endIndex {
             let lo = code(Int(samples[i])), hi = code(Int(samples[i + 1]))
             out.append(UInt8(lo | hi << 4))
             i += 2
         }
+        return out
+    }
+
+    private struct Path { var e: Int; var p: Int; var i: Int; var node: Int }
+
+    /// The block's codes by the trellis; the state moves to the best path's end. The order of the candidates and of
+    /// equal errors (the order the states were first reached in) is Python's, so the bytes are the same.
+    private mutating func trellis(_ samples: ArraySlice<Int16>) -> [UInt8] {
+        var codes: [UInt8] = [], parent: [Int] = []  // the paths' codes, as linked lists into these
+        codes.reserveCapacity(samples.count * paths * 2); parent.reserveCapacity(samples.count * paths * 2)
+        var kept = [Path(e: 0, p: predictor, i: index, node: -1)]
+        var next: [Path] = []
+        next.reserveCapacity(paths * 4)
+        for s in samples {
+            let x = Int(s)
+            next.removeAll(keepingCapacity: true)
+            for path in kept {
+                let step = Self.steps[path.i]
+                var d = x - path.p
+                let sign = d < 0 ? 8 : 0
+                d = abs(d)
+                var m = 0
+                if d >= step { m |= 4; d -= step }
+                if d >= step >> 1 { m |= 2; d -= step >> 1 }
+                if d >= step >> 2 { m |= 1 }
+                var cands: [Int] = []
+                for k in [m - 1, m, m + 1] where k >= 0 && k <= 7 { cands.append(sign | k) }
+                if m == 0 { cands.append(8 - sign) }
+                for c in cands {
+                    let (p1, i1) = Self.step(path.p, path.i, c)
+                    let e1 = path.e + (x - p1) * (x - p1)
+                    if let k = next.firstIndex(where: { $0.p == p1 && $0.i == i1 }) {
+                        if e1 < next[k].e {
+                            codes.append(UInt8(c)); parent.append(path.node)
+                            next[k] = Path(e: e1, p: p1, i: i1, node: codes.count - 1)
+                        }
+                    } else {
+                        codes.append(UInt8(c)); parent.append(path.node)
+                        next.append(Path(e: e1, p: p1, i: i1, node: codes.count - 1))
+                    }
+                }
+            }
+            // stable by error (Python's sorted)
+            kept = next.enumerated().sorted { ($0.element.e, $0.offset) < ($1.element.e, $1.offset) }
+                .prefix(paths).map(\.element)
+        }
+        let best = kept[0]
+        predictor = best.p
+        index = best.i
+        var out = [UInt8](repeating: 0, count: samples.count)
+        var node = best.node, k = samples.count - 1
+        while node >= 0 { out[k] = codes[node]; node = parent[node]; k -= 1 }
         return out
     }
 }
@@ -154,12 +215,34 @@ public enum SpeakerTune {
     }
 
     /// tune.py TUNING, the one the owner approved by ear (recording 23).
+    /// Loudness levelling (wp2apps tune.level): the gain to -14 dBFS gated RMS (0.4 s windows; under -50 dBFS
+    /// and 10 dB under the mean left out), within -6..+12 dB. Quiet songs come up, very loud ones down.
+    public static func level(_ samples: [Int16], rate: Int) -> Double {
+        let n = Int(Double(rate) * 0.4)
+        var powers: [Double] = []
+        var k = 0
+        while k + n <= samples.count {
+            var acc = 0.0
+            for v in samples[k..<k + n] { acc += Double(v) * Double(v) }
+            powers.append(acc / Double(n))
+            k += n
+        }
+        let floor = pow(32767.0 * pow(10, -50.0 / 20), 2)
+        powers = powers.filter { $0 > floor }
+        guard !powers.isEmpty else { return 1 }
+        let mean = powers.reduce(0, +) / Double(powers.count)
+        let kept = powers.filter { $0 >= mean / 10 }
+        let rmsDb = 10 * log10(kept.reduce(0, +) / Double(kept.count) / (32767.0 * 32767.0))
+        return pow(10, max(-6, min(12, -14 - rmsDb)) / 20)
+    }
+
     public static func forSpeaker(_ samples: [Int16], rate: Int) -> [Int16] {
         let r = Double(rate)
         let (cut, vbass, bodyHz, bodyDb, resoHz, resoDb, resoQ, topDb, topHz) =
             (160.0, 0.9, 420.0, 6.0, 900.0, -5.0, 0.8, -4.0, 2800.0)
         let (split, lowCeiling, ceiling) = (500.0, 0.125, 0.5)
-        var x = samples.map(Double.init)
+        let g = level(samples, rate: rate)
+        var x = samples.map { Double($0) * g }
         let vb = virtualBass(x, r, below: cut, amount: vbass)
         x = highpass(x, r, cut)
         for i in 0..<x.count { x[i] += vb[i] }
@@ -184,6 +267,8 @@ public enum SpeakerProto {
     public static let outKhz: UInt8 = 16
     public static let samplesPerBlock = 244  // 122 code bytes: `a` seq predictor index codes = 128 B
     public static let shimmer: UInt8 = 40
+    /// the trellis encoder's paths (wp2apps play.PATHS)
+    public static let paths = 4
 
     public static func open() -> Data { Data([UInt8(ascii: "o"), outKhz, 1]) }
     public static func title(_ s: String) -> Data { Data("t".utf8) + Data(s.utf8.prefix(40)) }
@@ -196,7 +281,7 @@ public enum SpeakerProto {
         var s = samples + [Int16](repeating: 0, count: pad ? rate * 2 / 5 : 0)
         let n = samplesPerBlock
         if s.count % n != 0 { s += [Int16](repeating: 0, count: n - s.count % n) }
-        var enc = ADPCMEncoder()
+        var enc = ADPCMEncoder(paths: paths)
         var out: [Data] = []
         out.reserveCapacity(s.count / n)
         for (seq, i) in stride(from: 0, to: s.count, by: n).enumerated() {

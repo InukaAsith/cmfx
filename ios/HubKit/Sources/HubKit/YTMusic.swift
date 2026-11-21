@@ -163,6 +163,7 @@ public enum YTMusic {
     // MARK: audio
 
     /// An audio stream's URL: AAC in MP4 (itag 140) when there is one, which AVFoundation decodes.
+    /// The song's AAC stream URL and its size in bytes.
     public static func audioURL(_ id: String) async throws -> (URL, Int) {
         var why = "No player answered"
         let account = self.account?.valid == true ? self.account : nil
@@ -209,7 +210,8 @@ public enum YTMusic {
                 continue
             }
             do {
-                return (try unlock(f), secs)
+                // the byte size (for the download's progress); else ~16 KB a second of AAC
+                return (try unlock(f), Int(f["contentLength"] as? String ?? "") ?? secs * 16_000)
             } catch {
                 why = error.localizedDescription
                 log("unlock \(p.client["clientName"] ?? "?"): \(why)")
@@ -248,7 +250,7 @@ public enum YTMusic {
     }
 
     /// The stream's bytes, in 1 MiB ranges (one big request is throttled to playback speed).
-    public static func fetch(_ url: URL) async throws -> Data {
+    public static func fetch(_ url: URL, size: Int = 0, progress: @Sendable (Double) async -> Void = { _ in }) async throws -> Data {
         var data = Data()
         let chunk = 1 << 20
         while true {
@@ -261,6 +263,7 @@ public enum YTMusic {
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             guard code == 200 || code == 206 else { throw YTError.http(code) }
             data += d
+            if size > 0 { await progress(min(1, Double(data.count) / Double(size))) }
             if d.count < chunk { return data }
         }
     }
@@ -292,13 +295,19 @@ public enum YTMusic {
 
     /// A song from YouTube as the watch's tuned 10.67 kHz samples, from `from` seconds. The audio is held only for
     /// this: the temporary file goes as soon as it is decoded.
-    public static func samples(_ id: String, from: Int = 0) async throws -> [Int16] {
-        let (url, _) = try await audioURL(id)
-        let data = try await fetch(url)
+    /// `progress`: how far, 0...100 (the download most of it).
+    public static func samples(_ id: String, from: Int = 0,
+                               progress: @Sendable (Int) async -> Void = { _ in }) async throws -> [Int16] {
+        await progress(3)
+        let (url, size) = try await audioURL(id)
+        await progress(8)
+        let data = try await fetch(url, size: size) { f in await progress(8 + Int(f * 72)) }
+        await progress(82)
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
         try data.write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }
         let pcm = try await decode(file, from: Double(from))
+        await progress(88)
         return await Task.detached(priority: .userInitiated) { SpeakerTune.forSpeaker(pcm, rate: SpeakerProto.rate) }.value
     }
 
@@ -367,6 +376,7 @@ public enum YTMusicProto {
         return Data([UInt8(b.count)] + b)
     }
 
+    public static func prep(gen: UInt8, _ pct: Int) -> Data { Data([UInt8(ascii: "r"), gen, UInt8(max(0, min(100, pct)))]) }
     public static func open(gen: UInt8) -> Data { Data([UInt8(ascii: "o"), SpeakerProto.outKhz, 1, gen]) }
 
     public static func song(_ s: YTSong, from: Int) -> Data {
@@ -414,14 +424,26 @@ public struct YTStream {
 
     /// A song's tuned samples, after what is there.
     public mutating func add(_ song: YTSong, index: Int, from: Int, samples: [Int16]) {
+        add(song, index: index, from: from, blocks: SpeakerProto.blocks(samples, pad: false))
+    }
+
+    /// A song already encoded (SpeakerProto.blocks, off the main actor: the trellis takes a moment).
+    public mutating func add(_ song: YTSong, index: Int, from: Int, blocks: [Data]) {
         out.append(YTMusicProto.song(song, from: from))
         blockSeq.append(-1)
         starts.append((seq, index))
-        for m in SpeakerProto.blocks(samples, pad: false) {
+        for m in blocks {
             out.append(Data([UInt8(ascii: "a"), UInt8(seq & 0xFF), UInt8(seq >> 8 & 0xFF)]) + m.dropFirst(3))
             blockSeq.append(seq)
             seq += 1
         }
+    }
+
+    /// How far the first song's preparing got (`r gen pct`: the watch's yellow circle); nothing once a song is in.
+    public mutating func preparing(_ pct: Int) {
+        guard starts.isEmpty else { return }
+        out.append(YTMusicProto.prep(gen: gen, pct))
+        blockSeq.append(-1)
     }
 
     public mutating func end() {
