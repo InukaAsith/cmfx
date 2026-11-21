@@ -28,6 +28,7 @@ import WireKit
     let whatsapp = WhatsAppService()
     let youtube = YouTubeMusicService()
     let spotifyPlayer = SpotifyPlayerService()
+    let atlas = AtlasService()
 
     /// slot → app name, from the loader (RPCListener).
     private(set) var apps: [Int: String] = [:]
@@ -41,7 +42,8 @@ import WireKit
     private var services: [String: WatchService] {
         [SpotifyService.app: spotify, GeminiService.app: gemini, MapsService.app: maps, NavService.app: nav,
          PhotosService.app: photos, MailService.app: mail, NotesService.app: notes, WhatsAppService.app: whatsapp,
-         YouTubeMusicService.app: youtube, SpotifyPlayerService.app: spotifyPlayer]
+         YouTubeMusicService.app: youtube, SpotifyPlayerService.app: spotifyPlayer,
+         AtlasService.app: atlas]
     }
 
     func attach(_ s: KSession?, apps: [Int: String]) {
