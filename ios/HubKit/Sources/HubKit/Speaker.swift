@@ -192,8 +192,9 @@ public enum SpeakerTune {
         return out
     }
 
-    static func compress(_ x: [Double], _ rate: Double, ceiling: Double) -> [Double] {
-        let (thresholdDb, ratio, attackMs, releaseMs) = (-24.0, 2.5, 10.0, 200.0)
+    /// `ratio` 1: no gain riding (volume smoothing off), only the make-up to the ceiling and its limiter.
+    static func compress(_ x: [Double], _ rate: Double, ceiling: Double, ratio: Double = 2.5) -> [Double] {
+        let (thresholdDb, attackMs, releaseMs) = (-24.0, 10.0, 200.0)
         let at = exp(-1 / (rate * attackMs / 1000)), rl = exp(-1 / (rate * releaseMs / 1000))
         let thr = pow(10, thresholdDb / 20) * 32768
         var env = 0.0
@@ -236,12 +237,14 @@ public enum SpeakerTune {
         return pow(10, max(-6, min(12, -14 - rmsDb)) / 20)
     }
 
-    public static func forSpeaker(_ samples: [Int16], rate: Int) -> [Int16] {
+    /// `level`: loudness levelling (off unless asked: the "enhance" option); `smooth`: volume smoothing (the
+    /// compressor; on, as tuned).
+    public static func forSpeaker(_ samples: [Int16], rate: Int, level levelling: Bool = false, smooth: Bool = true) -> [Int16] {
         let r = Double(rate)
         let (cut, vbass, bodyHz, bodyDb, resoHz, resoDb, resoQ, topDb, topHz) =
             (160.0, 0.9, 420.0, 6.0, 900.0, -5.0, 0.8, -4.0, 2800.0)
         let (split, lowCeiling, ceiling) = (500.0, 0.125, 0.5)
-        let g = level(samples, rate: rate)
+        let g = levelling ? level(samples, rate: rate) : 1
         var x = samples.map { Double($0) * g }
         let vb = virtualBass(x, r, below: cut, amount: vbass)
         x = highpass(x, r, cut)
@@ -250,7 +253,7 @@ public enum SpeakerTune {
         x = peak(x, r, resoHz, resoDb, q: resoQ)
         x = highShelf(x, r, topHz, topDb)
         x = tame(x, r)
-        x = compress(x, r, ceiling: ceiling)
+        x = compress(x, r, ceiling: ceiling, ratio: smooth ? 2.5 : 1)
         // the band under 500 Hz has its own, lower, soft limit (the driver runs out of travel there first)
         let lo = lowpass(lowpass(x, r, split), r, split)
         var lim = lowCeiling * 32767
@@ -267,7 +270,7 @@ public enum SpeakerProto {
     public static let outKhz: UInt8 = 16
     public static let samplesPerBlock = 244  // 122 code bytes: `a` seq predictor index codes = 128 B
     public static let shimmer: UInt8 = 40
-    /// the trellis encoder's paths (wp2apps play.PATHS)
+    /// the trellis encoder's paths when enhanced (wp2apps play.PATHS)
     public static let paths = 4
 
     public static func open() -> Data { Data([UInt8(ascii: "o"), outKhz, 1]) }
@@ -277,7 +280,8 @@ public enum SpeakerProto {
 
     /// The `a` messages of a whole (tuned) song, one encoder across them; `pad`: 0.4 s of silence at the end so
     /// the last music passes the watch's prebuffer (the Speaker app; YouTube Music's `z` does that).
-    public static func blocks(_ samples: [Int16], pad: Bool = true) -> [Data] {
+    /// `paths` > 0: the trellis encoder (the "enhance" option).
+    public static func blocks(_ samples: [Int16], pad: Bool = true, paths: Int = 0) -> [Data] {
         var s = samples + [Int16](repeating: 0, count: pad ? rate * 2 / 5 : 0)
         let n = samplesPerBlock
         if s.count % n != 0 { s += [Int16](repeating: 0, count: n - s.count % n) }

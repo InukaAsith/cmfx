@@ -29,7 +29,12 @@ rng = random.Random(11)
 sig = [int(9000 * math.sin(2 * math.pi * 110 * i / 10667) + 5000 * math.sin(2 * math.pi * 1300 * i / 10667)
            + 2500 * math.sin(2 * math.pi * 3500 * i / 10667) + rng.randint(-1500, 1500)) for i in range(6000)]
 tuned = tune.for_speaker(sig, 10667)
+# the options: loudness levelling and the trellis encoder on ("enhance"), volume smoothing off
+from wp2apps import adpcm  # noqa: E402
+tuned_x = tune.for_speaker(sig, 10667, level=1, smooth=0)
 print(json.dumps({
+    "speaker_x": {"in": sig, "tuned": tuned_x,
+                  "blocks": [m.hex() for m in play.messages(tuned_x + [0] * (10667 * 2 // 5), adpcm.Encoder(play.PATHS))]},
     "speaker": {"in": sig, "tuned": tuned, "blocks": [m.hex() for m in play.messages(tuned + [0] * (10667 * 2 // 5))]},
     "tokens": {"w": w, "h": h, "px": px, "out": mapbuild.tokens(bytes(px), w, h).hex()},
     "long": {"w": 300, "h": 1, "px": long_row, "out": mapbuild.tokens(bytes(long_row), 300, 1).hex()},
