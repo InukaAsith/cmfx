@@ -60,6 +60,11 @@ import WireKit
             Task { await area(q, id: id) }
         case .pick(let x, let y, let name):
             Task { await pick((Double(x), Double(y)), name: name) }
+        case .clear:
+            // ✕ on the watch: the pins go, and new maps come without them
+            results = []
+            picked = nil
+            focus = nil
         case .info(let idx):
             guard let f = found(idx) else { return }
             Task { try? await Hub.shared.send(Self.app, AtlasProto.info(idx, [f.kind, f.address, f.phone, f.more])) }

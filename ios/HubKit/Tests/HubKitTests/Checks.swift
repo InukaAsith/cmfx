@@ -101,6 +101,7 @@ enum Checks {
                 || AtlasProto.parse(Data([UInt8(ascii: "C"), 7, 2])) != .category(id: 7, 2)
                 || AtlasProto.parse(Data([UInt8(ascii: "P"), 0x9C, 0xFF, 0x2C, 0x01]) + Data("Odel".utf8)) != .pick(x: -100, y: 300, name: "Odel")
                 || AtlasProto.parse(Data([UInt8(ascii: "I"), 8])) != .info(idx: 8)
+                || AtlasProto.parse(Data("K".utf8)) != .clear
                 || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 0, 0x9C, 0xFF, 0x2C, 0x01])) != .home(id: 4, round: (-100, 300))
                 || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 1, 0, 0, 0, 0])) != .home(id: 4, round: nil)
                 || AtlasProto.parse(Data([UInt8(ascii: "U"), 5])) != .ways(idx: 5) { bad.append("atlas: parse") }
