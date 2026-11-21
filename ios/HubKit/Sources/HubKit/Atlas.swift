@@ -105,12 +105,14 @@ public enum AtlasProto {
         case search(id: UInt8, String), category(id: UInt8, Int), area(id: UInt8, String)
         /// a place on the map (a pin tapped, or dropped: no name), frame metres; what is known of result idx
         case pick(x: Int, y: Int, name: String), info(idx: Int)
+        /// the search's places cleared on the watch (✕)
+        case clear
         /// directions: the route's map comes as scene `id`; `alt` the way picked of those `O` listed
         case directions(mode: Int, idx: Int, id: UInt8, alt: Int?), start, stop, again(id: UInt8)
 
         public static func == (a: Ask, b: Ask) -> Bool {
             switch (a, b) {
-            case (.ready, .ready), (.start, .start), (.stop, .stop): return true
+            case (.ready, .ready), (.start, .start), (.stop, .stop), (.clear, .clear): return true
             case let (.home(i, r), .home(j, s)): return i == j && r?.x == s?.x && r?.y == s?.y
             case let (.search(i, p), .search(j, q)), let (.area(i, p), .area(j, q)): return i == j && p == q
             case let (.category(i, p), .category(j, q)): return i == j && p == q
@@ -140,6 +142,7 @@ public enum AtlasProto {
             let y = Int(Int16(bitPattern: UInt16(b[3]) | UInt16(b[4]) << 8))
             return .pick(x: x, y: y, name: String(decoding: b.dropFirst(5), as: UTF8.self))
         case ("I", 2): return .info(idx: Int(b[1]))
+        case ("K", 1): return .clear
         case ("U", 2): return .ways(idx: Int(b[1]))
         case ("D", 4): return .directions(mode: Int(b[1]), idx: Int(b[2]), id: b[3], alt: nil)
         case ("D", 5): return .directions(mode: Int(b[1]), idx: Int(b[2]), id: b[3], alt: Int(b[4]))
