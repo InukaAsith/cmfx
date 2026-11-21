@@ -167,6 +167,35 @@ public actor KSession: Channel {
         return got + Array(repeating: nil, count: msgs.count - got.count)
     }
 
+    /// A sliding window: up to `window` frames in flight, a new one written as each reply comes back (replies come
+    /// in frame order), so the link never idles waiting for a whole batch. `pull` gives the next message (nil: none
+    /// ready now). Ends when nothing is ready and all are answered, or after `budget` (other requests take turns).
+    /// Returns the messages not taken (FULL, PAUSED, or no reply), in order, to be sent again.
+    public func stream(slot: UInt8, window: Int = 4, budget: Duration = .milliseconds(400),
+                       pull: @Sendable () async -> Data?) async throws -> [Data] {
+        await frames.drain()
+        var flight: [Data] = []
+        var again: [Data] = []
+        let end = ContinuousClock.now + budget
+        var more = true
+        while true {
+            while more, flight.count < window, ContinuousClock.now < end {
+                guard let m = await pull() else { more = false; break }
+                try await link.write(Uuid.cmdWrite, frame(c2: Cmd.msg, payload: Data([slot]) + m, key: key))
+                flight.append(m)
+            }
+            if flight.isEmpty { return again }
+            guard let (c2, body) = await frames.next(timeout: .seconds(3)) else {
+                return again + flight // lost: all in flight again
+            }
+            guard c2 == Cmd.msg | 0xA000, let plain = WireKit.open(key, body) else { continue }
+            let m = flight.removeFirst()
+            if plain.first == Status.noApp.rawValue { throw WireError.noApp }
+            if plain.first != Status.ok.rawValue { again.append(m) }
+            if ContinuousClock.now >= end { more = false }
+        }
+    }
+
     public func recv(timeout: Duration) async throws -> Data {
         try await recvFrom(timeout: timeout).data
     }

@@ -339,7 +339,7 @@ public enum YTMusicProto {
         case next(gen: UInt8), previous(gen: UInt8)
         case seek(gen: UInt8, seconds: Int)
         case upNext
-        case credit(next: Int, room: Int, gen: UInt8)
+        case credit(next: Int, room: Int, gen: UInt8, held: Int)
     }
 
     public static func parse(_ m: Data) -> Ask? {
@@ -353,7 +353,10 @@ public enum YTMusicProto {
         case (UInt8(ascii: "b"), 2): return .previous(gen: b[1])
         case (UInt8(ascii: "j"), 4): return .seek(gen: b[1], seconds: Int(b[2]) | Int(b[3]) << 8)
         case (UInt8(ascii: "o"), 2) where b[1] == UInt8(ascii: "Q"): return .upNext
-        case (UInt8(ascii: "F"), 5): return .credit(next: Int(b[1]) | Int(b[2]) << 8, room: Int(b[3]), gen: b[4])
+        case (UInt8(ascii: "F"), 5): return .credit(next: Int(b[1]) | Int(b[2]) << 8, room: Int(b[3]), gen: b[4], held: 0)
+        // with what the watch holds and has not played (its ~7 s buffer): the song at next - held is the one heard
+        case (UInt8(ascii: "F"), 7): return .credit(next: Int(b[1]) | Int(b[2]) << 8, room: Int(b[3]), gen: b[4],
+                                                    held: Int(b[5]) | Int(b[6]) << 8)
         default: return nil
         }
     }
@@ -400,6 +403,8 @@ public struct YTStream {
     /// (first block's seq, queue index) of each song in it
     var starts: [(Int, Int)] = []
     public var credit = (next: 0, room: 8)
+    /// blocks the watch holds and has not played
+    public var held = 0
     public private(set) var ended = false
 
     public init(gen: UInt8) {
@@ -431,16 +436,18 @@ public struct YTStream {
     }
 
     /// The watch's `F next room` (next is 16 bits: unwrapped near the last one, so a long stream keeps counting).
-    public mutating func setCredit(next: Int, room: Int) {
+    public mutating func setCredit(next: Int, room: Int, held: Int = 0) {
+        self.held = held
         let base = credit.next & ~0xFFFF
         var n = base | next
         if n < credit.next - 0x8000 { n += 0x10000 } else if n > credit.next + 0x8000, n >= 0x10000 { n -= 0x10000 }
         credit = (n, room)
     }
 
-    /// The song the watch plays: the last whose first block it has taken.
+    /// The song the watch plays: the last whose first block it has heard.
     public func playing(_ fallback: Int) -> Int {
-        starts.last { $0.0 <= credit.next }?.1 ?? starts.first?.1 ?? fallback
+        let heard = credit.next - held
+        return starts.last { $0.0 <= heard }?.1 ?? starts.first?.1 ?? fallback
     }
 
     /// Up to `n` messages the credit allows.
@@ -454,6 +461,13 @@ public struct YTStream {
             sent += 1
         }
         return batch
+    }
+
+    /// Messages to be sent again (refused or lost): first in line.
+    public mutating func requeue(_ msgs: [Data]) {
+        guard !msgs.isEmpty else { return }
+        sent -= msgs.count
+        for (k, m) in msgs.enumerated() { out[sent + k] = m }
     }
 
     public var done: Bool { ended && sent == out.count }

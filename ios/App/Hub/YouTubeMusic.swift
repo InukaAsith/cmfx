@@ -83,8 +83,8 @@ import WireKit
 
     func receive(_ m: Data) {
         guard let ask = YTMusicProto.parse(m) else { return }
-        if case let .credit(next, room, gen) = ask {
-            if stream?.gen == gen { stream?.setCredit(next: next, room: room) }
+        if case let .credit(next, room, gen, held) = ask {
+            if stream?.gen == gen { stream?.setCredit(next: next, room: room, held: held) }
             return
         }
         // in order, one at a time (a pick while a search answers)
@@ -199,20 +199,21 @@ import WireKit
         if stream?.gen == gen { stream?.end() }
     }
 
-    /// The stream's messages, up to 4 in flight, as the watch's credit allows.
+    /// The stream's messages as the watch's credit allows, 4 in flight all the time (a sliding window: a new one
+    /// goes out as each reply comes, never waiting for a batch).
     private func send(_ gen: UInt8) async {
         while !Task.isCancelled, let s = stream, s.gen == gen, !s.done {
-            let batch = stream!.take(4)
-            if batch.isEmpty {
-                // waiting for credit or the next song: the watch's messages come after a frame from here
-                try? await Hub.shared.ping()
-                try? await Task.sleep(for: .milliseconds(30))
-                continue
-            }
             do {
-                let st = try await Hub.shared.sendWindow(Self.app, batch)
-                for (m, s) in zip(batch, st) where s != Status.ok.rawValue {
-                    try await Hub.shared.send(Self.app, m) // FULL, PAUSED or lost: again, waiting as needed
+                let before = s.sent
+                let again = try await Hub.shared.stream(Self.app) { @MainActor [weak self] in
+                    guard let self, self.stream?.gen == gen else { return nil }
+                    return self.stream?.take(1).first
+                }
+                if stream?.gen == gen { stream?.requeue(again) }
+                if (stream?.sent ?? 0) <= before {
+                    // waiting for credit or the next song: the watch's messages come after a frame from here
+                    try? await Hub.shared.ping()
+                    try? await Task.sleep(for: .milliseconds(30))
                 }
             } catch WireError.noApp {
                 return stop()
