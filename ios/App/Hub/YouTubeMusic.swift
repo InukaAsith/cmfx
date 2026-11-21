@@ -9,8 +9,8 @@ import WireKit
 // Signed in (the sign-in page below keeps youtube.com's cookies), YouTube plays also where it asks to "confirm
 // you're not a bot" (a VPN); yt-dlp's solver (ytsolver/, run in JavaScriptCore) unlocks those streams.
 
-@MainActor @Observable final class YouTubeMusicService: WatchService {
-    static let app = "YouTube Music"
+@MainActor @Observable class YouTubeMusicService: WatchService {
+    class var app: String { "YouTube Music" }
     private static let cookieKey = "youtube-cookies"
 
     var status: String?
@@ -103,7 +103,7 @@ import WireKit
             case .ready, .quit:
                 stop()
             case .search(let q):
-                results = try await YTMusic.search(q)
+                results = try await find(q)
                 try await rows(Character("S"), results.map { ($0.title, sub($0), false) })
             case .pick(let gen, let kind, let i):
                 if kind == UInt8(ascii: "S"), i < results.count {
@@ -145,11 +145,18 @@ import WireKit
         try await Hub.shared.send(Self.app, YTMusicProto.list(kind: kind.asciiValue!, rows: r))
     }
 
+    /// Songs for the watch's search (SpotifyPlayerService: Spotify's catalog).
+    func find(_ q: String) async throws -> [YTSong] { try await YTMusic.search(q) }
+
+    /// The song on YouTube (a result of `find` that is not one yet: SpotifyPlayerService).
+    func resolve(_ song: YTSong) async throws -> YTSong { song }
+
     /// Up next: the song's radio after it.
     private func radio(after song: YTSong) {
         Task {
-            guard let r = try? await YTMusic.radio(song.id), queue.first?.id == song.id else { return }
-            queue = [song] + r.filter { $0.id != song.id }
+            guard let yt = try? await resolve(song), let r = try? await YTMusic.radio(yt.id),
+                  queue.first == song else { return }
+            queue = [song] + r.filter { $0.id != yt.id }
         }
     }
 
@@ -172,9 +179,11 @@ import WireKit
         var i = index, from = from
         var failed = 0
         while i < queue.count, failed < 3 {
-            let song = queue[i]
+            var song = queue[i]
             playing = song.title
             do {
+                song = try await resolve(song)
+                guard !Task.isCancelled, stream?.gen == gen else { return }
                 var told = -100
                 let samples = try await YTMusic.samples(song.id, from: from) { @MainActor [weak self] pct in
                     // the watch's yellow circle while it waits for the first song; every 4 % at most
@@ -315,5 +324,27 @@ struct YouTubeSignIn: UIViewRepresentable {
                 Task { @MainActor in self.done(c) }
             }
         }
+    }
+}
+
+// MARK: Spotify player
+
+/// The watch's Spotify app (cmf-watch-sdk sdk/examples/spplayer: YouTube Music's app under Spotify's name). Spotify
+/// withholds the audio of its streams from third-party players (librespot: "audio key error" for this account), so
+/// the watch searches Spotify's catalog (Spotify Control's sign-in) and each song plays from YouTube: the YouTube
+/// Music song with the same title and artist, the one closest in length.
+@MainActor final class SpotifyPlayerService: YouTubeMusicService {
+    override class var app: String { "Spotify" }
+
+    override func find(_ q: String) async throws -> [YTSong] {
+        try await Hub.shared.spotify.tracks(q)
+    }
+
+    override func resolve(_ song: YTSong) async throws -> YTSong {
+        guard song.id.hasPrefix("spotify:") else { return song }
+        let found = try await YTMusic.search("\(song.title) \(song.artist)")
+        let near = found.prefix(5).min { abs($0.seconds - song.seconds) < abs($1.seconds - song.seconds) }
+        guard let yt = (song.seconds > 0 ? near : nil) ?? found.first else { throw HubError.failed("Not on YouTube: \(song.title)") }
+        return YTSong(id: yt.id, title: song.title, artist: song.artist, seconds: yt.seconds)
     }
 }

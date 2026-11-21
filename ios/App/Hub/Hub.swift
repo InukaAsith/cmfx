@@ -27,6 +27,7 @@ import WireKit
     let notes = NotesService()
     let whatsapp = WhatsAppService()
     let youtube = YouTubeMusicService()
+    let spotifyPlayer = SpotifyPlayerService()
 
     /// slot → app name, from the loader (RPCListener).
     private(set) var apps: [Int: String] = [:]
@@ -40,7 +41,7 @@ import WireKit
     private var services: [String: WatchService] {
         [SpotifyService.app: spotify, GeminiService.app: gemini, MapsService.app: maps, NavService.app: nav,
          PhotosService.app: photos, MailService.app: mail, NotesService.app: notes, WhatsAppService.app: whatsapp,
-         YouTubeMusicService.app: youtube]
+         YouTubeMusicService.app: youtube, SpotifyPlayerService.app: spotifyPlayer]
     }
 
     func attach(_ s: KSession?, apps: [Int: String]) {
@@ -50,24 +51,22 @@ import WireKit
 
     func setApps(_ a: [Int: String]) { apps = a }
 
-    /// Names a watch app had before: the slot of either. Spotify was renamed Spotify Control (the on-watch player
-    /// takes the Spotify name).
-    private static let formerly = [SpotifyService.app: "Spotify"]
-
+    /// Spotify Control was called Spotify before; the name is the on-watch player's now (SpotifyPlayerService).
     func slot(of app: String) -> Int? {
-        apps.first { $0.value == app }?.key ?? Self.formerly[app].flatMap { old in apps.first { $0.value == old }?.key }
+        apps.first { $0.value == app }?.key
     }
     func installed(_ app: String) -> Bool { slot(of: app) != nil }
 
     /// From RPCListener: a message that is not a service request.
     func receive(_ m: Data, slot: Int) {
-        guard var name = apps[slot] else { return }
-        if let renamed = Self.formerly.first(where: { $0.value == name })?.key { name = renamed }
+        guard let name = apps[slot] else { return }
         guard let service = services[name] else { return }
         lastApp = name
         lastHeard = .now
         // YouTube Music's credit comes 10 times a second while it plays: straight through
-        if name == YouTubeMusicService.app, m.first == UInt8(ascii: "F") { return service.receive(m) }
+        if name == YouTubeMusicService.app || name == SpotifyPlayerService.app, m.first == UInt8(ascii: "F") {
+            return service.receive(m)
+        }
         // the watch runs one app at a time: WhatsApp goes offline when another talks
         if name != WhatsAppService.app { whatsapp.otherApp() }
         let bg = UIApplication.shared.beginBackgroundTask(withName: "hub")
