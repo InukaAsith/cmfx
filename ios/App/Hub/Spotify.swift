@@ -462,3 +462,17 @@ extension Data {
             .replacingOccurrences(of: "=", with: "")
     }
 }
+
+// MARK: the Spotify player's search (SpotifyPlayerService)
+
+extension SpotifyService {
+    /// Songs from Spotify's catalog for the watch's search, as YTSongs with the Spotify URI as id (resolved to
+    /// YouTube when one plays).
+    func tracks(_ q: String) async throws -> [YTSong] {
+        let r = try await call("GET", "/search", query: ["q": q, "type": "track", "limit": "12"]) as? [String: Any]
+        let items = ((r?["tracks"] as? [String: Any])?["items"] as? [[String: Any]]) ?? []
+        return items.map { t in
+            YTSong(id: t.str("uri"), title: t.str("name"), artist: artists(t), seconds: (t["duration_ms"] as? Int ?? 0) / 1000)
+        }
+    }
+}
