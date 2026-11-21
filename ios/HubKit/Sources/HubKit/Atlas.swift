@@ -10,16 +10,42 @@ public enum AtlasProto {
 
     public static func error(_ t: String) -> Data { Data("E".utf8) + utf8(t, 59) }
 
-    /// `L n`, then `l idx dist:u32 name 0 sub…` (8 at most).
-    public static func results(_ rows: [(name: String, sub: String, dist: Int)]) -> [Data] {
+    /// The place a pin on the map stands for (`P`): after the search's 8.
+    public static let picked = 8
+
+    public typealias Row = (name: String, sub: String, dist: Int, at: (Double, Double))
+
+    /// `L n`, then `l idx dist:u32 x:i16 y:i16 name 0 sub…` (8 at most; `at` frame metres).
+    public static func results(_ rows: [Row]) -> [Data] {
         let rows = rows.prefix(8)
-        var out = [Data([UInt8(ascii: "L"), UInt8(rows.count)])]
-        for (i, r) in rows.enumerated() {
-            var m = Data([UInt8(ascii: "l"), UInt8(i)])
-            m.le(UInt32(clamping: max(r.dist, 0)))
-            let name = utf8(r.name, 44)
-            m += name + Data([0]) + utf8(r.sub, Rle.msgMax - m.count - name.count - 1)
-            out.append(m)
+        return [Data([UInt8(ascii: "L"), UInt8(rows.count)])] + rows.enumerated().map { row($0.offset, $0.element) }
+    }
+
+    /// One `l`.
+    public static func row(_ i: Int, _ r: Row) -> Data {
+        var m = Data([UInt8(ascii: "l"), UInt8(i)])
+        m.le(UInt32(clamping: max(r.dist, 0)))
+        m.le(AtlasScene.i16(r.at.0)); m.le(AtlasScene.i16(r.at.1))
+        let name = utf8(r.name, 44)
+        return m + name + Data([0]) + utf8(r.sub, Rle.msgMax - m.count - name.count - 1)
+    }
+
+    /// `i idx k text`: line k (0 kind, 1 address, 2 phone, 3 more) about result idx; empty lines are left out.
+    public static func info(_ idx: Int, _ lines: [String]) -> [Data] {
+        lines.prefix(4).enumerated().compactMap { k, t in
+            t.isEmpty ? nil : Data([UInt8(ascii: "i"), UInt8(idx), UInt8(k)]) + utf8(t, Rle.msgMax - 3)
+        }
+    }
+
+    /// `O n`, then `o k secs metres hh mm via…`: the ways there to pick (2 or 3).
+    public static func alternatives(_ alts: [(secs: Double, metres: Double, arrive: (Int, Int), via: String)]) -> [Data] {
+        let alts = alts.prefix(3)
+        var out = [Data([UInt8(ascii: "O"), UInt8(alts.count)])]
+        for (k, a) in alts.enumerated() {
+            var m = Data([UInt8(ascii: "o"), UInt8(k)])
+            m.le(UInt32(clamping: Int(a.secs.rounded()))); m.le(UInt32(clamping: Int(a.metres.rounded())))
+            m += Data([UInt8(a.arrive.0), UInt8(a.arrive.1)])
+            out.append(m + utf8(a.via, 40))
         }
         return out
     }
@@ -74,17 +100,23 @@ public enum AtlasProto {
     /// What the watch asked for.
     public enum Ask: Equatable {
         /// home: the map round where we are (`round` nil: a new frame may start there) or round a frame point
-        case ready, home(id: UInt8, round: (x: Int, y: Int)?), search(String), ways(idx: Int)
-        /// directions: the route's map comes as scene `id`
-        case directions(mode: Int, idx: Int, id: UInt8), start, stop, again(id: UInt8)
+        case ready, home(id: UInt8, round: (x: Int, y: Int)?), ways(idx: Int)
+        /// search, category, area: the map round the answer comes as scene `id`, in a new frame
+        case search(id: UInt8, String), category(id: UInt8, Int), area(id: UInt8, String)
+        /// a place on the map (a pin tapped, or dropped: no name), frame metres; what is known of result idx
+        case pick(x: Int, y: Int, name: String), info(idx: Int)
+        /// directions: the route's map comes as scene `id`; `alt` the way picked of those `O` listed
+        case directions(mode: Int, idx: Int, id: UInt8, alt: Int?), start, stop, again(id: UInt8)
 
         public static func == (a: Ask, b: Ask) -> Bool {
             switch (a, b) {
             case (.ready, .ready), (.start, .start), (.stop, .stop): return true
             case let (.home(i, r), .home(j, s)): return i == j && r?.x == s?.x && r?.y == s?.y
-            case let (.search(p), .search(q)): return p == q
-            case let (.ways(i), .ways(j)): return i == j
-            case let (.directions(m, i, d), .directions(n, j, e)): return m == n && i == j && d == e
+            case let (.search(i, p), .search(j, q)), let (.area(i, p), .area(j, q)): return i == j && p == q
+            case let (.category(i, p), .category(j, q)): return i == j && p == q
+            case let (.pick(x, y, n), .pick(u, v, m)): return x == u && y == v && n == m
+            case let (.ways(i), .ways(j)), let (.info(i), .info(j)): return i == j
+            case let (.directions(m, i, d, a), .directions(n, j, e, b)): return m == n && i == j && d == e && a == b
             case let (.again(i), .again(j)): return i == j
             default: return false
             }
@@ -100,9 +132,17 @@ public enum AtlasProto {
             let x = Int(Int16(bitPattern: UInt16(b[3]) | UInt16(b[4]) << 8))
             let y = Int(Int16(bitPattern: UInt16(b[5]) | UInt16(b[6]) << 8))
             return .home(id: b[1], round: b[2] == 1 ? nil : (x, y))
-        case ("Q", 2...): return .search(String(decoding: b.dropFirst(), as: UTF8.self))
+        case ("Q", 3...): return .search(id: b[1], String(decoding: b.dropFirst(2), as: UTF8.self))
+        case ("Z", 3...): return .area(id: b[1], String(decoding: b.dropFirst(2), as: UTF8.self))
+        case ("C", 3): return .category(id: b[1], Int(b[2]))
+        case ("P", 5...):
+            let x = Int(Int16(bitPattern: UInt16(b[1]) | UInt16(b[2]) << 8))
+            let y = Int(Int16(bitPattern: UInt16(b[3]) | UInt16(b[4]) << 8))
+            return .pick(x: x, y: y, name: String(decoding: b.dropFirst(5), as: UTF8.self))
+        case ("I", 2): return .info(idx: Int(b[1]))
         case ("U", 2): return .ways(idx: Int(b[1]))
-        case ("D", 4): return .directions(mode: Int(b[1]), idx: Int(b[2]), id: b[3])
+        case ("D", 4): return .directions(mode: Int(b[1]), idx: Int(b[2]), id: b[3], alt: nil)
+        case ("D", 5): return .directions(mode: Int(b[1]), idx: Int(b[2]), id: b[3], alt: Int(b[4]))
         case ("S", 1): return .start
         case ("X", 1): return .stop
         case ("g", 2): return .again(id: b[1])

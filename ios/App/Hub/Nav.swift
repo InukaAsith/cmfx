@@ -71,6 +71,7 @@ import MapKit
         // Apple's; a straight line only when neither has a route.
         var why = ""
         working = "Finding a route…"
+        alternatives = []
         if let ok = await osrm(from: here.coordinate, to: to) {
             if !ok { status = "No \(mode == .bike ? "cycling" : "walking") route there: following the roads" }
         } else if let r = await appleRoute(src, item, &why) {
@@ -99,11 +100,43 @@ import MapKit
             req.source = src
             req.destination = dest
             req.transportType = t
+            req.requestsAlternateRoutes = true
             do {
-                if let r = try await MKDirections(request: req).calculate().routes.first { return r }
+                let routes = try await MKDirections(request: req).calculate().routes
+                if let r = routes.first {
+                    alternatives = routes.prefix(3).map { .apple($0) }
+                    return r
+                }
             } catch { why = error.localizedDescription }
         }
         return nil
+    }
+
+    /// A way there: OSRM's route (its JSON) or Apple's.
+    enum Alt { case osrm([String: Any]), apple(MKRoute) }
+    /// The ways there the last plan found (the first is the one loaded), to pick from when there are two or three.
+    private(set) var alternatives: [Alt] = []
+
+    /// Each way's time, length and the roads it goes by.
+    var alternativeRows: [(secs: Double, metres: Double, via: String)] {
+        alternatives.map { a in
+            switch a {
+            case .osrm(let r):
+                let via = ((r["legs"] as? [[String: Any]])?.first?["summary"] as? String) ?? ""
+                return (r["duration"] as? Double ?? 0, r["distance"] as? Double ?? 0, via.isEmpty ? "the roads" : via)
+            case .apple(let r):
+                return (r.expectedTravelTime, r.distance, r.name.isEmpty ? "the roads" : r.name)
+            }
+        }
+    }
+
+    /// Way `k` of the last plan's, loaded as the route.
+    func choose(_ k: Int) {
+        guard alternatives.indices.contains(k) else { return }
+        switch alternatives[k] {
+        case .osrm(let r): loadOSRM(r)
+        case .apple(let r): load(r)
+        }
     }
 
     /// A route from OpenStreetMap (routing.openstreetmap.de, the FOSSGIS OSRM servers: the start and the end are
@@ -120,15 +153,26 @@ import MapKit
         let tries = own + [("car", base + "car"), ("car", base + "car"), ("car", "https://router.project-osrm.org")]
         for (profile, server) in tries {
             let url = URL(string: server + "/route/v1/driving/" +
-                "\(a.longitude),\(a.latitude);\(b.longitude),\(b.latitude)?steps=true&overview=full&geometries=geojson")!
+                "\(a.longitude),\(a.latitude);\(b.longitude),\(b.latitude)?steps=true&overview=full&geometries=geojson&alternatives=true")!
             var req = URLRequest(url: url)
             req.timeoutInterval = 20
             req.setValue("CMFX (watch navigation)", forHTTPHeaderField: "User-Agent")
             guard let (data, _) = try? await URLSession.shared.data(for: req),
                   let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  j["code"] as? String == "Ok", let r = (j["routes"] as? [[String: Any]])?.first,
+                  j["code"] as? String == "Ok", let routes = j["routes"] as? [[String: Any]], let r = routes.first,
                   let line = (r["geometry"] as? [String: Any])?["coordinates"] as? [[Double]], line.count >= 2
             else { continue }
+            alternatives = routes.prefix(3).map { .osrm($0) }
+            loadOSRM(r)
+            return profile != "car" || mode == .drive
+        }
+        return nil
+    }
+
+    /// One OSRM route (steps, full geometry as GeoJSON) as the route.
+    private func loadOSRM(_ r: [String: Any]) {
+        guard let line = (r["geometry"] as? [String: Any])?["coordinates"] as? [[Double]], line.count >= 2 else { return }
+        do {
             coords = line.map { CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) }
             origin = coords[0]
             pts = coords.map(local)
@@ -151,9 +195,7 @@ import MapKit
                 }
             }
             if steps.isEmpty || steps.last?.kind != 2 { steps.append((cum.last ?? at, 2, 0, "Arrive")) }
-            return profile != "car" || mode == .drive
         }
-        return nil
     }
 
     /// OSRM's maneuver → the watch's (kind, dir): kinds 0 turn, 1 roundabout, 2 arrive, 3 straight, 4 ramp;
@@ -207,6 +249,7 @@ import MapKit
 
     /// A pin with no route to it: one straight leg.
     private func loadDirect(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) {
+        alternatives = []
         origin = a
         coords = [a, b]
         pts = [local(a), local(b)]
