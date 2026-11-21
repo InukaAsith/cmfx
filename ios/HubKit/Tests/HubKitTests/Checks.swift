@@ -21,25 +21,83 @@ enum Checks {
         let v = try JSONDecoder().decode(V.self, from: json)
         var bad: [String] = []
         func eq(_ name: String, _ a: String, _ b: String) { if a != b { bad.append("\(name):\n  swift  \(a)\n  python \(b)") } }
-        // Maps: a picture's messages fit, its chunks add up to the announced tokens, which decode to every pixel
+        // Maps: a vector tile (a named road, a park, a café) → a scene the watch reads (scene.rs records)
         do {
-            let (w, h) = (90, 64)
-            var rgb = [UInt8](repeating: 0, count: w * h * 3)
-            for y in 0..<h { for x in 0..<w { rgb[3 * (y * w + x)] = UInt8(x * 2); rgb[3 * (y * w + x) + 1] = UInt8(y * 3) } }
-            let msgs = AtlasProto.picture(id: 7, rgb: rgb, width: w, height: h, bands: 4)
-            let m = msgs[0]
-            if m.count != 14 || m[0] != UInt8(ascii: "M") || m[1] != 7 { bad.append("atlas: M header") }
-            if msgs[1...4].contains(where: { $0.count != 37 || $0[0] != UInt8(ascii: "K") }) { bad.append("atlas: K") }
-            let ds = msgs[5...]
-            if ds.contains(where: { $0.count > 128 || $0[0] != UInt8(ascii: "d") }) { bad.append("atlas: d size") }
-            let tokens = ds.reduce(Data()) { $0 + $1.dropFirst(4) }
-            if tokens.count != Int(m[12]) | Int(m[13]) << 8 { bad.append("atlas: total") }
-            var px = 0, i = tokens.startIndex
-            while i < tokens.endIndex { let t = tokens[i]; px += t & 15 == 15 ? 16 + Int(tokens[i + 1]) : Int(t & 15) + 1; i += t & 15 == 15 ? 2 : 1 }
-            if px != w * h { bad.append("atlas: \(px) pixels, not \(w * h)") }
-            if AtlasProto.parse(Data([UInt8(ascii: "D"), 1, 3])) != .directions(mode: 1, idx: 3)
+            func varint(_ v: UInt64) -> [UInt8] {
+                var v = v, o: [UInt8] = []
+                repeat { var b = UInt8(v & 0x7F); v >>= 7; if v != 0 { b |= 0x80 }; o.append(b) } while v != 0
+                return o
+            }
+            func field(_ n: Int, _ bytes: [UInt8]) -> [UInt8] { varint(UInt64(n << 3 | 2)) + varint(UInt64(bytes.count)) + bytes }
+            func num(_ n: Int, _ v: UInt64) -> [UInt8] { varint(UInt64(n << 3)) + varint(v) }
+            func zz(_ v: Int) -> UInt64 { UInt64(bitPattern: Int64((v << 1) ^ (v >> 63))) }
+            func geom(_ parts: [[(Int, Int)]], close: Bool) -> [UInt8] {
+                var g: [UInt64] = [], x = 0, y = 0
+                for p in parts {
+                    g.append(1 | 1 << 3); g += [zz(p[0].0 - x), zz(p[0].1 - y)]; (x, y) = p[0]
+                    g.append(2 | UInt64(p.count - 1) << 3)
+                    for q in p.dropFirst() { g += [zz(q.0 - x), zz(q.1 - y)]; (x, y) = q }
+                    if close { g.append(7 | 1 << 3) }
+                }
+                return g.flatMap(varint)
+            }
+            func layer(_ name: String, _ keys: [String], _ vals: [String], _ feats: [(tags: [Int], type: Int, geom: [UInt8])]) -> [UInt8] {
+                var l = num(15, 2) + field(1, Array(name.utf8))
+                for f in feats {
+                    l += field(2, field(2, f.tags.flatMap { varint(UInt64($0)) }) + num(3, UInt64(f.type)) + field(4, f.geom))
+                }
+                for k in keys { l += field(3, Array(k.utf8)) }
+                for v in vals { l += field(4, field(1, Array(v.utf8))) }
+                return field(3, l + num(5, 4096))
+            }
+            // the tile round Colombo's test point; a road across it, its name, a park, a café near the middle
+            let o = (lat: 6.9147, lon: 79.8612)
+            let t = AtlasScene.tile(o)
+            let road = [(0, 2000), (1000, 2050), (2000, 2100), (4096, 2200)]
+            // the test point in tile units: the café goes there
+            let n = Double(1 << AtlasScene.zoom)
+            let cu = Int(((o.lon + 180) / 360 * n - Double(t.x)) * 4096)
+            let cv = Int(((1 - asinh(tan(o.lat * .pi / 180)) / .pi) / 2 * n - Double(t.y)) * 4096)
+            var tile = layer("transportation", ["class"], ["primary"], [(tags: [0, 0], type: 2, geom: geom([road], close: false))])
+            tile += layer("transportation_name", ["class", "name"], ["primary", "Galle Road"],
+                          [(tags: [0, 0, 1, 1], type: 2, geom: geom([road], close: false))])
+            tile += layer("park", ["class"], ["park"],
+                          [(tags: [0, 0], type: 3, geom: geom([[(1000, 1000), (1600, 1000), (1600, 1600), (1000, 1600)]], close: true))])
+            tile += layer("poi", ["class", "name", "rank"], ["cafe", "Cafe Kumbuk", "3"],
+                          [(tags: [0, 0, 1, 1, 2, 2], type: 1, geom: [UInt64(1 | 1 << 3), zz(cu), zz(cv)].flatMap(varint))])
+            let feats = AtlasScene.decode(Data(tile))
+            if feats.count != 4 || feats[0].parts.first?.count != 4 || feats[3].props["name"] != "Cafe Kumbuk" {
+                bad.append("atlas: decode \(feats.map { ($0.layer, $0.parts.count) })")
+            }
+            let centre = AtlasScene.xy(AtlasScene.latLon(0, 0, o), o)
+            let (data, half) = AtlasScene.scene(tiles: [(tile: (t.x, t.y), features: feats)], origin: o, centre: centre,
+                                             pins: [((10, 20), "Searched")])
+            // walk the records as the watch does
+            var i = 0, kinds: [UInt8] = [], names: [String] = [], labels: [String] = []
+            let b = [UInt8](data)
+            func pts(_ n: Int) { i += n == 0 ? 0 : 4; for _ in 1..<max(n, 1) { i += b[i] == 0x80 ? 5 : 2 } }
+            while i < b.count {
+                let k = b[i]; kinds.append(k)
+                switch k & 0xF0 {
+                case 0x10: let n = Int(b[i + 1]) | Int(b[i + 2]) << 8; i += 3; pts(n)
+                case 0x20: let n = Int(b[i + 2]); i += 3; pts(n)
+                case 0x30: let n = Int(b[i + 1]); names.append(String(decoding: b[(i + 2)..<(i + 2 + n)], as: UTF8.self)); i += 2 + n
+                case 0x40: let n = Int(b[i + 6]); labels.append(String(decoding: b[(i + 7)..<(i + 7 + n)], as: UTF8.self)); i += 7 + n
+                default: bad.append("atlas: record \(k) at \(i)"); i = b.count
+                }
+            }
+            if i != b.count || half != 1500 { bad.append("atlas: scene length \(i) of \(b.count), r \(half)") }
+            if kinds.first != 0x4D || !kinds.contains(0x21) || !kinds.contains(0x11) || !kinds.contains(0x29)
+                || !kinds.contains(0x43) { bad.append("atlas: scene kinds \(kinds.map { String($0, radix: 16) })") }
+            if names != ["Galle Rd"] || labels != ["Searched", "Cafe Kumbuk"] { bad.append("atlas: names \(names) \(labels)") }
+            let msgs = AtlasProto.scene(id: 3, data: data, me: (5, -7), centre: (0, 0), r: half)
+            if msgs[0].count != 14 || msgs.dropFirst().contains(where: { $0.count > 128 || $0[0] != UInt8(ascii: "d") })
+                || msgs.dropFirst().reduce(Data(), { $0 + $1.dropFirst(4) }) != data { bad.append("atlas: scene messages") }
+            if AtlasScene.street("Dr. Colvin R. de Silva Mawatha (Union Place)") != "Dr. Colvin R. de Silva Mw" { bad.append("atlas: street") }
+            if AtlasProto.parse(Data([UInt8(ascii: "D"), 1, 3, 9])) != .directions(mode: 1, idx: 3, id: 9)
                 || AtlasProto.parse(Data("Qcafe".utf8)) != .search("cafe")
-                || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 2, 0xFF, 3])) != .home(id: 4, zoom: 2, east: -1, south: 3)
+                || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 0, 0x9C, 0xFF, 0x2C, 0x01])) != .home(id: 4, round: (-100, 300))
+                || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 1, 0, 0, 0, 0])) != .home(id: 4, round: nil)
                 || AtlasProto.parse(Data([UInt8(ascii: "U"), 5])) != .ways(idx: 5) { bad.append("atlas: parse") }
             // u: 13 bytes, as proto.rs reads it
             let u = AtlasProto.way(mode: 2, (secs: 240, metres: 300, arrive: (9, 34)))
