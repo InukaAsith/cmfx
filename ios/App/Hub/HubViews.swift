@@ -8,7 +8,7 @@ struct HubTab: View {
     @State private var hub = Hub.shared
     var body: some View {
         NavigationStack {
-            PageScroll(title: "Hub") {
+            PageScroll(title: "More") {
                 HStack(spacing: 10) {
                     Circle().fill(hub.linked ? TDColor.good : TDColor.muted).frame(width: 8, height: 8)
                     Text(hub.linked ? "Watch connected" : "Watch not connected").font(.subheadline.weight(.medium))
