@@ -98,9 +98,9 @@ func Open(dir string) error {
 	wastore.SetOSInfo("CMFX", [3]uint32{1, 0, 0})
 	// a watch shows 12 chats of 12 messages: ask the phone for little history
 	h := wastore.DeviceProps.HistorySyncConfig
-	h.FullSyncDaysLimit = proto.Uint32(7)
+	h.FullSyncDaysLimit = proto.Uint32(1)
 	h.FullSyncSizeMbLimit = proto.Uint32(5)
-	h.RecentSyncDaysLimit = proto.Uint32(7)
+	h.RecentSyncDaysLimit = proto.Uint32(1)
 	h.StorageQuotaMb = proto.Uint32(100)
 	h.InitialSyncMaxMessagesPerChat = proto.Uint32(keep)
 	h.ThumbnailSyncDaysLimit = proto.Uint32(0)
