@@ -20,7 +20,7 @@ struct HubTab: View {
                     row(SpotifyPage(), "music.note", .green, "Spotify", hub.spotify.signedIn ? "Signed in" : "Sign in", SpotifyService.app, first: true)
                     row(YouTubeMusicPage(), "play.circle.fill", .red, "YouTube Music",
                         hub.youtube.signedIn ? "Signed in: plays on the watch" : "Sign in to play on the watch", YouTubeMusicService.app)
-                    row(YouTubeMusicPage(), "music.note.list", .green, "Spotify player",
+                    row(SpotifyPlayerPage(), "music.note.list", .green, "Spotify player",
                         hub.spotify.signedIn && hub.youtube.signedIn ? "Spotify's songs, played from YouTube"
                             : "Sign in to Spotify and YouTube", SpotifyPlayerService.app)
                     row(GeminiPage(), "sparkles", .blue, "Gemini", Secrets.geminiKey.isEmpty ? "Add API key" : "Ready", GeminiService.app)
@@ -131,6 +131,7 @@ struct SpotifyPage: View {
                 Status(text: s.status)
             }
             .glassCard()
+            YouTubeAccountCard()
             VStack(alignment: .leading, spacing: 8) {
                 Text("Setup, once").font(.headline)
                 Text("1. developer.spotify.com › Dashboard › Create app.\n2. Redirect URI: cmfx://spotify, API: Web API.\n3. Paste its Client ID here and sign in.\n\nOn the watch: play, pause, skip, volume with the crown, like, your playlists, search and play, add to a playlist, and the Spotify Connect device to play on.")
