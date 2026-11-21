@@ -11,7 +11,7 @@ import UIKit
 // asks: no timers, no polling.
 
 @MainActor @Observable final class SpotifyService: NSObject, WatchService {
-    static let app = "Spotify"
+    static let app = "Spotify Control"
     static let redirect = "cmfx://spotify"
     static let scopes = "user-read-playback-state user-modify-playback-state user-read-currently-playing " +
         "user-library-read user-library-modify playlist-read-private playlist-read-collaborative " +
@@ -94,13 +94,9 @@ import UIKit
                 try await call("PUT", "/me/player/seek", query: ["position_ms": "\(sec * 1000)"])
                 try await push()
             case .volume(let v):
-                // phones (Spotify on iOS/Android) take no volume from apps: say so instead of failing
-                let p = try? await call("GET", "/me/player") as? [String: Any]
-                if let d = p?["device"] as? [String: Any], d["supports_volume"] as? Bool == false {
-                    return try await note("Set the volume on \(d.str("name").isEmpty ? "the device" : d.str("name"))")
-                }
-                do { try await call("PUT", "/me/player/volume", query: ["volume_percent": "\(v)"]) }
-                catch SpotifyError.restricted { try await note("This device's volume is set on it") }
+                // the iPhone's system volume (the hardware buttons' volume), not Spotify's: a phone's Spotify takes
+                // no volume from apps, and this follows whatever plays
+                SystemVolume.set(v)
             case .like:
                 guard let id = track["id"] as? String else { return try await note("Nothing playing") }
                 // Feb 2026: one library for everything, by URI
@@ -264,7 +260,7 @@ import UIKit
         }
         let dev = p["device"] as? [String: Any] ?? [:]
         let now = SpotifyProto.now(flags: flags, pos: (p["progress_ms"] as? Int ?? 0) / 1000,
-                                   dur: (track["duration_ms"] as? Int ?? 0) / 1000, vol: dev["volume_percent"] as? Int ?? 0,
+                                   dur: (track["duration_ms"] as? Int ?? 0) / 1000, vol: SystemVolume.percent,
                                    title: track.str("name"), artist: artists(track), device: dev.str("name"))
         try await Hub.shared.send(Self.app, now)
         let imgs = (track["album"] as? [String: Any])?["images"] as? [[String: Any]] ?? []

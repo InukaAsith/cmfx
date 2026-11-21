@@ -48,12 +48,20 @@ import WireKit
 
     func setApps(_ a: [Int: String]) { apps = a }
 
-    func slot(of app: String) -> Int? { apps.first { $0.value == app }?.key }
+    /// Names a watch app had before: the slot of either. Spotify was renamed Spotify Control (the on-watch player
+    /// takes the Spotify name).
+    private static let formerly = [SpotifyService.app: "Spotify"]
+
+    func slot(of app: String) -> Int? {
+        apps.first { $0.value == app }?.key ?? Self.formerly[app].flatMap { old in apps.first { $0.value == old }?.key }
+    }
     func installed(_ app: String) -> Bool { slot(of: app) != nil }
 
     /// From RPCListener: a message that is not a service request.
     func receive(_ m: Data, slot: Int) {
-        guard let name = apps[slot], let service = services[name] else { return }
+        guard var name = apps[slot] else { return }
+        if let renamed = Self.formerly.first(where: { $0.value == name })?.key { name = renamed }
+        guard let service = services[name] else { return }
         lastApp = name
         lastHeard = .now
         // the watch runs one app at a time: WhatsApp goes offline when another talks
