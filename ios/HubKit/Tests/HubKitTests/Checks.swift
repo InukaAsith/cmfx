@@ -9,6 +9,8 @@ enum Checks {
         struct Idx: Decodable { let z: Int, x0: Int, y0: Int, w: Int, h: Int, mm: Int, lat: Double, lon: Double, out: String }
         let tokens: Px, long: Px, rgb565: [[Int]], header: String, now: String, list: [String], palette: [UInt16]
         let idx: Idx, world: [Double]
+        struct Sp: Decodable { let `in`: [Int], tuned: [Int], blocks: [String] }
+        let speaker: Sp
     }
 
     static func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }
@@ -58,6 +60,13 @@ enum Checks {
         chats(&bad)
         mime(&bad)
         imap(&bad)
+        // the speaker stream: the tuning within 1 LSB (libm), the ADPCM messages byte for byte
+        let sp = v.speaker
+        let tuned = SpeakerTune.forSpeaker(sp.in.map { Int16($0) }, rate: SpeakerProto.rate)
+        let off = zip(tuned, sp.tuned).map { abs(Int($0) - $1) }.max() ?? 99
+        if tuned.count != sp.tuned.count || off > 1 { bad.append("speaker tune: \(tuned.count) vs \(sp.tuned.count), off by \(off)") }
+        eq("speaker blocks", SpeakerProto.blocks(sp.tuned.map { Int16($0) }).map(hex).joined(separator: ","),
+           sp.blocks.joined(separator: ","))
         return bad
     }
 
