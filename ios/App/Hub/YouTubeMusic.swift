@@ -170,7 +170,7 @@ import WireKit
     /// A new stream for the watch's `gen`: the song at `index` from `from` s, then the rest of the queue.
     private func start(_ gen: UInt8, from: Int = 0) {
         stop()
-        stream = YTStream(gen: gen)
+        stream = YTStream(gen: gen, excite: UInt8(SoundOptions.treble))
         feeder = Task { await feed(gen, from: from) }
         sender = Task { await send(gen) }
     }
@@ -231,6 +231,7 @@ import WireKit
                     return self.stream?.take(1).first
                 }
                 if stream?.gen == gen { stream?.requeue(again) }
+                if !again.isEmpty { try? await Task.sleep(for: .milliseconds(25)) } // refused: the watch catches up
                 if (stream?.sent ?? 0) <= before {
                     // waiting for credit or the next song: the watch's messages come after a frame from here
                     try? await Hub.shared.ping()
@@ -456,14 +457,23 @@ enum SoundOptions {
     static var enhance: Bool { UserDefaults.standard.bool(forKey: "sound-enhance") }
     /// Volume smoothing: the tuning's compressor (on, as tuned by ear).
     static var smooth: Bool { UserDefaults.standard.object(forKey: "sound-smooth") as? Bool ?? true }
+    /// Treble: the watch's shimmer above 5.5 kHz, 0...128 (the link carries sound up to 5.3 kHz only).
+    static var treble: Int { UserDefaults.standard.object(forKey: "sound-treble") as? Int ?? 80 }
 }
 
 struct SoundOptionsCard: View {
     @AppStorage("sound-enhance") private var enhance = false
     @AppStorage("sound-smooth") private var smooth = true
+    @AppStorage("sound-treble") private var treble = 80
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Sound").font(.headline)
+            HStack {
+                Text("Treble")
+                Slider(value: Binding(get: { Double(treble) }, set: { treble = Int($0) }), in: 0...128, step: 8)
+            }
+            Text("The sparkle above 5 kHz, made on the watch (Bluetooth carries the song up to 5 kHz). From the next song.")
+                .font(.footnote).foregroundStyle(.secondary)
             Toggle("Volume smoothing", isOn: $smooth)
             Text("Evens out loud and quiet parts. Off: the song's own dynamics, peaks still kept under the speaker's limit.")
                 .font(.footnote).foregroundStyle(.secondary)

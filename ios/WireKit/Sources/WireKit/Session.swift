@@ -191,7 +191,10 @@ public actor KSession: Channel {
             guard c2 == Cmd.msg | 0xA000, let plain = WireKit.open(key, body) else { continue }
             let m = flight.removeFirst()
             if plain.first == Status.noApp.rawValue { throw WireError.noApp }
-            if plain.first != Status.ok.rawValue { again.append(m) }
+            if plain.first != Status.ok.rawValue {
+                again.append(m)
+                more = false // the app's inbox is full: let the ones in flight land, then back off (the caller)
+            }
             if ContinuousClock.now >= end { more = false }
         }
     }

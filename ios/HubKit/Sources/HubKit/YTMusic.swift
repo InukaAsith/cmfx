@@ -417,9 +417,13 @@ public struct YTStream {
     public var held = 0
     public private(set) var ended = false
 
-    public init(gen: UInt8) {
+    /// messages the watch refused or that got no reply: sent again first
+    var retry: [Data] = []
+
+    /// `excite`: the watch's shimmer above 5.5 kHz (the treble the link can't carry), 0...128.
+    public init(gen: UInt8, excite: UInt8 = SpeakerProto.shimmer) {
         self.gen = gen
-        out = [YTMusicProto.open(gen: gen), SpeakerProto.excite()]
+        out = [YTMusicProto.open(gen: gen), SpeakerProto.excite(excite)]
     }
 
     /// A song's tuned samples, after what is there.
@@ -475,6 +479,7 @@ public struct YTStream {
     /// Up to `n` messages the credit allows.
     public mutating func take(_ n: Int) -> [Data] {
         var batch: [Data] = []
+        while batch.count < n, !retry.isEmpty { batch.append(retry.removeFirst()) }
         let limit = credit.next + credit.room
         while batch.count < n, sent < out.count {
             let m = out[sent]
@@ -485,12 +490,11 @@ public struct YTStream {
         return batch
     }
 
-    /// Messages to be sent again (refused or lost): first in line.
+    /// Messages to be sent again (refused or lost): first in line, in the order they went.
+    /// (They may land after later blocks: the watch holds those until the gap is filled.)
     public mutating func requeue(_ msgs: [Data]) {
-        guard !msgs.isEmpty else { return }
-        sent -= msgs.count
-        for (k, m) in msgs.enumerated() { out[sent + k] = m }
+        retry += msgs
     }
 
-    public var done: Bool { ended && sent == out.count }
+    public var done: Bool { ended && sent == out.count && retry.isEmpty }
 }
