@@ -61,7 +61,7 @@ struct OverviewTab: View {
             PageScroll(title: "Overview") {
                 Button { tab = .watch } label: { watchCard }.buttonStyle(PressScale())
                 Button { tab = .navigation } label: { navCard }.buttonStyle(PressScale())
-                Button { tab = .notes } label: { notesCard }.buttonStyle(PressScale())
+                NavigationLink { NotesPage() } label: { notesCard }.buttonStyle(PressScale())
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 16) {
                     ForEach(apps) { f in
                         NavigationLink { page(f.id) } label: { icon(f) }.buttonStyle(PressScale())

@@ -46,23 +46,23 @@ struct CMFXApp: App {
 
 /// CMFX's own features in the bar; the rest (and FMC Companion's watch faces) under More.
 enum RootTab: Hashable, CaseIterable {
-    case overview, navigation, notes, watch, faces
+    case overview, navigation, watch, faces, more
     var title: String {
         switch self {
         case .overview: "Overview"
         case .navigation: "Navigation"
-        case .notes: "Notes"
         case .watch: "Watch"
         case .faces: "Faces"
+        case .more: "More"
         }
     }
     var icon: String {
         switch self {
         case .overview: "circle.grid.2x2.fill"
         case .navigation: "location.north.line.fill"
-        case .notes: "note.text"
         case .watch: "applewatch"
         case .faces: "square.grid.2x2.fill"
+        case .more: "ellipsis.circle.fill"
         }
     }
 }
@@ -78,9 +78,10 @@ struct RootTabs: View {
         switch t {
         case .overview: OverviewTab(tab: $tab, faces: $faces)
         case .navigation: NavigationStack { NavPage() }
-        case .notes: NavigationStack { NotesPage() }
         case .watch: ContentView()
         case .faces: CatalogView(path: $path)
+        // the watch apps that need the phone (YouTube Music, Spotify, Notes, Mail …), each with its page
+        case .more: HubTab()
         }
     }
 
