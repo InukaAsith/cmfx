@@ -94,10 +94,13 @@ struct RootTabs: View {
             }
             .tabBarMinimizeBehavior(.onScrollDown)
             .onChange(of: faces) { showFaces() }
+            // an app asks for a permission: its page under More › Apps
+            .onChange(of: Permissions.shared.open) { if $1 != nil { tab = .more } }
         } else {
             page(tab)
                 .safeAreaInset(edge: .bottom, spacing: 0) { OwnTabBar(current: $tab) }
                 .onChange(of: faces) { showFaces() }
+                .onChange(of: Permissions.shared.open) { if $1 != nil { tab = .more } }
         }
     }
 }

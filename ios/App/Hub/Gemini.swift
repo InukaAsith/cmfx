@@ -7,7 +7,32 @@ import UIKit
 
 @MainActor @Observable final class GeminiService: WatchService {
     static let app = "Gemini"
-    static let model = "gemini-3.5-flash-lite"
+    /// The defaults: the fast, small model with as little thinking as it allows.
+    static let defaultModel = "gemini-3.5-flash-lite", defaultEffort = Effort.minimal
+    /// The page's pickers.
+    var model = UserDefaults.standard.string(forKey: "gemini-model") ?? GeminiService.defaultModel {
+        didSet { UserDefaults.standard.set(model, forKey: "gemini-model") }
+    }
+    var effort = UserDefaults.standard.string(forKey: "gemini-effort").flatMap(Effort.init) ?? GeminiService.defaultEffort {
+        didSet { UserDefaults.standard.set(effort.rawValue, forKey: "gemini-effort") }
+    }
+    /// The models the key can stream answers from (`models.list`), for the picker; the chosen one is always in it.
+    private(set) var models: [String] = []
+
+    /// Gemini's `thinkingLevel`. A model that refuses a level gets the question again without one.
+    enum Effort: String, CaseIterable, Identifiable {
+        case minimal = "MINIMAL", low = "LOW", medium = "MEDIUM", high = "HIGH"
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .minimal: "Minimal"
+            case .low: "Low"
+            case .medium: "Medium"
+            case .high: "High"
+            }
+        }
+    }
+
     var status: String?
     private var answering: Task<Void, Never>?
     private var asking: String?
@@ -44,13 +69,13 @@ import UIKit
     /// The page's "Check the key": one tiny question.
     func check() async {
         status = nil
-        var req = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(Self.model)")!)
+        var req = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model)")!)
         req.timeoutInterval = 15
         req.setValue(Secrets.geminiKey, forHTTPHeaderField: "x-goog-api-key")
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            if code == 200 { status = "The key works: \(Self.model) answers." }
+            if code == 200 { status = "The key works: \(model) answers." }
             else {
                 let msg = ((try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? [String: Any])?["message"] as? String
                 status = "Gemini \(code): \(msg ?? "the key was refused")"
@@ -126,16 +151,34 @@ import UIKit
         }
     }
 
+    /// The models the key may use that answer with `generateContent`, newest names first.
+    func loadModels() async {
+        guard !Secrets.geminiKey.isEmpty else { return }
+        var req = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200")!)
+        req.timeoutInterval = 15
+        req.setValue(Secrets.geminiKey, forHTTPHeaderField: "x-goog-api-key")
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let list = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["models"] as? [[String: Any]]
+        else { return }
+        let names = list.compactMap { m -> String? in
+            guard let name = (m["name"] as? String)?.replacingOccurrences(of: "models/", with: ""),
+                  name.hasPrefix("gemini"), !name.contains("embedding"), !name.contains("tts"), !name.contains("image"),
+                  (m["supportedGenerationMethods"] as? [String])?.contains("generateContent") == true else { return nil }
+            return name
+        }
+        models = names.sorted { $0.localizedStandardCompare($1) == .orderedDescending }
+    }
+
     private func request(_ turns: [Turn], quick: Bool) -> URLRequest {
         var body: [String: Any] = [
             "contents": turns.map { ["role": $0.user ? "user" : "model", "parts": [["text": $0.text]]] },
             "systemInstruction": ["parts": [["text":
                 "You answer on a small round watch. Plain sentences, no markdown, no lists, no emoji. At most 60 words."]]],
         ]
-        // quick answers: as little thinking first as the model allows
-        if quick { body["generationConfig"] = ["thinkingConfig": ["thinkingLevel": "MINIMAL"]] }
+        // the page's effort (minimal by default: quick answers); without it when the model refused it
+        if quick { body["generationConfig"] = ["thinkingConfig": ["thinkingLevel": effort.rawValue]] }
         var req = URLRequest(url: URL(string:
-            "https://generativelanguage.googleapis.com/v1beta/models/\(Self.model):streamGenerateContent?alt=sse")!)
+            "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?alt=sse")!)
         req.httpMethod = "POST"
         req.timeoutInterval = 30
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

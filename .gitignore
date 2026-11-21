@@ -5,3 +5,4 @@ ios/*.xcodeproj/
 .DS_Store
 *.ipa
 ios/WABridge/WABridge.xcframework/
+ios/App/Loader/

@@ -54,7 +54,17 @@ jobs:
           CMFX_SPOTIFY_CLIENT_ID: ${{ secrets.CMFX_SPOTIFY_CLIENT_ID }}
           CMFX_GEMINI_KEY: ${{ secrets.CMFX_GEMINI_KEY }}
           CMFX_GOOGLE_CLIENT_ID: ${{ secrets.CMFX_GOOGLE_CLIENT_ID }}
+          # the newest cmf-watch-sdk loader release goes in the app (ios/fetch-loader.sh)
+          GITHUB_TOKEN: ${{ github.token }}
         run: bash ios/build.sh
+      - name: Bundled App Loader
+        run: |
+          python3 - ios/App/Loader/loader.wp2app ios/App/Loader/loader.json <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, struct, sys
+          d = open(sys.argv[1], "rb").read(); j = json.load(open(sys.argv[2]))
+          v, crc = struct.unpack_from("<I", d, 32)[0], struct.unpack_from("<I", d, 48)[0]
+          print(f"### App Loader in this build\n\n`{j['tag']}` (released {j.get('published', '?')}): v{v}, crc `{crc:08x}`")
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: CMFX-iOS

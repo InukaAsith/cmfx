@@ -6,6 +6,9 @@ import SwiftUI
 
 struct HubTab: View {
     @State private var hub = Hub.shared
+    @Environment(WatchModel.self) private var watch
+    /// The ask notification opens Apps (and that app's page in it).
+    @State private var apps = false
     var body: some View {
         NavigationStack {
             PageScroll(title: "More") {
@@ -14,6 +17,13 @@ struct HubTab: View {
                     Text(hub.linked ? "Watch connected" : "Watch not connected").font(.subheadline.weight(.medium))
                     Spacer()
                     if let a = hub.lastApp { Pill(text: a, color: TDColor.accent) }
+                }
+                .glassCard(22)
+                // FMC Companion's watch tools: the apps on the watch (and the store's), firmware and the App Loader
+                VStack(spacing: 0) {
+                    tool(AppsPage(), "square.grid.3x3.fill", .blue, "Apps", appsDetail, badge: Permissions.shared.pending.count, first: true)
+                    tool(FirmwareView(), "cpu.fill", .gray, "Firmware & App Loader", firmwareDetail,
+                         badge: FirmwareModel.shared.updates(watch.loader))
                 }
                 .glassCard(22)
                 VStack(spacing: 0) {
@@ -39,6 +49,42 @@ struct HubTab: View {
                 Text("Each runs only while its app is open on the watch or while you use it here; Mail checks the inbox each minute while it is open.")
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 6)
             }
+            .navigationDestination(isPresented: $apps) { AppsPage() }
+            // updates are checked once the watch is read: the Firmware row shows them
+            .task(id: watch.phase) { if case .checked = watch.phase { await FirmwareModel.shared.refresh() } }
+        }
+        .onChange(of: Permissions.shared.open, initial: true) { if $1 != nil { apps = true } }
+    }
+
+    private var appsDetail: String {
+        guard let l = watch.listedLoader else { return String(localized: "Install, update and order the watch's apps") }
+        return String(localized: "\(l.apps.count) on the watch")
+    }
+
+    private var firmwareDetail: String {
+        guard let l = watch.loader else { return String(localized: "Bundled loader \(BundledLoader.label)") }
+        return FirmwareModel.shared.loaderUpdate(l) ? String(localized: "App Loader update: \(BundledLoader.label)")
+            : String(localized: "Stub \(l.stub.version) · loader up to date")
+    }
+
+    private func tool<D: View>(_ dest: D, _ symbol: String, _ color: Color, _ title: String, _ detail: String,
+                               badge: Int, first: Bool = false) -> some View {
+        VStack(spacing: 0) {
+            if !first { Divider().overlay(TDColor.line).padding(.vertical, 8) }
+            NavigationLink { dest } label: {
+                HStack(spacing: 12) {
+                    FeatureIcon(symbol: symbol, color: color, size: 34)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title).font(.headline).foregroundStyle(TDColor.text)
+                        Text(detail).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    CountBadge(count: badge)
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -150,7 +196,7 @@ struct GeminiPage: View {
     var body: some View {
         PageScroll(title: "Gemini") {
             VStack(alignment: .leading, spacing: 14) {
-                CardHeader(symbol: "sparkles", color: .blue, title: "Gemini on the watch", detail: "Model \(GeminiService.model)")
+                CardHeader(symbol: "sparkles", color: .blue, title: "Gemini on the watch", detail: "Model \(g.model)")
                 SecureField(Secrets.geminiBuilt ? "Built in (type to replace)" : "Gemini API key", text: $key)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .onChange(of: key) { Secrets.geminiKey = $1.trimmingCharacters(in: .whitespaces) }
@@ -161,6 +207,33 @@ struct GeminiPage: View {
                 Status(text: g.status)
             }
             .glassCard()
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Model", selection: $g.model) {
+                    ForEach(Array(Set(g.models + [g.model, GeminiService.defaultModel])).sorted {
+                        $0.localizedStandardCompare($1) == .orderedDescending
+                    }, id: \.self) { m in
+                        Text(m == GeminiService.defaultModel ? "\(m) (default)" : m).tag(m)
+                    }
+                }
+                .pickerStyle(.navigationLink)
+                Divider().overlay(TDColor.line)
+                Picker("Thinking", selection: $g.effort) {
+                    ForEach(GeminiService.Effort.allCases) { e in
+                        Text(e == GeminiService.defaultEffort ? "\(e.title) (default)" : e.title).tag(e)
+                    }
+                }
+                Text("More thinking answers harder questions, but the first words take longer to reach the watch. Models without a thinking setting ignore it.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if g.model != GeminiService.defaultModel || g.effort != GeminiService.defaultEffort {
+                    Button("Back to the defaults") {
+                        g.model = GeminiService.defaultModel
+                        g.effort = GeminiService.defaultEffort
+                    }
+                    .font(.subheadline)
+                }
+            }
+            .glassCard()
+            .task(id: key) { await g.loadModels() }
         }
     }
 }
