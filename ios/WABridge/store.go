@@ -9,7 +9,7 @@ import (
 // CMFX's own small chat store: whatsmeow keeps keys and contacts, not history. The chat list (names, unread,
 // preview) and the last `keep` messages per chat, filled from live messages, a limited history sync and own sends.
 
-const keep = 50
+const keep = 15
 
 const schema = `
 CREATE TABLE IF NOT EXISTS chats (
