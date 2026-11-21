@@ -38,7 +38,14 @@ enum Checks {
             while i < tokens.endIndex { let t = tokens[i]; px += t & 15 == 15 ? 16 + Int(tokens[i + 1]) : Int(t & 15) + 1; i += t & 15 == 15 ? 2 : 1 }
             if px != w * h { bad.append("atlas: \(px) pixels, not \(w * h)") }
             if AtlasProto.parse(Data([UInt8(ascii: "D"), 1, 3])) != .directions(mode: 1, idx: 3)
-                || AtlasProto.parse(Data("Qcafe".utf8)) != .search("cafe") { bad.append("atlas: parse") }
+                || AtlasProto.parse(Data("Qcafe".utf8)) != .search("cafe")
+                || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 2, 0xFF, 3])) != .home(id: 4, zoom: 2, east: -1, south: 3)
+                || AtlasProto.parse(Data([UInt8(ascii: "U"), 5])) != .ways(idx: 5) { bad.append("atlas: parse") }
+            // u: 13 bytes, as proto.rs reads it
+            let u = AtlasProto.way(mode: 2, (secs: 240, metres: 300, arrive: (9, 34)))
+            if u != Data([0x75, 2, 1, 240, 0, 0, 0, 44, 1, 0, 0, 9, 34]) || AtlasProto.way(mode: 1, nil).count != 13 {
+                bad.append("atlas: way")
+            }
             let r = AtlasProto.results([(name: String(repeating: "N", count: 80), sub: String(repeating: "s", count: 120), dist: 5)])
             if r[1].count > 128 { bad.append("atlas: result row too long") }
         }

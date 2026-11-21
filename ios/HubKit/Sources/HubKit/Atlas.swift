@@ -26,6 +26,13 @@ public enum AtlasProto {
         return out
     }
 
+    /// `u mode ok secs metres hh mm`: the way there by car (0), bike (1) or on foot (2); nil: no route that way.
+    public static func way(mode: UInt8, _ r: (secs: Double, metres: Double, arrive: (Int, Int))?) -> Data {
+        var m = Data([UInt8(ascii: "u"), mode, r == nil ? 0 : 1])
+        m.le(UInt32(clamping: Int((r?.secs ?? 0).rounded()))); m.le(UInt32(clamping: Int((r?.metres ?? 0).rounded())))
+        return m + Data([UInt8(r?.arrive.0 ?? 0), UInt8(r?.arrive.1 ?? 0)])
+    }
+
     /// `T mode secs metres n hh mm`, then `t k kind dir at name` per step (48 at most).
     public static func route(mode: UInt8, secs: Double, metres: Double, arrive: (Int, Int),
                              steps: [(at: Double, kind: UInt8, dir: UInt8, name: String)]) -> [Data] {
@@ -108,7 +115,8 @@ public enum AtlasProto {
 
     /// What the watch asked for.
     public enum Ask: Equatable {
-        case ready, home(id: UInt8, zoom: Int), search(String), place(id: UInt8, idx: Int)
+        /// home: `east`/`south` the map moved, in thirds of its width
+        case ready, home(id: UInt8, zoom: Int, east: Int, south: Int), search(String), ways(idx: Int)
         case directions(mode: Int, idx: Int), view(id: UInt8, step: Int), start, stop, again(id: UInt8)
     }
 
@@ -117,9 +125,10 @@ public enum AtlasProto {
         guard let c = b.first else { return nil }
         switch (Character(UnicodeScalar(c)), b.count) {
         case ("R", 1): return .ready
-        case ("H", 3): return .home(id: b[1], zoom: Int(b[2]))
+        case ("H", 3): return .home(id: b[1], zoom: Int(b[2]), east: 0, south: 0)
+        case ("H", 5): return .home(id: b[1], zoom: Int(b[2]), east: Int(Int8(bitPattern: b[3])), south: Int(Int8(bitPattern: b[4])))
         case ("Q", 2...): return .search(String(decoding: b.dropFirst(), as: UTF8.self))
-        case ("O", 3): return .place(id: b[1], idx: Int(b[2]))
+        case ("U", 2): return .ways(idx: Int(b[1]))
         case ("D", 3): return .directions(mode: Int(b[1]), idx: Int(b[2]))
         case ("P", 3): return .view(id: b[1], step: Int(b[2]))
         case ("S", 1): return .start
