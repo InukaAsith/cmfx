@@ -33,10 +33,13 @@ enum Checks {
         if st.playing(-1) != 0 { bad.append("ytmusic: song 1 is sent, song 0 still heard") }
         st.setCredit(next: 300, room: 20, held: 50)
         if st.playing(-1) != 1 { bad.append("ytmusic: song 1 heard") }
-        _ = st.take(4)
+        let four = st.take(4)
         let before = st.sent
-        st.requeue([Data([1]), Data([2])])
-        if st.sent != before - 2 || st.take(1) != [Data([1])] { bad.append("ytmusic requeue") }
+        st.requeue([four[1]])  // refused: again first, nothing else lost or overwritten
+        let again = st.take(2)
+        if st.sent != before + 1 || again.first != four[1] || st.out[before - 4..<before] != four[...] {
+            bad.append("ytmusic requeue")
+        }
         eq("tokens", hex(Rle.tokens(v.tokens.px, width: v.tokens.w, height: v.tokens.h)), v.tokens.out)
         eq("long run", hex(Rle.tokens(v.long.px, width: v.long.w, height: v.long.h)), v.long.out)
         for c in v.rgb565 {
