@@ -10,7 +10,7 @@ An iPhone companion for the **CMF Watch Pro 2** with the patched app-loader firm
     a playlist, Spotify Connect output device. Your own Spotify developer app (PKCE); control needs Premium.
   - **Gemini**: streamed answers into the watch's chat bubbles, with your own API key.
   - **Offline Maps**: pick a region, it is built on the phone in the Nothing dark style and saved on the watch.
-  - **Maps**: search on the watch, Drive, Bike or Walk routes checked turn by turn on Apple Maps pictures, then navigation. The phone draws the maps (dark) and streams them.
+  - **Maps**: the map round you on the watch (Apple Maps, dark, streamed), search with a QWERTY or rotary keyboard, a place's times by car, bike and on foot, the route checked turn by turn, then navigation that buzzes as each turn comes.
   - **Navigation**: MapKit directions, turn by turn on the watch. Location only while a route is on.
   - **Photos**: a photo drawn on the round panel.
 - **Look**: TwinDesk's theme engine (Liquid Glass on iOS 26, glass cards, accent swatches with Nothing red,

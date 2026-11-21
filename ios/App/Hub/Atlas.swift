@@ -5,9 +5,10 @@ import MapKit
 import UIKit
 import WireKit
 
-// The watch's Maps app (cmf-watch-sdk sdk/examples/atlas, proto.rs): search near us (MapKit, then OpenStreetMap's
-// Nominatim when Apple has nothing), a place, a route by car, bike or on foot (NavService: OpenStreetMap's routes
-// first, then Apple's), each step of it checked on the map, then turn by turn. The maps are Apple Maps snapshots in
+// The watch's Maps app (cmf-watch-sdk sdk/examples/atlas, proto.rs): the map round us with the last search's places
+// on it, search near us (MapKit, then OpenStreetMap's Nominatim when Apple has nothing), how long a place is by car,
+// bike and on foot, a route that way (NavService: OpenStreetMap's routes first, then Apple's), each step of it
+// checked on the map, then turn by turn. The maps are Apple Maps snapshots in
 // dark mode with the route drawn on, sent as pictures over the sliding window. Nothing runs unless Maps is open on
 // the watch; location only for an answer, and all the time only while navigating.
 
@@ -15,8 +16,7 @@ import WireKit
     static let app = "Maps"
     /// The watch app's layout (atlas ui.rs `band`): the rows each screen gives the map.
     enum Band {
-        static let home = (top: 0, bottom: 376)
-        static let place = (top: 0, bottom: 284)
+        static let home = (top: 0, bottom: 466)
         static let route = (top: 104, bottom: 376)
     }
     /// Metres per watch pixel for Home's zooms 0 … 4.
@@ -37,14 +37,14 @@ import WireKit
         switch ask {
         case .ready:
             Task { try? await Hub.shared.send(Self.app, AtlasProto.hello) }
-        case .home(let id, let zoom):
-            picture(id) { await self.homeMap(zoom: zoom) }
+        case .home(let id, let zoom, let east, let south):
+            picture(id) { await self.homeMap(zoom: zoom, east: east, south: south) }
         case .search(let q):
             Task { await search(q) }
-        case .place(let id, let idx):
-            guard idx < results.count else { return }
+        case .ways(let idx):
+            guard idx < results.count else { return fail("That place is gone: search again") }
             place = results[idx]
-            picture(id) { await self.placeMap(self.results[idx]) }
+            Task { await ways(to: results[idx]) }
         case .directions(let mode, let idx):
             Task { await directions(mode: mode, idx: idx) }
         case .view(let id, let step):
@@ -126,6 +126,21 @@ import WireKit
         do { try await Hub.shared.send(Self.app, msgs) } catch { status = error.localizedDescription }
     }
 
+    /// Car, bike and foot to `item`, each sent as it is known.
+    private func ways(to item: MKMapItem) async {
+        await withTaskGroup(of: Void.self) { g in
+            for way in [NavService.Mode.drive, .bike, .walk] {
+                g.addTask { @MainActor in
+                    let r = await self.nav.summary(to: item, by: way)
+                    let eta = r.map { Calendar.current.dateComponents([.hour, .minute], from: .now + $0.secs) }
+                    let msg = AtlasProto.way(mode: UInt8(way.rawValue),
+                                             r.map { (secs: $0.secs, metres: $0.metres, arrive: (eta?.hour ?? 0, eta?.minute ?? 0)) })
+                    try? await Hub.shared.send(Self.app, msg)
+                }
+            }
+        }
+    }
+
     private func fail(_ why: String) {
         status = why
         Task { try? await Hub.shared.send(Self.app, AtlasProto.error(why)) }
@@ -172,25 +187,22 @@ import WireKit
         }
     }
 
-    private func homeMap(zoom: Int) async -> [Data]? {
+    /// Round us, moved `east`/`south` thirds of the view (the watch's edge taps); the last search's places as
+    /// labelled pins.
+    private func homeMap(zoom: Int, east: Int, south: Int) async -> [Data]? {
         guard let here = await nav.here() else {
             fail("Location is off for CMFX")
             return nil
         }
         let k = Self.homeScale[min(max(zoom, 0), Self.homeScale.count - 1)]
-        return await MapArt.picture(id: currentID, band: Band.home, centre: here.coordinate,
+        let step = k * 466 / 3 * MKMapPointsPerMeterAtLatitude(here.coordinate.latitude)
+        let p = MKMapPoint(here.coordinate)
+        let centre = MKMapPoint(x: p.x + Double(east) * step, y: p.y + Double(south) * step).coordinate
+        let places = results.map { ($0.placemark.coordinate, $0.name ?? "") }
+        return await MapArt.picture(id: currentID, band: Band.home, centre: centre,
                                     metresPerPx: k, focusY: (Band.home.top + Band.home.bottom) / 2) { snap, _ in
+            for (c, name) in places { MapArt.pin(snap, c, label: name) }
             MapArt.me(snap, here.coordinate)
-        }
-    }
-
-    private func placeMap(_ item: MKMapItem) async -> [Data]? {
-        let c = item.placemark.coordinate
-        let here = await nav.here()
-        return await MapArt.picture(id: currentID, band: Band.place, centre: c, metresPerPx: 2,
-                                    focusY: (Band.place.top + Band.place.bottom) / 2 + 20) { snap, _ in
-            if let here { MapArt.me(snap, here.coordinate) }
-            MapArt.pin(snap, c)
         }
     }
 
@@ -305,9 +317,19 @@ import WireKit
         UIBezierPath(ovalIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)).fill()
     }
 
-    /// The place: a red pin with a white edge and a black eye.
-    static func pin(_ s: MKMapSnapshotter.Snapshot, _ c: CLLocationCoordinate2D) {
+    /// The place: a red pin with a white edge and a black eye; its name beside it, white on a dark edge.
+    static func pin(_ s: MKMapSnapshotter.Snapshot, _ c: CLLocationCoordinate2D, label: String? = nil) {
         let p = s.point(for: c)
+        if let label, !label.isEmpty, CGRect(x: 0, y: 0, width: side, height: side).contains(p) {
+            let text = label.count > 18 ? String(label.prefix(17)) + "…" : label
+            let font = UIFont.systemFont(ofSize: 10, weight: .bold)
+            let x = p.x + 9 + (text as NSString).size(withAttributes: [.font: font]).width > CGFloat(side) - 4
+                ? p.x - 9 - (text as NSString).size(withAttributes: [.font: font]).width : p.x + 9
+            for (colour, width) in [(UIColor.black, 4.0), (UIColor.white, 0.0)] {
+                (text as NSString).draw(at: CGPoint(x: x, y: p.y - 18), withAttributes: [
+                    .font: font, .foregroundColor: UIColor.white, .strokeColor: colour, .strokeWidth: width])
+            }
+        }
         let head = CGRect(x: p.x - 7, y: p.y - 19, width: 14, height: 14)
         let body = UIBezierPath(ovalIn: head)
         body.move(to: CGPoint(x: p.x - 6, y: p.y - 9))

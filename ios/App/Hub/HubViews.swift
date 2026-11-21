@@ -267,7 +267,7 @@ struct AtlasPage: View {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeader(symbol: "map", color: TDColor.accent,
                            title: a.nav.active ? (a.nav.destination?.name ?? "Navigating") : (a.place?.name ?? "Maps on the watch"),
-                           detail: "Open Maps on the watch: search, pick Drive, Bike or Walk, turn the crown through the route, then Start. Apple Maps pictures come from here.")
+                           detail: "Open Maps on the watch: the map round you (tap its edges to move it), search, a place's times by car, bike and on foot, the route turn by turn with the crown, then Start. It buzzes as each turn comes. Apple Maps pictures come from here.")
                 if a.nav.active {
                     Button("Stop", role: .destructive) { a.nav.stop() }.primaryButton()
                 }

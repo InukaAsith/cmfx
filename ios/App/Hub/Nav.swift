@@ -178,6 +178,33 @@ import MapKit
         }
     }
 
+    /// How long to `item` by `way` and how far, without changing the route: OpenStreetMap's profile for it, then
+    /// Apple's estimate (not for bikes). nil: no route that way.
+    func summary(to item: MKMapItem, by way: Mode) async -> (secs: Double, metres: Double)? {
+        guard let here = await here() else { return nil }
+        let a = here.coordinate, b = item.placemark.coordinate
+        let profile = ["car", "bike", "foot"][way.rawValue]
+        let base = "https://routing.openstreetmap.de/routed-" + profile
+        for server in [base, base] + (way == .drive ? ["https://router.project-osrm.org"] : []) {
+            let url = URL(string: server + "/route/v1/driving/\(a.longitude),\(a.latitude);\(b.longitude),\(b.latitude)?overview=false")!
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 15
+            req.setValue("CMFX (watch navigation)", forHTTPHeaderField: "User-Agent")
+            guard let (data, _) = try? await URLSession.shared.data(for: req),
+                  let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            guard j["code"] as? String == "Ok", let r = (j["routes"] as? [[String: Any]])?.first,
+                  let secs = r["duration"] as? Double, let metres = r["distance"] as? Double else { break }
+            return (secs, metres)
+        }
+        guard way != .bike else { return nil }
+        let req = MKDirections.Request()
+        req.source = MKMapItem(placemark: MKPlacemark(coordinate: a))
+        req.destination = item
+        req.transportType = way == .drive ? .automobile : .walking
+        guard let eta = try? await MKDirections(request: req).calculateETA() else { return nil }
+        return (eta.expectedTravelTime, eta.distance)
+    }
+
     /// A pin with no route to it: one straight leg.
     private func loadDirect(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) {
         origin = a
