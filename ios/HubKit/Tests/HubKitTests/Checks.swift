@@ -11,6 +11,7 @@ enum Checks {
         let idx: Idx, world: [Double]
         struct Sp: Decodable { let `in`: [Int], tuned: [Int], blocks: [String] }
         let speaker: Sp
+        let speaker_x: Sp
     }
 
     static func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }
@@ -83,6 +84,13 @@ enum Checks {
         if tuned.count != sp.tuned.count || off > 1 { bad.append("speaker tune: \(tuned.count) vs \(sp.tuned.count), off by \(off)") }
         eq("speaker blocks", SpeakerProto.blocks(sp.tuned.map { Int16($0) }).map(hex).joined(separator: ","),
            sp.blocks.joined(separator: ","))
+        // the options: levelling and the trellis encoder on, volume smoothing off
+        let sx = v.speaker_x
+        let tx = SpeakerTune.forSpeaker(sx.in.map { Int16($0) }, rate: SpeakerProto.rate, level: true, smooth: false)
+        let offx = zip(tx, sx.tuned).map { abs(Int($0) - $1) }.max() ?? 99
+        if tx.count != sx.tuned.count || offx > 1 { bad.append("speaker tune (options): off by \(offx)") }
+        eq("speaker blocks (trellis)", SpeakerProto.blocks(sx.tuned.map { Int16($0) }, paths: SpeakerProto.paths).map(hex)
+            .joined(separator: ","), sx.blocks.joined(separator: ","))
         return bad
     }
 

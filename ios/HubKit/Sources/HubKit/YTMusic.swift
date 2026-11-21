@@ -296,7 +296,7 @@ public enum YTMusic {
     /// A song from YouTube as the watch's tuned 10.67 kHz samples, from `from` seconds. The audio is held only for
     /// this: the temporary file goes as soon as it is decoded.
     /// `progress`: how far, 0...100 (the download most of it).
-    public static func samples(_ id: String, from: Int = 0,
+    public static func samples(_ id: String, from: Int = 0, level: Bool = false, smooth: Bool = true,
                                progress: @Sendable (Int) async -> Void = { _ in }) async throws -> [Int16] {
         await progress(3)
         let (url, size) = try await audioURL(id)
@@ -308,7 +308,7 @@ public enum YTMusic {
         defer { try? FileManager.default.removeItem(at: file) }
         let pcm = try await decode(file, from: Double(from))
         await progress(88)
-        return await Task.detached(priority: .userInitiated) { SpeakerTune.forSpeaker(pcm, rate: SpeakerProto.rate) }.value
+        return await Task.detached(priority: .userInitiated) { SpeakerTune.forSpeaker(pcm, rate: SpeakerProto.rate, level: level, smooth: smooth) }.value
     }
 
     /// Where the extractor's notes go (DevLog in the app).

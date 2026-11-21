@@ -185,14 +185,17 @@ import WireKit
                 song = try await resolve(song)
                 guard !Task.isCancelled, stream?.gen == gen else { return }
                 var told = -100
-                let samples = try await YTMusic.samples(song.id, from: from) { @MainActor [weak self] pct in
+                let (enhance, smooth) = (SoundOptions.enhance, SoundOptions.smooth)
+                let samples = try await YTMusic.samples(song.id, from: from, level: enhance, smooth: smooth) { @MainActor [weak self] pct in
                     // the watch's yellow circle while it waits for the first song; every 4 % at most
                     guard let self, pct - told >= 4 || pct >= 100, self.stream?.gen == gen else { return }
                     told = pct
                     self.stream?.preparing(pct)
                 }
                 guard !Task.isCancelled, stream?.gen == gen else { return }
-                let blocks = await Task.detached(priority: .userInitiated) { SpeakerProto.blocks(samples, pad: false) }.value
+                let blocks = await Task.detached(priority: .userInitiated) {
+                    SpeakerProto.blocks(samples, pad: false, paths: enhance ? SpeakerProto.paths : 0)
+                }.value
                 guard !Task.isCancelled, stream?.gen == gen else { return }
                 stream?.preparing(100)
                 let secs = max(song.seconds, from + samples.count / SpeakerProto.rate)
@@ -276,6 +279,7 @@ struct YouTubeMusicPage: View {
                 }
                 .glassCard()
             }
+            SoundOptionsCard()
             VStack(alignment: .leading, spacing: 8) {
                 Text("On the watch").font(.headline)
                 Text("Search with the keyboard or the dial, tap a song: it plays on the watch, then its radio. Play and pause, previous and next, tap the ring to seek, the crown for the volume, Up next to jump ahead. The phone fetches each song and streams only its sound; keep CMFX running.")
@@ -424,6 +428,7 @@ struct SpotifyPlayerPage: View {
                 }
                 .glassCard()
             }
+            SoundOptionsCard()
             VStack(alignment: .leading, spacing: 8) {
                 Text("On the watch").font(.headline)
                 Text("Open Spotify, search with the keyboard or the dial, tap a song: it plays on the watch, then its radio. Spotify doesn't let other players stream its songs, so each one plays from YouTube Music (the same title and artist). Play and pause, previous and next, tap the ring to seek, the crown for the volume, Up next to jump ahead. Keep CMFX running.")
@@ -440,5 +445,32 @@ struct SpotifyPlayerPage: View {
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { signingIn = false } } }
             }
         }
+    }
+}
+
+// MARK: sound options
+
+/// How songs are prepared for the watch's speaker (YouTube Music and the Spotify player); read as each song is.
+enum SoundOptions {
+    /// Loudness levelling and the trellis encoder. Off: the owner heard them butcher the sound.
+    static var enhance: Bool { UserDefaults.standard.bool(forKey: "sound-enhance") }
+    /// Volume smoothing: the tuning's compressor (on, as tuned by ear).
+    static var smooth: Bool { UserDefaults.standard.object(forKey: "sound-smooth") as? Bool ?? true }
+}
+
+struct SoundOptionsCard: View {
+    @AppStorage("sound-enhance") private var enhance = false
+    @AppStorage("sound-smooth") private var smooth = true
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Sound").font(.headline)
+            Toggle("Volume smoothing", isOn: $smooth)
+            Text("Evens out loud and quiet parts. Off: the song's own dynamics, peaks still kept under the speaker's limit.")
+                .font(.footnote).foregroundStyle(.secondary)
+            Toggle("Enhanced encoding", isOn: $enhance)
+            Text("Loudness levelling between songs and a finer encoder. Applies from the next song.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .glassCard()
     }
 }
