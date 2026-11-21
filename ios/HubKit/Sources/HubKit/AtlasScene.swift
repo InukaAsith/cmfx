@@ -6,7 +6,7 @@ import Foundation
 /// north (y) of a frame origin, as much as fits the watch's store. The same as cmf-watch-sdk hosts/atlasscene.py.
 public enum AtlasScene {
     /// The watch's store (scene.rs CAP), less a margin.
-    public static let cap = 32 * 1024 - 512
+    public static let cap = 30 * 1024 - 512
     public static let zoom = 14
     static let maxRing = 512
 

@@ -12,7 +12,9 @@ import UIKit
 @MainActor @Observable final class MapsService: WatchService {
     static let app = "Offline Maps"
     var radiusKm = 2.0
-    var zooms = 13...16
+    /// Zoom levels saved (1…5), out from street level (zoom 16): 4 is 13…16.
+    var levels = 4
+    var zooms: ClosedRange<Int> { (17 - levels)...16 }
     private(set) var progress: (done: Int, total: Int)?
     var status: String?
     private var acks: [CheckedContinuation<Data, Never>] = []

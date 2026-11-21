@@ -5,26 +5,39 @@ import MapKit
 import UIKit
 import WireKit
 
-// The watch's Maps app (cmf-watch-sdk sdk/examples/atlas, proto.rs): the map round us with the last search's places
-// on it, search near us (MapKit, then OpenStreetMap's Nominatim when Apple has nothing), how long a place is by car,
-// bike and on foot, a route that way (NavService: OpenStreetMap's routes first, then Apple's), each step of it
-// checked on the map, then turn by turn. The map is OpenStreetMap's (OpenFreeMap's vector tiles, cached here):
-// streets, names, parks, water and places cut round a point as data (HubKit AtlasScene) that the watch draws itself,
-// sent over the sliding window. Nothing runs unless Maps is open on the watch; location only for an answer, and all
-// the time only while navigating.
+// The watch's Maps app (cmf-watch-sdk sdk/examples/atlas, proto.rs), as Google Maps behaves: the map round us; search
+// near where the map is looking (Apple's places and OpenStreetMap's through Photon, the best matches nearest first,
+// kept together so their pins fit one map), kinds of places, an area (the map goes there), a pin on the map (tapped
+// or dropped) as a place with what is known of it, how long a place is by car, bike and on foot, the ways there to
+// pick (OpenStreetMap's routes first, then Apple's), each step checked on the map, then turn by turn. The map is
+// OpenStreetMap's (OpenFreeMap's vector tiles, cached here) cut round a point as data (HubKit AtlasScene) the watch
+// draws itself, over the sliding window. Nothing runs unless Maps is open on the watch; location only for an answer,
+// and all the time only while navigating.
 
 @MainActor @Observable final class AtlasService: WatchService {
     static let app = "Maps"
 
     let nav = NavService(target: AtlasService.app)
-    private(set) var results: [MKMapItem] = []
-    private(set) var place: MKMapItem?
+    /// A place found, with what the watch's card shows.
+    struct Found {
+        var item: MKMapItem
+        var kind = "", address = "", phone = "", more = ""
+        var coord: CLLocationCoordinate2D { item.placemark.coordinate }
+        var name: String { item.name ?? "Place" }
+    }
+    private(set) var results: [Found] = []
+    /// A pin on the watch's map (`P`): result 8.
+    private var picked: Found?
     var status: String?
 
-    /// Where the watch's map is measured from (metres east, north): where we were for Home, the route's start
-    /// (NavService's frame) once a route is shown.
+    /// Where the watch's map is measured from (metres east, north): where we were, a search's or an area's place,
+    /// the route's start (NavService's frame) once a route is shown.
     private var frame: CLLocationCoordinate2D?
+    /// Where the map is looking: searches go round it (nil: round us).
+    private var focus: CLLocationCoordinate2D?
     private let tiles = VectorTiles()
+    /// `D` that listed ways to pick: the place and the mode they are for.
+    private var listed: (mode: Int, idx: Int)?
 
     /// The scene being sent; a newer request ends an older one.
     private var gen = 0
@@ -38,14 +51,23 @@ import WireKit
             Task { try? await Hub.shared.send(Self.app, AtlasProto.hello) }
         case .home(let id, let round):
             picture(id) { await self.homeMap(round: round.map { (Double($0.x), Double($0.y)) }) }
-        case .search(let q):
-            Task { await search(q) }
+        case .search(let id, let q):
+            if let c = Self.category(of: q) { return find(id) { await self.kind(c, near: $0) } }
+            find(id) { await self.places(q, near: $0) }
+        case .category(let id, let c):
+            find(id) { await self.kind(c, near: $0) }
+        case .area(let id, let q):
+            Task { await area(q, id: id) }
+        case .pick(let x, let y, let name):
+            Task { await pick((Double(x), Double(y)), name: name) }
+        case .info(let idx):
+            guard let f = found(idx) else { return }
+            Task { try? await Hub.shared.send(Self.app, AtlasProto.info(idx, [f.kind, f.address, f.phone, f.more])) }
         case .ways(let idx):
-            guard idx < results.count else { return fail("That place is gone: search again") }
-            place = results[idx]
-            Task { await ways(to: results[idx]) }
-        case .directions(let mode, let idx, let id):
-            Task { await directions(mode: mode, idx: idx, id: id) }
+            guard let f = found(idx) else { return fail("That place is gone: search again") }
+            Task { await ways(to: f.item) }
+        case .directions(let mode, let idx, let id, let alt):
+            Task { await directions(mode: mode, idx: idx, id: id, alt: alt) }
         case .start:
             Task {
                 try? await Hub.shared.send(Self.app, AtlasProto.navigating)
@@ -61,62 +83,280 @@ import WireKit
         }
     }
 
-    // --- answers
-
-    private func search(_ q: String) async {
-        guard let here = await nav.here() else { return fail("Location is off for CMFX") }
-        let req = MKLocalSearch.Request()
-        req.naturalLanguageQuery = q
-        req.region = MKCoordinateRegion(center: here.coordinate, latitudinalMeters: 30_000, longitudinalMeters: 30_000)
-        var items = (try? await MKLocalSearch(request: req).start().mapItems) ?? []
-        if items.isEmpty { items = await nominatim(q, near: here.coordinate) }
-        items.sort { distance($0, here) < distance($1, here) }
-        results = Array(items.prefix(8))
-        let rows = results.map { (name: $0.name ?? "Place", sub: Self.sub($0), dist: Int(distance($0, here))) }
-        status = rows.isEmpty ? "Nothing found for \(q)" : nil
-        do { try await Hub.shared.send(Self.app, AtlasProto.results(rows)) } catch { status = error.localizedDescription }
+    private func found(_ idx: Int) -> Found? {
+        idx == AtlasProto.picked ? picked : results.indices.contains(idx) ? results[idx] : nil
     }
 
-    private func distance(_ i: MKMapItem, _ here: CLLocation) -> Double {
-        let c = i.placemark.coordinate
-        return here.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
-    }
+    // --- search
 
-    /// The street and the town, short.
-    static func sub(_ i: MKMapItem) -> String {
-        let p = i.placemark
-        let street = [p.subThoroughfare, p.thoroughfare].compactMap { $0 }.joined(separator: " ")
-        let parts = [street, p.locality ?? p.subAdministrativeArea ?? ""].filter { !$0.isEmpty && $0 != i.name }
-        return parts.joined(separator: ", ")
-    }
-
-    /// OpenStreetMap's search (Nominatim, its usage policy: one request at a time, a real User-Agent) where Apple
-    /// has no places: the query and the area round us are all it gets.
-    private func nominatim(_ q: String, near c: CLLocationCoordinate2D) async -> [MKMapItem] {
-        var u = URLComponents(string: "https://nominatim.openstreetmap.org/search")!
-        let d = 0.3
-        u.queryItems = [.init(name: "q", value: q), .init(name: "format", value: "jsonv2"), .init(name: "limit", value: "8"),
-                        .init(name: "viewbox", value: "\(c.longitude - d),\(c.latitude + d),\(c.longitude + d),\(c.latitude - d)")]
-        var req = URLRequest(url: u.url!)
-        req.timeoutInterval = 15
-        req.setValue("CMFX (watch maps)", forHTTPHeaderField: "User-Agent")
-        guard let (data, _) = try? await URLSession.shared.data(for: req),
-              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
-        return rows.compactMap { r in
-            guard let lat = Double(r["lat"] as? String ?? ""), let lon = Double(r["lon"] as? String ?? "") else { return nil }
-            let item = MKMapItem(placemark: MKPlacemark(coordinate: .init(latitude: lat, longitude: lon)))
-            let full = r["display_name"] as? String ?? q
-            let parts = full.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-            item.name = (r["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? parts.first ?? q
-            return item
+    /// A search's places, then the map round them (scene `id`) in a frame where they are: round where the map looks
+    /// when the best match is near it, else round the best match (a town far away: the map goes there, as Google's).
+    private func find(_ id: UInt8, _ look: @escaping (CLLocationCoordinate2D) async -> [Found]) {
+        currentID = id
+        gen += 1
+        let g = gen
+        Task {
+            guard let here = await nav.here() else { return fail("Location is off for CMFX") }
+            let near = focus ?? here.coordinate
+            var all = await look(near)
+            guard g == gen else { return }
+            // together: the best match and those near it, so the pins fit one map
+            if let first = all.first {
+                let a = CLLocation(latitude: first.coord.latitude, longitude: first.coord.longitude)
+                all = all.filter { a.distance(from: CLLocation(latitude: $0.coord.latitude, longitude: $0.coord.longitude)) < 6000 }
+            }
+            results = Array(all.prefix(8))
+            if let first = results.first,
+               CLLocation(latitude: near.latitude, longitude: near.longitude)
+                .distance(from: CLLocation(latitude: first.coord.latitude, longitude: first.coord.longitude)) > 20_000 {
+                frame = first.coord
+            } else {
+                frame = near
+            }
+            status = results.isEmpty ? "Nothing found" : nil
+            try? await Hub.shared.send(Self.app, rows(here))
+            // the map round the places
+            let pts = results.map { xy($0.coord) }
+            let centre = pts.isEmpty ? (0.0, 0.0)
+                : ((pts.map(\.0).min()! + pts.map(\.0).max()!) / 2, (pts.map(\.1).min()! + pts.map(\.1).max()!) / 2)
+            focus = latLon(centre)
+            picture(id) { await self.scene(round: centre, me: self.xy(here.coordinate)) }
         }
     }
 
-    private func directions(mode: Int, idx: Int, id: UInt8) async {
-        guard idx < results.count else { return fail("That place is gone: search again") }
-        nav.stop()
-        nav.mode = NavService.Mode(rawValue: mode) ?? .drive
-        guard await nav.plan(to: results[idx]) else { return fail(nav.status ?? "Couldn't find where you are") }
+    private func xy(_ c: CLLocationCoordinate2D) -> (Double, Double) {
+        guard let f = frame else { return (0, 0) }
+        return AtlasScene.xy((c.latitude, c.longitude), (f.latitude, f.longitude))
+    }
+
+    private func latLon(_ p: (Double, Double)) -> CLLocationCoordinate2D {
+        guard let f = frame else { return .init() }
+        let ll = AtlasScene.latLon(p.0, p.1, (f.latitude, f.longitude))
+        return .init(latitude: ll.lat, longitude: ll.lon)
+    }
+
+    /// `L` and the rows, where each is in the frame now.
+    private func rows(_ here: CLLocation) -> [Data] {
+        AtlasProto.results(results.map { r in
+            (name: r.name, sub: Self.short(r), dist: Int(here.distance(from: CLLocation(latitude: r.coord.latitude, longitude: r.coord.longitude))),
+             at: xy(r.coord))
+        })
+    }
+
+    /// Places for `q` round `near`: Apple's and OpenStreetMap's (Photon), the ones named like the query first, then
+    /// the nearest (Google's order: what you asked for, near where you look).
+    private func places(_ q: String, near: CLLocationCoordinate2D) async -> [Found] {
+        async let apple = appleSearch(q, near: near, km: 10)
+        async let osm = photon(q, near: near, tags: [])
+        var all = await apple
+        if all.count < 5 { all += await appleSearch(q, near: near, km: 60) }
+        all = merge(all, await osm)
+        let words = q.lowercased().split(separator: " ").map(String.init)
+        func match(_ f: Found) -> Int {
+            let n = f.name.lowercased()
+            if n.contains(q.lowercased()) { return 0 }
+            if words.allSatisfy({ n.contains($0) }) { return 1 }
+            return f.address.lowercased().contains(q.lowercased()) ? 2 : 3
+        }
+        let here = CLLocation(latitude: near.latitude, longitude: near.longitude)
+        func km(_ f: Found) -> Double { here.distance(from: CLLocation(latitude: f.coord.latitude, longitude: f.coord.longitude)) / 1000 }
+        // a far match only when nothing near is like it
+        let close = all.filter { km($0) < 50 }
+        if !close.isEmpty { all = close }
+        return all.sorted { (match($0), km($0)) < (match($1), km($1)) }
+    }
+
+    /// A kind of place (proto.rs CATEGORIES) round `near`, nearest first.
+    private func kind(_ c: Int, near: CLLocationCoordinate2D) async -> [Found] {
+        guard Self.kinds.indices.contains(c) else { return [] }
+        let k = Self.kinds[c]
+        async let osm = photon(k.word, near: near, tags: k.osm)
+        var all: [Found] = []
+        for radius in [3000.0, 12_000] where all.count < 6 {
+            let req = MKLocalPointsOfInterestRequest(center: near, radius: radius)
+            req.pointOfInterestFilter = MKPointOfInterestFilter(including: k.apple)
+            all = (try? await MKLocalSearch(request: req).start().mapItems.map(Self.found)) ?? []
+        }
+        all = merge(all, await osm)
+        let here = CLLocation(latitude: near.latitude, longitude: near.longitude)
+        return all.sorted {
+            here.distance(from: CLLocation(latitude: $0.coord.latitude, longitude: $0.coord.longitude))
+                < here.distance(from: CLLocation(latitude: $1.coord.latitude, longitude: $1.coord.longitude))
+        }
+    }
+
+    /// The watch's kinds of places: Apple's categories, OpenStreetMap's tags (Photon `osm_tag`), the word for them.
+    static let kinds: [(word: String, apple: [MKPointOfInterestCategory], osm: [String])] = [
+        ("restaurant", [.restaurant, .bakery], ["amenity:restaurant", "amenity:fast_food"]),
+        ("cafe", [.cafe], ["amenity:cafe"]),
+        ("fuel", [.gasStation, .evCharger], ["amenity:fuel", "amenity:charging_station"]),
+        ("hotel", [.hotel], ["tourism:hotel", "tourism:guest_house"]),
+        ("supermarket", [.store, .foodMarket], ["shop:supermarket", "shop:convenience", "shop:mall"]),
+        ("atm", [.atm, .bank], ["amenity:atm", "amenity:bank"]),
+        ("pharmacy", [.pharmacy], ["amenity:pharmacy"]),
+        ("hospital", [.hospital], ["amenity:hospital", "amenity:clinic"]),
+    ]
+
+    /// A typed search that is a kind of place ("gas station", "food"): searched as that kind.
+    static func category(of q: String) -> Int? {
+        let words: [(Int, [String])] = [
+            (0, ["food", "restaurant", "restaurants", "eat", "fast food"]), (1, ["cafe", "cafes", "café", "coffee"]),
+            (2, ["fuel", "gas", "gas station", "petrol", "petrol station", "filling station", "ev charging"]),
+            (3, ["hotel", "hotels", "stay", "guest house"]), (4, ["shop", "shops", "supermarket", "grocery", "mall"]),
+            (5, ["atm", "bank", "atms"]), (6, ["pharmacy", "chemist", "pharmacies"]), (7, ["hospital", "hospitals", "clinic"]),
+        ]
+        let t = q.lowercased().trimmingCharacters(in: .whitespaces)
+        return words.first { $0.1.contains(t) }?.0
+    }
+
+    private func appleSearch(_ q: String, near: CLLocationCoordinate2D, km: Double) async -> [Found] {
+        let req = MKLocalSearch.Request()
+        req.naturalLanguageQuery = q
+        req.region = MKCoordinateRegion(center: near, latitudinalMeters: km * 1000, longitudinalMeters: km * 1000)
+        req.resultTypes = [.pointOfInterest, .address]
+        return (try? await MKLocalSearch(request: req).start().mapItems.map(Self.found)) ?? []
+    }
+
+    /// OpenStreetMap's places through Photon (photon.komoot.io): the query and where to look are all it gets.
+    private func photon(_ q: String, near c: CLLocationCoordinate2D, tags: [String], layers: [String] = []) async -> [Found] {
+        var u = URLComponents(string: "https://photon.komoot.io/api/")!
+        u.queryItems = [.init(name: "q", value: q), .init(name: "lat", value: String(c.latitude)),
+                        .init(name: "lon", value: String(c.longitude)), .init(name: "limit", value: "12"),
+                        .init(name: "lang", value: "en")]
+            + tags.map { .init(name: "osm_tag", value: $0) } + layers.map { .init(name: "layer", value: $0) }
+        var req = URLRequest(url: u.url!)
+        req.timeoutInterval = 12
+        req.setValue("CMFX (watch maps)", forHTTPHeaderField: "User-Agent")
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let feats = j["features"] as? [[String: Any]] else { return [] }
+        return feats.compactMap { f in
+            guard let p = f["properties"] as? [String: Any],
+                  let xy = (f["geometry"] as? [String: Any])?["coordinates"] as? [Double], xy.count == 2 else { return nil }
+            let item = MKMapItem(placemark: MKPlacemark(coordinate: .init(latitude: xy[1], longitude: xy[0])))
+            let street = [p["housenumber"] as? String, p["street"] as? String].compactMap { $0 }.joined(separator: " ")
+            let town = p["district"] as? String ?? p["city"] as? String ?? p["county"] as? String ?? ""
+            item.name = p["name"] as? String ?? (street.isEmpty ? q : street)
+            let kind = (p["osm_value"] as? String ?? "").replacingOccurrences(of: "_", with: " ").capitalized
+            return Found(item: item, kind: kind == "Yes" ? "" : kind,
+                         address: [street, town, p["state"] as? String ?? ""].filter { !$0.isEmpty }.joined(separator: ", "))
+        }
+    }
+
+    /// Both lists, one of each place (the same name within 150 m).
+    private func merge(_ a: [Found], _ b: [Found]) -> [Found] {
+        var out = a
+        for f in b where !out.contains(where: {
+            $0.name.lowercased() == f.name.lowercased()
+                && CLLocation(latitude: $0.coord.latitude, longitude: $0.coord.longitude)
+                    .distance(from: CLLocation(latitude: f.coord.latitude, longitude: f.coord.longitude)) < 150
+        }) { out.append(f) }
+        return out
+    }
+
+    static func found(_ i: MKMapItem) -> Found {
+        let p = i.placemark
+        let address = [[p.subThoroughfare, p.thoroughfare].compactMap { $0 }.joined(separator: " "),
+                       p.subLocality ?? "", p.locality ?? p.subAdministrativeArea ?? ""]
+            .filter { !$0.isEmpty && $0 != i.name }.joined(separator: ", ")
+        return Found(item: i, kind: i.pointOfInterestCategory.map(Self.kindName) ?? "", address: address,
+                     phone: i.phoneNumber ?? "", more: i.url?.host() ?? "")
+    }
+
+    /// "MKPOICategoryGasStation" → "Gas Station".
+    static func kindName(_ c: MKPointOfInterestCategory) -> String {
+        let raw = c.rawValue.replacingOccurrences(of: "MKPOICategory", with: "")
+        return raw.reduce(into: "") { s, ch in
+            if ch.isUppercase, !s.isEmpty { s.append(" ") }
+            s.append(ch)
+        }
+    }
+
+    /// The street and the town, short (the sheet's second line).
+    static func short(_ f: Found) -> String {
+        let parts = f.address.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        return parts.suffix(2).joined(separator: ", ")
+    }
+
+    /// An area (a town, a district): the map goes there, the area its one result.
+    private func area(_ q: String, id: UInt8) async {
+        currentID = id
+        gen += 1
+        let g = gen
+        guard let here = await nav.here() else { return fail("Location is off for CMFX") }
+        let req = MKLocalSearch.Request()
+        req.naturalLanguageQuery = q
+        req.resultTypes = .address
+        req.region = MKCoordinateRegion(center: here.coordinate, latitudinalMeters: 400_000, longitudinalMeters: 400_000)
+        var a = (try? await MKLocalSearch(request: req).start().mapItems.first.map(Self.found)) ?? nil
+        if a == nil {
+            a = await photon(q, near: here.coordinate, tags: [], layers: ["city", "district", "locality", "county", "state"]).first
+        }
+        guard g == gen else { return }
+        guard var area = a else { return fail("No area called \(q)") }
+        if area.kind.isEmpty { area.kind = "Area" }
+        results = [area]
+        frame = area.coord
+        focus = area.coord
+        try? await Hub.shared.send(Self.app, rows(here))
+        picture(id) { await self.scene(round: (0, 0), me: self.xy(here.coordinate)) }
+    }
+
+    /// A pin on the watch's map (frame metres): a place it tapped (its name), else a dropped pin with the address there.
+    private func pick(_ p: (Double, Double), name: String) async {
+        let c = latLon(p)
+        let at = CLLocation(latitude: c.latitude, longitude: c.longitude)
+        var f: Found?
+        if !name.isEmpty {
+            f = results.first { $0.name == name && at.distance(from: CLLocation(latitude: $0.coord.latitude, longitude: $0.coord.longitude)) < 80 }
+            if f == nil {
+                let near = await appleSearch(name, near: c, km: 1)
+                f = near.min { at.distance(from: CLLocation(latitude: $0.coord.latitude, longitude: $0.coord.longitude))
+                    < at.distance(from: CLLocation(latitude: $1.coord.latitude, longitude: $1.coord.longitude)) }
+                    .flatMap { at.distance(from: CLLocation(latitude: $0.coord.latitude, longitude: $0.coord.longitude)) < 300 ? $0 : nil }
+            }
+        }
+        if f == nil {
+            let item = MKMapItem(placemark: MKPlacemark(coordinate: c))
+            item.name = name.isEmpty ? "Dropped pin" : name
+            var g = Found(item: item)
+            if let mark = try? await CLGeocoder().reverseGeocodeLocation(at).first {
+                let street = [mark.subThoroughfare, mark.thoroughfare].compactMap { $0 }.joined(separator: " ")
+                g.address = [street, mark.subLocality ?? "", mark.locality ?? ""].filter { !$0.isEmpty }.joined(separator: ", ")
+            }
+            f = g
+        }
+        guard var pin = f else { return }
+        // the pin stays where it was put on the watch
+        if name.isEmpty { pin.item = MKMapItem(placemark: MKPlacemark(coordinate: c)); pin.item.name = "Dropped pin" }
+        picked = pin
+        let here = await nav.here()
+        let d = here.map { Int($0.distance(from: at)) } ?? 0
+        let row = AtlasProto.row(AtlasProto.picked, (name: pin.name, sub: Self.short(pin), dist: d, at: p))
+        try? await Hub.shared.send(Self.app, [row] + AtlasProto.info(AtlasProto.picked, [pin.kind, pin.address, pin.phone, pin.more]))
+    }
+
+    /// The route by `mode` to result `idx`. With two or three ways there they go to the watch to pick from first;
+    /// `alt` is the one picked.
+    private func directions(mode: Int, idx: Int, id: UInt8, alt: Int?) async {
+        guard let f = found(idx) else { return fail("That place is gone: search again") }
+        if let alt, let l = listed, l.mode == mode, l.idx == idx, nav.alternatives.count > alt {
+            nav.choose(alt)
+        } else {
+            nav.stop()
+            nav.mode = NavService.Mode(rawValue: mode) ?? .drive
+            guard await nav.plan(to: f.item) else { return fail(nav.status ?? "Couldn't find where you are") }
+            if alt == nil, nav.alternatives.count >= 2 {
+                listed = (mode, idx)
+                let rows = nav.alternativeRows.map { r in
+                    let eta = Calendar.current.dateComponents([.hour, .minute], from: .now + r.secs)
+                    return (secs: r.secs, metres: r.metres, arrive: (eta.hour ?? 0, eta.minute ?? 0), via: r.via)
+                }
+                try? await Hub.shared.send(Self.app, AtlasProto.alternatives(rows))
+                return
+            }
+            if let alt { nav.choose(alt) }
+        }
         let eta = Calendar.current.dateComponents([.hour, .minute], from: .now + nav.expected)
         let msgs = AtlasProto.route(mode: UInt8(mode), secs: nav.expected, metres: nav.length,
                                     arrive: (eta.hour ?? 0, eta.minute ?? 0), steps: nav.steps)
@@ -191,26 +431,28 @@ import WireKit
         }
     }
 
-    /// Home's map: round where we are (a new frame there), or round a point of the frame the watch has moved to.
+    /// Home's map: round where we are (a new frame there; the search's places sent again in it), or round a point
+    /// of the frame the watch has moved to (where it looks: searches go round it).
     private func homeMap(round: (Double, Double)?) async -> [Data]? {
         guard let here = await nav.here() else {
             fail("Location is off for CMFX")
             return nil
         }
-        if round == nil || frame == nil { frame = here.coordinate }
-        let f = frame!
-        let me = AtlasScene.xy((here.coordinate.latitude, here.coordinate.longitude), (f.latitude, f.longitude))
+        if round == nil || frame == nil {
+            frame = here.coordinate
+            focus = nil
+            if !results.isEmpty { try? await Hub.shared.send(Self.app, rows(here)) }
+        } else if let round {
+            focus = latLon(round)
+        }
+        let me = xy(here.coordinate)
         return await scene(round: round ?? me, me: me)
     }
 
-    /// The scene round `centre` (metres in `frame`), the last search's places on it as red pins.
+    /// The scene round `centre` (metres in `frame`); the watch draws the search's pins itself.
     private func scene(round centre: (Double, Double), me: (Double, Double)) async -> [Data]? {
         guard let f = frame else { return nil }
         let o = (lat: f.latitude, lon: f.longitude)
-        let pins = results.map { i -> ((Double, Double), String) in
-            let c = i.placemark.coordinate
-            return (AtlasScene.xy((c.latitude, c.longitude), o), i.name ?? "")
-        }
         let need = AtlasScene.tiles(round: centre, r: AtlasScene.radii[0], origin: o)
         let got: [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])]
         do { got = try await tiles.features(need) } catch {
@@ -219,7 +461,7 @@ import WireKit
         }
         let id = currentID
         return await Task.detached(priority: .userInitiated) {
-            let (data, r) = AtlasScene.scene(tiles: got, origin: o, centre: centre, pins: pins)
+            let (data, r) = AtlasScene.scene(tiles: got, origin: o, centre: centre)
             return AtlasProto.scene(id: id, data: data, me: me, centre: centre, r: r)
         }.value
     }

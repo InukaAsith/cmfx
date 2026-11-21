@@ -287,17 +287,19 @@ struct MapsPage: View {
                     Slider(value: $m.radiusKm, in: 0.5...5, step: 0.5)
                     Text(String(format: "%.1f km", m.radiusKm)).monospacedDigit().frame(width: 60, alignment: .trailing)
                 }
-                // zoom 10 shows a city, 18 single houses
-                Stepper(value: Binding(get: { m.zooms.lowerBound },
-                                       set: { m.zooms = $0...max($0, m.zooms.upperBound) }), in: 10...18) {
-                    HStack { Text("Farthest zoom"); Spacer(); Text("\(m.zooms.lowerBound)").monospacedDigit() }
-                }
-                Stepper(value: Binding(get: { m.zooms.upperBound },
-                                       set: { m.zooms = min($0, m.zooms.lowerBound)...$0 }), in: 10...18) {
-                    HStack { Text("Closest zoom"); Spacer(); Text("\(m.zooms.upperBound)").monospacedDigit() }
+                // how many zoom levels the watch gets, out from street level
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Zoom levels")
+                    Picker("Zoom levels", selection: $m.levels) {
+                        ForEach(1...5, id: \.self) { Text("\($0)").tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    Text(["Streets only", "Streets and the blocks round them", "Out to the neighbourhood",
+                          "Out to the district", "Out to the whole city"][m.levels - 1])
+                        .font(.footnote).foregroundStyle(TDColor.muted)
                 }
                 let tiles = m.tileCount(centre)
-                Text(tiles > 400 ? "\(tiles) tiles: too many (400 at most). Make the radius smaller or the closest zoom lower."
+                Text(tiles > 400 ? "\(tiles) tiles: too many (400 at most). Make the radius smaller or pick fewer zoom levels."
                      : "\(tiles) tiles. Open Offline Maps on the watch, then save.")
                     .font(.footnote).foregroundStyle(tiles > 400 ? TDColor.accent : TDColor.muted)
                 if let p = m.progress {

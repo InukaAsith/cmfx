@@ -94,17 +94,29 @@ enum Checks {
             if msgs[0].count != 14 || msgs.dropFirst().contains(where: { $0.count > 128 || $0[0] != UInt8(ascii: "d") })
                 || msgs.dropFirst().reduce(Data(), { $0 + $1.dropFirst(4) }) != data { bad.append("atlas: scene messages") }
             if AtlasScene.street("Dr. Colvin R. de Silva Mawatha (Union Place)") != "Dr. Colvin R. de Silva Mw" { bad.append("atlas: street") }
-            if AtlasProto.parse(Data([UInt8(ascii: "D"), 1, 3, 9])) != .directions(mode: 1, idx: 3, id: 9)
-                || AtlasProto.parse(Data("Qcafe".utf8)) != .search("cafe")
+            if AtlasProto.parse(Data([UInt8(ascii: "D"), 1, 3, 9])) != .directions(mode: 1, idx: 3, id: 9, alt: nil)
+                || AtlasProto.parse(Data([UInt8(ascii: "D"), 0, 8, 9, 1])) != .directions(mode: 0, idx: 8, id: 9, alt: 1)
+                || AtlasProto.parse(Data([UInt8(ascii: "Q"), 7]) + Data("cafe".utf8)) != .search(id: 7, "cafe")
+                || AtlasProto.parse(Data([UInt8(ascii: "Z"), 7]) + Data("Kandy".utf8)) != .area(id: 7, "Kandy")
+                || AtlasProto.parse(Data([UInt8(ascii: "C"), 7, 2])) != .category(id: 7, 2)
+                || AtlasProto.parse(Data([UInt8(ascii: "P"), 0x9C, 0xFF, 0x2C, 0x01]) + Data("Odel".utf8)) != .pick(x: -100, y: 300, name: "Odel")
+                || AtlasProto.parse(Data([UInt8(ascii: "I"), 8])) != .info(idx: 8)
                 || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 0, 0x9C, 0xFF, 0x2C, 0x01])) != .home(id: 4, round: (-100, 300))
                 || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 1, 0, 0, 0, 0])) != .home(id: 4, round: nil)
                 || AtlasProto.parse(Data([UInt8(ascii: "U"), 5])) != .ways(idx: 5) { bad.append("atlas: parse") }
+            // l, o, i as proto.rs reads them
+            if AtlasProto.row(1, (name: "Galle Face", sub: "Colombo 3", dist: 1234, at: (-300, 450)))
+                != Data([0x6C, 1, 0xD2, 4, 0, 0, 0xD4, 0xFE, 0xC2, 1]) + Data("Galle Face\u{0}Colombo 3".utf8) { bad.append("atlas: l") }
+            let alts = AtlasProto.alternatives([(secs: 900, metres: 5000, arrive: (10, 30), via: "Duplication Rd"),
+                                             (secs: 960, metres: 4800, arrive: (10, 31), via: "Galle Rd")])
+            if alts.count != 3 || alts[0] != Data([0x4F, 2]) || alts[1].prefix(12) != Data([0x6F, 0, 0x84, 3, 0, 0, 0x88, 0x13, 0, 0, 10, 30])
+                || AtlasProto.info(8, ["Café", "", "+94"]).count != 2 { bad.append("atlas: o, i") }
             // u: 13 bytes, as proto.rs reads it
             let u = AtlasProto.way(mode: 2, (secs: 240, metres: 300, arrive: (9, 34)))
             if u != Data([0x75, 2, 1, 240, 0, 0, 0, 44, 1, 0, 0, 9, 34]) || AtlasProto.way(mode: 1, nil).count != 13 {
                 bad.append("atlas: way")
             }
-            let r = AtlasProto.results([(name: String(repeating: "N", count: 80), sub: String(repeating: "s", count: 120), dist: 5)])
+            let r = AtlasProto.results([(name: String(repeating: "N", count: 80), sub: String(repeating: "s", count: 120), dist: 5, at: (0, 0))])
             if r[1].count > 128 { bad.append("atlas: result row too long") }
         }
         // YouTube Music's credit with held, and the song heard (not the last one sent) is the current one
