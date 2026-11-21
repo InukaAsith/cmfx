@@ -301,8 +301,14 @@ import MapKit
     }
 
     private func sendRoute() async throws {
-        try await Hub.shared.send(target, NavProto.route(NavProto.simplify(pts)))
+        try await Hub.shared.send(target, routeMessages())
     }
+
+    /// The route's points for the watch (`G`/`g`), metres in its frame (`frame`).
+    func routeMessages() -> [Data] { NavProto.route(NavProto.simplify(pts)) }
+
+    /// The route's frame: its start (the turns and positions are metres east and north of it).
+    var frame: CLLocationCoordinate2D { origin }
 
     /// The point `s` metres along the route (Maps centres a step's picture on it).
     func coordinate(at s: Double) -> CLLocationCoordinate2D? {

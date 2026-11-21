@@ -8,26 +8,25 @@ import WireKit
 // The watch's Maps app (cmf-watch-sdk sdk/examples/atlas, proto.rs): the map round us with the last search's places
 // on it, search near us (MapKit, then OpenStreetMap's Nominatim when Apple has nothing), how long a place is by car,
 // bike and on foot, a route that way (NavService: OpenStreetMap's routes first, then Apple's), each step of it
-// checked on the map, then turn by turn. The maps are Apple Maps snapshots in
-// dark mode with the route drawn on, sent as pictures over the sliding window. Nothing runs unless Maps is open on
-// the watch; location only for an answer, and all the time only while navigating.
+// checked on the map, then turn by turn. The map is OpenStreetMap's (OpenFreeMap's vector tiles, cached here):
+// streets, names, parks, water and places cut round a point as data (HubKit AtlasScene) that the watch draws itself,
+// sent over the sliding window. Nothing runs unless Maps is open on the watch; location only for an answer, and all
+// the time only while navigating.
 
 @MainActor @Observable final class AtlasService: WatchService {
     static let app = "Maps"
-    /// The watch app's layout (atlas ui.rs `band`): the rows each screen gives the map.
-    enum Band {
-        static let home = (top: 0, bottom: 466)
-        static let route = (top: 104, bottom: 376)
-    }
-    /// Metres per watch pixel for Home's zooms 0 … 4.
-    static let homeScale: [Double] = [16, 8, 4, 2, 1]
 
     let nav = NavService(target: AtlasService.app)
     private(set) var results: [MKMapItem] = []
     private(set) var place: MKMapItem?
     var status: String?
 
-    /// The picture being sent; a newer request ends an older one.
+    /// Where the watch's map is measured from (metres east, north): where we were for Home, the route's start
+    /// (NavService's frame) once a route is shown.
+    private var frame: CLLocationCoordinate2D?
+    private let tiles = VectorTiles()
+
+    /// The scene being sent; a newer request ends an older one.
     private var gen = 0
     private var queue: [Data] = []
     private var last: (id: UInt8, msgs: [Data])?
@@ -37,18 +36,16 @@ import WireKit
         switch ask {
         case .ready:
             Task { try? await Hub.shared.send(Self.app, AtlasProto.hello) }
-        case .home(let id, let zoom, let east, let south):
-            picture(id) { await self.homeMap(zoom: zoom, east: east, south: south) }
+        case .home(let id, let round):
+            picture(id) { await self.homeMap(round: round.map { (Double($0.x), Double($0.y)) }) }
         case .search(let q):
             Task { await search(q) }
         case .ways(let idx):
             guard idx < results.count else { return fail("That place is gone: search again") }
             place = results[idx]
             Task { await ways(to: results[idx]) }
-        case .directions(let mode, let idx):
-            Task { await directions(mode: mode, idx: idx) }
-        case .view(let id, let step):
-            picture(id) { await self.routeMap(step: step) }
+        case .directions(let mode, let idx, let id):
+            Task { await directions(mode: mode, idx: idx, id: id) }
         case .start:
             Task {
                 try? await Hub.shared.send(Self.app, AtlasProto.navigating)
@@ -115,7 +112,7 @@ import WireKit
         }
     }
 
-    private func directions(mode: Int, idx: Int) async {
+    private func directions(mode: Int, idx: Int, id: UInt8) async {
         guard idx < results.count else { return fail("That place is gone: search again") }
         nav.stop()
         nav.mode = NavService.Mode(rawValue: mode) ?? .drive
@@ -123,7 +120,14 @@ import WireKit
         let eta = Calendar.current.dateComponents([.hour, .minute], from: .now + nav.expected)
         let msgs = AtlasProto.route(mode: UInt8(mode), secs: nav.expected, metres: nav.length,
                                     arrive: (eta.hour ?? 0, eta.minute ?? 0), steps: nav.steps)
-        do { try await Hub.shared.send(Self.app, msgs) } catch { status = error.localizedDescription }
+        do { try await Hub.shared.send(Self.app, msgs + nav.routeMessages()) } catch { status = error.localizedDescription }
+        // the route's map, in its frame, round the middle of it
+        frame = nav.frame
+        let line = nav.coords.map { AtlasScene.xy(($0.latitude, $0.longitude), (nav.frame.latitude, nav.frame.longitude)) }
+        let xs = line.map(\.0), ys = line.map(\.1)
+        guard let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max() else { return }
+        let mid = ((x0 + x1) / 2, (y0 + y1) / 2)
+        picture(id) { await self.scene(round: mid, me: (0, 0)) }
     }
 
     /// Car, bike and foot to `item`, each sent as it is known.
@@ -146,7 +150,7 @@ import WireKit
         Task { try? await Hub.shared.send(Self.app, AtlasProto.error(why)) }
     }
 
-    // --- pictures
+    // --- the map
 
     private func picture(_ id: UInt8, _ make: @escaping @MainActor () async -> [Data]?) {
         currentID = id
@@ -187,187 +191,116 @@ import WireKit
         }
     }
 
-    /// Round us, moved `east`/`south` thirds of the view (the watch's edge taps); the last search's places as
-    /// labelled pins.
-    private func homeMap(zoom: Int, east: Int, south: Int) async -> [Data]? {
+    /// Home's map: round where we are (a new frame there), or round a point of the frame the watch has moved to.
+    private func homeMap(round: (Double, Double)?) async -> [Data]? {
         guard let here = await nav.here() else {
             fail("Location is off for CMFX")
             return nil
         }
-        let k = Self.homeScale[min(max(zoom, 0), Self.homeScale.count - 1)]
-        let step = k * 466 / 3 * MKMapPointsPerMeterAtLatitude(here.coordinate.latitude)
-        let p = MKMapPoint(here.coordinate)
-        let centre = MKMapPoint(x: p.x + Double(east) * step, y: p.y + Double(south) * step).coordinate
-        let places = results.map { ($0.placemark.coordinate, $0.name ?? "") }
-        return await MapArt.picture(id: currentID, band: Band.home, centre: centre,
-                                    metresPerPx: k, focusY: (Band.home.top + Band.home.bottom) / 2) { snap, _ in
-            for (c, name) in places { MapArt.pin(snap, c, label: name) }
-            MapArt.me(snap, here.coordinate)
-        }
+        if round == nil || frame == nil { frame = here.coordinate }
+        let f = frame!
+        let me = AtlasScene.xy((here.coordinate.latitude, here.coordinate.longitude), (f.latitude, f.longitude))
+        return await scene(round: round ?? me, me: me)
     }
 
-    private func routeMap(step: Int) async -> [Data]? {
-        let line = nav.coords
-        guard line.count >= 2 else { return nil }
-        let dest = nav.destination?.placemark.coordinate ?? line[line.count - 1]
-        let draw: (MKMapSnapshotter.Snapshot, CGContext) -> Void = { snap, _ in
-            MapArt.route(snap, line)
-            MapArt.pin(snap, dest)
-            MapArt.me(snap, line[0])
+    /// The scene round `centre` (metres in `frame`), the last search's places on it as red pins.
+    private func scene(round centre: (Double, Double), me: (Double, Double)) async -> [Data]? {
+        guard let f = frame else { return nil }
+        let o = (lat: f.latitude, lon: f.longitude)
+        let pins = results.map { i -> ((Double, Double), String) in
+            let c = i.placemark.coordinate
+            return (AtlasScene.xy((c.latitude, c.longitude), o), i.name ?? "")
         }
-        let b = Band.route
-        if step == 0 || step > nav.steps.count {
-            return await MapArt.fitted(id: currentID, band: b, line: line, draw: draw)
+        let need = AtlasScene.tiles(round: centre, r: AtlasScene.radii[0], origin: o)
+        let got: [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])]
+        do { got = try await tiles.features(need) } catch {
+            fail("No map here: \(error.localizedDescription)")
+            return nil
         }
-        let st = nav.steps[step - 1]
-        guard let at = nav.coordinate(at: st.at) else { return nil }
-        return await MapArt.picture(id: currentID, band: b, centre: at, metresPerPx: 1.5, focusY: (b.top + b.bottom) / 2) { snap, ctx in
-            draw(snap, ctx)
-            MapArt.focus(snap, at)
-        }
+        let id = currentID
+        return await Task.detached(priority: .userInitiated) {
+            let (data, r) = AtlasScene.scene(tiles: got, origin: o, centre: centre, pins: pins)
+            return AtlasProto.scene(id: id, data: data, me: me, centre: centre, r: r)
+        }.value
     }
 
-    /// The id of the picture being made (the last one asked for).
+    /// The id of the scene being made (the last one asked for).
     private var currentID: UInt8 = 0
 }
 
-/// Apple Maps snapshots for the watch: 233 px square (the watch draws each pixel 2 × 2), dark, cut to the rows the
-/// screen gives the map and to the round panel, black elsewhere.
-@MainActor enum MapArt {
-    static let side = 233
-    static let red = UIColor(red: 0xD7 / 255, green: 0x19 / 255, blue: 0x21 / 255, alpha: 1)
+/// OpenFreeMap's vector tiles (OpenStreetMap, OpenMapTiles schema, no key; https://openfreemap.org): zoom 14, kept in
+/// Caches so a place seen once is quick (a tile is ~100–300 KB; ones unused for 30 days go).
+actor VectorTiles {
+    private static let tileJSON = URL(string: "https://tiles.openfreemap.org/planet")!
+    private var template: (url: String, at: Date)?
+    private var decoded: [String: [AtlasScene.Feature]] = [:]
+    private var order: [String] = []
+    private let dir: URL = {
+        let d = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("vtiles")
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }()
 
-    /// `centre` at watch pixel (233, focusY), `metresPerPx` metres a watch pixel.
-    static func picture(id: UInt8, band: (top: Int, bottom: Int), centre: CLLocationCoordinate2D, metresPerPx: Double,
-                        focusY: Int, draw: @escaping (MKMapSnapshotter.Snapshot, CGContext) -> Void) async -> [Data]? {
-        let perPx = metresPerPx * 2 * MKMapPointsPerMeterAtLatitude(centre.latitude)  // map points a picture pixel
-        let p = MKMapPoint(centre)
-        let w = perPx * Double(side)
-        let rect = MKMapRect(x: p.x - w / 2, y: p.y - perPx * Double(focusY) / 2, width: w, height: w)
-        return await render(id: id, band: band, rect: rect, draw: draw)
-    }
-
-    /// All of `line` inside the band, with a margin.
-    static func fitted(id: UInt8, band: (top: Int, bottom: Int), line: [CLLocationCoordinate2D],
-                       draw: @escaping (MKMapSnapshotter.Snapshot, CGContext) -> Void) async -> [Data]? {
-        let pts = line.map(MKMapPoint.init)
-        let (x0, x1) = (pts.map(\.x).min()!, pts.map(\.x).max()!)
-        let (y0, y1) = (pts.map(\.y).min()!, pts.map(\.y).max()!)
-        // the band's usable box in watch pixels: its height less a margin, the chord at its middle
-        let h = Double(band.bottom - band.top - 40), wpx = 340.0
-        let perWatchPx = max((x1 - x0) / wpx, (y1 - y0) / h, 0.5 * MKMapPointsPerMeterAtLatitude(line[0].latitude))
-        let perPx = perWatchPx * 2
-        let w = perPx * Double(side)
-        let cy = Double(band.top + band.bottom) / 2
-        let rect = MKMapRect(x: (x0 + x1) / 2 - w / 2, y: (y0 + y1) / 2 - perPx * cy / 2, width: w, height: w)
-        return await render(id: id, band: band, rect: rect, draw: draw)
-    }
-
-    static func render(id: UInt8, band: (top: Int, bottom: Int), rect: MKMapRect,
-                       draw: @escaping (MKMapSnapshotter.Snapshot, CGContext) -> Void) async -> [Data]? {
-        let o = MKMapSnapshotter.Options()
-        o.mapRect = rect
-        o.size = CGSize(width: side, height: side)
-        o.traitCollection = UITraitCollection { t in
-            t.userInterfaceStyle = .dark
-            t.displayScale = 1
-        }
-        let cfg = MKStandardMapConfiguration(emphasisStyle: .default)
-        cfg.pointOfInterestFilter = .excludingAll
-        o.preferredConfiguration = cfg
-        guard let snap = try? await MKMapSnapshotter(options: o).start() else { return nil }
-        let fmt = UIGraphicsImageRendererFormat()
-        fmt.scale = 1
-        fmt.opaque = true
-        let full = CGRect(x: 0, y: 0, width: side, height: side)
-        let img = UIGraphicsImageRenderer(size: full.size, format: fmt).image { ctx in
-            UIColor.black.setFill()
-            ctx.fill(full)
-            ctx.cgContext.saveGState()
-            UIBezierPath(ovalIn: full).addClip()
-            snap.image.draw(in: full)
-            draw(snap, ctx.cgContext)
-            ctx.cgContext.restoreGState()
-        }
-        // only the band's rows go (each picture row is 2 watch rows)
-        let r0 = band.top / 2, r1 = min((band.bottom + 1) / 2, side)
-        guard let cg = img.cgImage?.cropping(to: CGRect(x: 0, y: r0, width: side, height: r1 - r0)) else { return nil }
-        let rgb = rgbBytes(cg, width: side, height: r1 - r0)
-        return AtlasProto.picture(id: id, rgb: rgb, width: side, height: r1 - r0, scale: 2, x0: 0, y0: Int16(r0 * 2))
-    }
-
-    static func rgbBytes(_ cg: CGImage, width: Int, height: Int) -> [UInt8] {
-        var rgba = [UInt8](repeating: 0, count: width * height * 4)
-        let ctx = CGContext(data: &rgba, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
-        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
-        var rgb = [UInt8](repeating: 0, count: width * height * 3)
-        for i in 0..<(width * height) {
-            rgb[3 * i] = rgba[4 * i]; rgb[3 * i + 1] = rgba[4 * i + 1]; rgb[3 * i + 2] = rgba[4 * i + 2]
-        }
-        return rgb
-    }
-
-    /// We are here: a red dot in a white ring.
-    static func me(_ s: MKMapSnapshotter.Snapshot, _ c: CLLocationCoordinate2D) {
-        let p = s.point(for: c)
-        UIColor.white.setFill()
-        UIBezierPath(ovalIn: CGRect(x: p.x - 6, y: p.y - 6, width: 12, height: 12)).fill()
-        red.setFill()
-        UIBezierPath(ovalIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)).fill()
-    }
-
-    /// The place: a red pin with a white edge and a black eye; its name beside it, white on a dark edge.
-    static func pin(_ s: MKMapSnapshotter.Snapshot, _ c: CLLocationCoordinate2D, label: String? = nil) {
-        let p = s.point(for: c)
-        if let label, !label.isEmpty, CGRect(x: 0, y: 0, width: side, height: side).contains(p) {
-            let text = label.count > 18 ? String(label.prefix(17)) + "…" : label
-            let font = UIFont.systemFont(ofSize: 10, weight: .bold)
-            let x = p.x + 9 + (text as NSString).size(withAttributes: [.font: font]).width > CGFloat(side) - 4
-                ? p.x - 9 - (text as NSString).size(withAttributes: [.font: font]).width : p.x + 9
-            for (colour, width) in [(UIColor.black, 4.0), (UIColor.white, 0.0)] {
-                (text as NSString).draw(at: CGPoint(x: x, y: p.y - 18), withAttributes: [
-                    .font: font, .foregroundColor: UIColor.white, .strokeColor: colour, .strokeWidth: width])
+    init() {
+        // tiles unused for a month go
+        let fm = FileManager.default
+        let old = Date.now.addingTimeInterval(-30 * 86400)
+        for u in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentAccessDateKey])) ?? [] {
+            if let d = try? u.resourceValues(forKeys: [.contentAccessDateKey]).contentAccessDate, d < old {
+                try? fm.removeItem(at: u)
             }
         }
-        let head = CGRect(x: p.x - 7, y: p.y - 19, width: 14, height: 14)
-        let body = UIBezierPath(ovalIn: head)
-        body.move(to: CGPoint(x: p.x - 6, y: p.y - 9))
-        body.addLine(to: CGPoint(x: p.x, y: p.y))
-        body.addLine(to: CGPoint(x: p.x + 6, y: p.y - 9))
-        body.close()
-        UIColor.white.setStroke()
-        body.lineWidth = 3
-        body.stroke()
-        red.setFill()
-        body.fill()
-        UIColor.black.setFill()
-        UIBezierPath(ovalIn: CGRect(x: p.x - 2.5, y: p.y - 14.5, width: 5, height: 5)).fill()
     }
 
-    /// The route: red on a black casing.
-    static func route(_ s: MKMapSnapshotter.Snapshot, _ line: [CLLocationCoordinate2D]) {
-        let path = UIBezierPath()
-        for (i, c) in line.enumerated() {
-            let p = s.point(for: c)
-            if i == 0 { path.move(to: p) } else { path.addLine(to: p) }
+    /// The tiles' features, fetched (a few at once) where not cached.
+    func features(_ tiles: [(x: Int, y: Int)]) async throws -> [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])] {
+        let t = try await urlTemplate()
+        var out: [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])] = []
+        try await withThrowingTaskGroup(of: ((x: Int, y: Int), [AtlasScene.Feature]).self) { g in
+            for tile in tiles {
+                let key = "\(AtlasScene.zoom)-\(tile.x)-\(tile.y)"
+                if let f = decoded[key] { out.append((tile, f)); continue }
+                let file = dir.appendingPathComponent(key + ".pbf")
+                let url = URL(string: t.replacingOccurrences(of: "{z}", with: String(AtlasScene.zoom))
+                    .replacingOccurrences(of: "{x}", with: String(tile.x)).replacingOccurrences(of: "{y}", with: String(tile.y)))!
+                g.addTask {
+                    let data: Data
+                    if let d = try? Data(contentsOf: file) {
+                        data = d
+                    } else {
+                        var req = URLRequest(url: url)
+                        req.timeoutInterval = 20
+                        req.setValue("CMFX (watch maps)", forHTTPHeaderField: "User-Agent")
+                        let (d, resp) = try await URLSession.shared.data(for: req)
+                        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+                        try? d.write(to: file)
+                        data = d
+                    }
+                    return (tile, AtlasScene.decode(data))
+                }
+            }
+            for try await (tile, f) in g { out.append((tile, f)); remember("\(AtlasScene.zoom)-\(tile.x)-\(tile.y)", f) }
         }
-        path.lineJoinStyle = .round
-        path.lineCapStyle = .round
-        UIColor.black.setStroke()
-        path.lineWidth = 6
-        path.stroke()
-        red.setStroke()
-        path.lineWidth = 3.5
-        path.stroke()
+        return out
     }
 
-    /// The step being checked: a white ring round it.
-    static func focus(_ s: MKMapSnapshotter.Snapshot, _ c: CLLocationCoordinate2D) {
-        let p = s.point(for: c)
-        let ring = UIBezierPath(ovalIn: CGRect(x: p.x - 11, y: p.y - 11, width: 22, height: 22))
-        ring.lineWidth = 2.5
-        UIColor.white.setStroke()
-        ring.stroke()
+    /// Decoded tiles kept in memory: the last 9.
+    private func remember(_ key: String, _ f: [AtlasScene.Feature]) {
+        decoded[key] = f
+        order.append(key)
+        while order.count > 9 { decoded[order.removeFirst()] = nil }
+    }
+
+    /// Tile URLs change with each planet build: OpenFreeMap's TileJSON names the current one (read daily).
+    private func urlTemplate() async throws -> String {
+        if let t = template, Date.now.timeIntervalSince(t.at) < 86400 { return t.url }
+        var req = URLRequest(url: Self.tileJSON)
+        req.timeoutInterval = 20
+        req.setValue("CMFX (watch maps)", forHTTPHeaderField: "User-Agent")
+        let (d, _) = try await URLSession.shared.data(for: req)
+        guard let j = try JSONSerialization.jsonObject(with: d) as? [String: Any], let url = (j["tiles"] as? [String])?.first
+        else { throw URLError(.cannotParseResponse) }
+        template = (url, .now)
+        return url
     }
 }
