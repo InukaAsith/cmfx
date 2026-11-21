@@ -175,11 +175,20 @@ import WireKit
             let song = queue[i]
             playing = song.title
             do {
-                let samples = try await YTMusic.samples(song.id, from: from)
+                var told = -100
+                let samples = try await YTMusic.samples(song.id, from: from) { @MainActor [weak self] pct in
+                    // the watch's yellow circle while it waits for the first song; every 4 % at most
+                    guard let self, pct - told >= 4 || pct >= 100, self.stream?.gen == gen else { return }
+                    told = pct
+                    self.stream?.preparing(pct)
+                }
                 guard !Task.isCancelled, stream?.gen == gen else { return }
+                let blocks = await Task.detached(priority: .userInitiated) { SpeakerProto.blocks(samples, pad: false) }.value
+                guard !Task.isCancelled, stream?.gen == gen else { return }
+                stream?.preparing(100)
                 let secs = max(song.seconds, from + samples.count / SpeakerProto.rate)
                 stream?.add(YTSong(id: song.id, title: song.title, artist: song.artist, seconds: secs), index: i,
-                            from: from, samples: samples)
+                            from: from, blocks: blocks)
                 failed = 0
             } catch {
                 guard !Task.isCancelled else { return }
