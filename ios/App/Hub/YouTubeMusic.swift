@@ -223,6 +223,10 @@ import WireKit
     /// The stream's messages as the watch's credit allows, 4 in flight all the time (a sliding window: a new one
     /// goes out as each reply comes, never waiting for a batch).
     private func send(_ gen: UInt8) async {
+        // refused (the watch's inbox full) or failing: back off 25 → 250 ms; after 10 s of nothing taken, stop,
+        // so a watch that can't keep up isn't flooded until the link drops
+        var delay = 25
+        var stuckSince: ContinuousClock.Instant?
         while !Task.isCancelled, let s = stream, s.gen == gen, !s.done {
             do {
                 let before = s.sent
@@ -231,8 +235,15 @@ import WireKit
                     return self.stream?.take(1).first
                 }
                 if stream?.gen == gen { stream?.requeue(again) }
-                if !again.isEmpty { try? await Task.sleep(for: .milliseconds(25)) } // refused: the watch catches up
-                if (stream?.sent ?? 0) <= before {
+                if again.isEmpty {
+                    delay = 25
+                    stuckSince = nil
+                } else {
+                    stuckSince = stuckSince ?? .now
+                    try? await Task.sleep(for: .milliseconds(delay))
+                    delay = min(delay * 2, 250)
+                }
+                if (stream?.sent ?? 0) <= before, again.isEmpty {
                     // waiting for credit or the next song: the watch's messages come after a frame from here
                     try? await Hub.shared.ping()
                     try? await Task.sleep(for: .milliseconds(30))
@@ -241,7 +252,13 @@ import WireKit
                 return stop()
             } catch {
                 DevLog.shared.log("YouTube stream: \(error.localizedDescription)")
+                stuckSince = stuckSince ?? .now
                 try? await Task.sleep(for: .milliseconds(500))
+            }
+            if let t = stuckSince, ContinuousClock.now - t > .seconds(10) {
+                DevLog.shared.log("YouTube stream: the watch took nothing for 10 s, stopped")
+                status = "The watch stopped taking the song: open it again."
+                return stop()
             }
         }
     }
