@@ -365,7 +365,7 @@ struct NavPage: View {
                 VStack(alignment: .leading, spacing: 12) {
                     CardHeader(symbol: "location.north.line.fill", color: TDColor.accent, title: n.destination?.name ?? "Navigating",
                                detail: "Turns go to the watch. Location stops when you arrive.")
-                    Button("Stop", role: .destructive) { n.stop() }.primaryButton()
+                    Button("Stop", role: .destructive) { n.end() }.primaryButton()
                 }
                 .glassCard()
             }

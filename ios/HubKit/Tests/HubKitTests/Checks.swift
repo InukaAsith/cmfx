@@ -134,7 +134,7 @@ enum Checks {
             if pl[0] != Data([UInt8(ascii: "P"), 1, 1]) || pl[1] != Data("p\u{0}Home\u{0}Colombo".utf8)
                 || NavProto.parse(Data("Qpark".utf8)) != .search("park")
                 || NavProto.parse(Data([UInt8(ascii: "S"), 2, 0])) != .start(idx: 2, walking: false)
-                || NavProto.parse(Data("R".utf8)) != .ready {
+                || NavProto.parse(Data("R".utf8)) != .ready || NavProto.parse(Data("C".utf8)) != .cancel {
                 bad.append("nav places")
             }
             let track: [String: Any] = ["responseContext": ["serviceTrackingParams": [["service": "GFEEDBACK",

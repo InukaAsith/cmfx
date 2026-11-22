@@ -2,6 +2,7 @@ import CoreLocation
 import Foundation
 import HubKit
 import MapKit
+import UIKit
 
 // The watch's Navigation app (cmf-watch-sdk sdk/examples/nav; hosts/navhost.py is the reference). Directions
 // from MapKit; turns go to the watch as the phone moves. Location runs only while a route is on, and stops at
@@ -64,8 +65,19 @@ import MapKit
     func receive(_ m: Data) {
         switch NavProto.parse(m) {
         case .ready:
-            // the route if one is on, else where it may go: the last places gone to
-            if active { Task { try? await sendRoute() } } else { Task { await offer(recent) } }
+            // the route if one is on (and where we are on it at once: the watch shows it straight away), else
+            // where it may go: the last places gone to
+            if active {
+                Task {
+                    try? await sendRoute()
+                    await updateNow()
+                }
+            } else {
+                Task { await offer(recent) }
+            }
+        case .cancel:
+            end()
+            Task { await offer(recent) }
         case .search(let q):
             Task {
                 try? await Hub.shared.send(target, NavProto.note("Searching\u{2026}"))
@@ -78,7 +90,11 @@ import MapKit
             guard offered.indices.contains(idx) else { return }
             let item = offered[idx].item
             walking = walk
+            // the phone may be in a pocket: kept awake till the route is found and on its way (planning can take
+            // longer than the few seconds a watch message buys)
+            let bg = UIApplication.shared.beginBackgroundTask(withName: "nav-start")
             Task {
+                defer { UIApplication.shared.endBackgroundTask(bg) }
                 try? await Hub.shared.send(target, NavProto.note("Finding a route\u{2026}"))
                 await start(to: item)
                 if !active { try? await Hub.shared.send(target, NavProto.note(status ?? "No route there")) }
@@ -133,10 +149,12 @@ import MapKit
         working = "Finding where you are…"
         defer { working = nil }
         guard let here = await here() else {
+            planFix = nil
             status = manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted
                 ? "Location is off for CMFX: turn it on in Settings › CMFX › Location" : "Couldn't find where you are"
             return false
         }
+        planFix = here
         let to = item.placemark.coordinate
         let src = MKMapItem(placemark: MKPlacemark(coordinate: here.coordinate))
         // OpenStreetMap's routes first: Apple has no directions in many countries (Sri Lanka among them). Then
@@ -166,6 +184,8 @@ import MapKit
         progress = []
         offCount = 0
         do { try await sendRoute() } catch { status = error.localizedDescription }
+        // the first turn at once, from the fix the plan used if no newer one: the watch leaves "Finding a route"
+        await updateNow()
         // standing still brings no fixes: the time left and the arrival still move on
         ticker?.cancel()
         ticker = Task { [weak self] in
@@ -462,6 +482,23 @@ import MapKit
             self.authWaiters = []
             for c in w { c.resume() }
         }
+    }
+
+    /// The fix the last plan started from.
+    private var planFix: CLLocation?
+
+    /// Where we are on the route now, sent without waiting for the next fix.
+    private func updateNow() async {
+        guard active, let l = manager.location ?? planFix else { return }
+        last = .distantPast
+        await update(l)
+    }
+
+    /// Stopped by the person (the page's Stop, the watch's ✕): the Navigation app back to its start screen.
+    func end() {
+        let was = active
+        stop()
+        if was, target == Self.app { Task { try? await Hub.shared.send(target, NavProto.ended) } }
     }
 
     func stop() {

@@ -162,6 +162,8 @@ public enum NavProto {
 
     public static let arrived = Data("W".utf8)
     public static let rerouting = Data("r".utf8)
+    /// `Z`: the route was stopped (on the phone or from the watch's ✕): the watch back to its start screen.
+    public static let ended = Data("Z".utf8)
 
     /// `P n walking`, then `p idx name 0 detail` each (8 at most): places to start a route to from the watch (what
     /// it searched for, or the last ones gone to); `walking` the phone's choice of walking or the roads.
@@ -177,8 +179,8 @@ public enum NavProto {
     public static func note(_ t: String) -> Data { Data("E".utf8) + utf8(t, 60) }
 
     /// What the watch asked for: its state again (`R`), places for words (`Q text`), a route to one of the places
-    /// last sent (`S idx walking`).
-    public enum Ask: Equatable { case ready, search(String), start(idx: Int, walking: Bool) }
+    /// last sent (`S idx walking`), the route stopped (`C`, the watch's ✕).
+    public enum Ask: Equatable { case ready, search(String), start(idx: Int, walking: Bool), cancel }
 
     public static func parse(_ m: Data) -> Ask? {
         let b = [UInt8](m)
@@ -186,6 +188,7 @@ public enum NavProto {
         case (UInt8(ascii: "R"), 1): return .ready
         case (UInt8(ascii: "Q"), 2...): return .search(String(decoding: b.dropFirst(), as: UTF8.self))
         case (UInt8(ascii: "S"), 3): return .start(idx: Int(b[1]), walking: b[2] == 1)
+        case (UInt8(ascii: "C"), 1): return .cancel
         default: return nil
         }
     }
