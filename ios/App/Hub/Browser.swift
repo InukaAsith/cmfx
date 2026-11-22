@@ -123,6 +123,13 @@ import WebKit
         let g = gen
         if push, let c = current, c != url { history.append(c) }
         current = url
+        if BrowserProto.isVideo(url) {
+            // a video (YouTube, Instagram): page view, played, its frames to the watch
+            pageView = true
+            await send([BrowserProto.toPage])
+            await showPage(play: true)
+            return
+        }
         if pageView {
             await showPage()
             return
@@ -156,8 +163,14 @@ import WebKit
         title = page.title.isEmpty ? (final.host ?? "Page") : page.title
         var p = page
         p.title = title
-        if p.blocks.isEmpty { p.blocks = [.init(kind: Reader.para, link: nil, text: "No text here: try page view.")] }
         remember(title, final)
+        if p.blocks.isEmpty {
+            // no text here: page view by itself
+            pageView = true
+            await send([BrowserProto.toPage])
+            await showPage()
+            return
+        }
         await send(Reader.messages(p))
     }
 
@@ -256,13 +269,26 @@ import WebKit
         win.insertSubview(web, at: 0)
     }
 
-    private func showPage() async {
+    private func showPage(play: Bool = false) async {
         host()
         guard let url = current else { return }
         if web.url != url {
             await note("Loading the page\u{2026}")
             web.load(URLRequest(url: url))
             await waitLoad()
+        }
+        if play {
+            for _ in 0..<12 {
+                if await js(BrowserProto.playScript) == "1" { break }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            try? await Task.sleep(for: .seconds(2))
+            if await playing() {
+                // straight to its frames: the page's picture after it stops
+                picGen += 1
+                await video(picGen)
+                return
+            }
         }
         await snapshot()
     }

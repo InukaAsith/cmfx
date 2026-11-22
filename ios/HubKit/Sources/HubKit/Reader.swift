@@ -296,6 +296,26 @@ public enum BrowserProto {
     public static let field = Data("K".utf8)
     public static func video(_ on: Bool) -> Data { Data([UInt8(ascii: "M"), on ? 1 : 0]) }
 
+    /// The watch goes to page view by itself: a page with no text, a video.
+    public static let toPage = Data([UInt8(ascii: "G")])
+
+    /// A video page (YouTube, Instagram): opened in page view and played, its frames to the watch.
+    public static func isVideo(_ u: URL) -> Bool {
+        let h = (u.host ?? "").lowercased(), p = u.path.lowercased()
+        if h == "youtu.be" { return true }
+        if h.hasSuffix("youtube.com") { return p.hasPrefix("/watch") || p.hasPrefix("/shorts/") || p.hasPrefix("/live/") }
+        if h.hasSuffix("instagram.com") { return p.hasPrefix("/reel") || p.hasPrefix("/p/") || p.hasPrefix("/tv/") }
+        return false
+    }
+
+    /// Starts a page's video with its sound: YouTube's play button, else the first video.
+    public static let playScript = """
+    (() => { const b = document.querySelector('.ytp-large-play-button, .ytmCuedOverlayPlayButton, button[aria-label="Play"]');
+      if (b && b.offsetParent !== null) b.click();
+      const v = document.querySelector('video'); if (!v) return 0;
+      v.muted = false; if (v.paused) v.play(); return 1; })()
+    """
+
     /// A tap in page view did nothing to the page: the watch takes its outline off.
     public static let unchanged = Data([UInt8(ascii: "Y")])
 
