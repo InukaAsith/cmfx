@@ -83,9 +83,9 @@ import WebKit
             }
         case .tap(let x, let y):
             Task { await tap(x, y) }
-        case .scroll:
-            // the watch scrolls page view itself (it has the whole page): an older watch app's ask
-            break
+        case .scroll(let d):
+            // the end of the part the watch has: the page's next part (the real page scrolled, a feed grows)
+            Task { await more(d >= 0 ? 1 : -1) }
         case .type(let text):
             Task { await type(text) }
         case .leave:
@@ -361,46 +361,56 @@ import WebKit
         Task { @MainActor in self.committed = true; self.loaded() }
     }
 
-    /// Page view's picture: the whole page (as much as the watch keeps, Rle.longPicture), laid out tall once, its
-    /// folded sections opened, sent once; the watch scrolls it. Then, while a video plays, its frames.
+    /// Page view's pictures (HubKit PagePictures): the real page a screen at a time, each screen sent as it is shot;
+    /// pictures not in yet striped, sent once they are; the next part when the watch reaches the end of this one.
+    @ObservationIgnored private lazy var pics = PagePictures(side: Double(Self.side),
+                                                             js: { [unowned self] in await self.js($0) }) { [unowned self] rect, w in
+        let c = WKSnapshotConfiguration()
+        c.rect = rect
+        c.snapshotWidth = NSNumber(value: Double(w) / Double(UIScreen.main.scale))
+        guard let img = try? await self.web.takeSnapshot(configuration: c), let cg = img.cgImage else { return nil }
+        let h = max(1, Int((Double(w) * rect.height / rect.width).rounded()))
+        return (Self.rgb(cg, width: w, height: h), h)
+    }
+
+    /// Page view from the top of the page; then, while a video plays, its frames.
     private func snapshot() async {
         picGen += 1
         let g = picGen
         guard pageView, made else { return }
-        let full = Double(await js(BrowserProto.pageHeight) ?? "") ?? Double(Self.side)
-        let tall = min(max(full, Double(Self.side)), Double(Self.side) * 12)
-        web.frame = CGRect(x: 0, y: 0, width: Self.side, height: tall)
-        _ = await js("window.scrollTo(0, 0)")
-        try? await Task.sleep(for: .milliseconds(150))
-        // its images in (lazy ones told to load: all of the tall page is in view), 1.5 s at most
-        for _ in 0..<15 where (Int(await js(BrowserProto.imagesPending(tall)) ?? "0") ?? 0) > 0 {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-        let layout = await js(Layout.script(width: Double(Self.side), height: tall))
-        let rows = (await js(BrowserProto.pageBoxes)).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [[Double]] } ?? []
-        let img = await shot(width: Self.picture)
         web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
-        guard g == picGen, let img, let cg = img.cgImage else { return }
-        let w = Self.picture, h = max(1, Int(Double(w) * Double(cg.height) / Double(max(cg.width, 1))))
-        let rgb = Self.rgb(cg, width: w, height: h)
-        // drawn on the watch as it is laid out; a fancy page: its picture
-        let side = Double(Self.side)
-        let (msgs, came) = await Task.detached(priority: .userInitiated) {
-            layout.flatMap { Layout.messages(json: $0, rgb: rgb, pw: w, ph: h, cssWidth: side, cssHeight: tall) }
-                ?? Rle.longPicture(rgb: rgb, width: w, height: h, scale: 2)
-        }.value
+        pics.reset()
+        await pics.section(from: 0) { [unowned self] m in if g == picGen { await send(m) } }
+        await shown(g)
+        if g == picGen, await playing() { await video(g) }
+    }
+
+    /// The next part of the page (`dir` 1 down, -1 up).
+    private func more(_ dir: Int) async {
+        picGen += 1
+        let g = picGen
+        guard pageView, made else { return }
+        if !(await pics.more(dir) { [unowned self] m in if g == picGen { await send(m) } }) {
+            await send([BrowserProto.unchanged])
+            return
+        }
+        await shown(g)
+    }
+
+    /// A part sent: the bar's words, then the pictures that come in late (20 s at most).
+    private func shown(_ g: Int) async {
         guard g == picGen else { return }
-        let k = 466 / Self.side
-        let boxes = rows.compactMap { r -> (x: Int, y: Int, w: Int, h: Int, kind: UInt8)? in
-            guard r.count == 5, Int(r[1] * k) < came else { return nil }
-            return (Int(r[0] * k), Int(r[1] * k), Int(r[2] * k), Int(r[3] * k), UInt8(r[4]))
+        if let u = web.url { await send([BrowserProto.label(u)]) }
+        Task { [weak self] in
+            for _ in 0..<14 {
+                try? await Task.sleep(for: .milliseconds(1500))
+                guard let self, g == self.picGen else { return }
+                let (m, left) = await self.pics.late()
+                guard g == self.picGen else { return }
+                if !m.isEmpty { await self.send(m) }
+                if left == 0 { return }
+            }
         }
-        for m in msgs {
-            guard g == picGen else { return }
-            await send([m])
-        }
-        await send(BrowserProto.boxes(boxes))
-        if await playing() { await video(g) }
     }
 
     /// A tall picture as `width` × `height` RGB.
@@ -430,7 +440,8 @@ import WebKit
     }
 
     private func playing() async -> Bool {
-        let r = await js("[...document.querySelectorAll('video')].some(v => !v.paused && !v.ended && v.readyState > 2)")
+        // (one that plays by itself, muted, is the page's: a feed's preview, not the player's)
+        let r = await js("[...document.querySelectorAll('video')].some(v => !v.paused && !v.ended && v.readyState > 2 && !v.muted)")
         return r == "1" || r == "true"
     }
 
@@ -494,15 +505,41 @@ import WebKit
     private func tap(_ x: Int, _ y: Int) async {
         guard pageView, made else { return }
         let before = await js(BrowserProto.pageState)
-        let r = await js(BrowserProto.tapScript(x: x, y: y, side: Double(Self.side)))
+        let r = await js(BrowserProto.tapScript(x: x, y: y + pics.tapTop, side: Double(Self.side)))
         if r == "2" {
             await send([BrowserProto.field])
             return
         }
-        try? await Task.sleep(for: .milliseconds(800))
-        await waitLoad()
-        if await js(BrowserProto.pageState) == before, !(await playing()) {
+        // what the tap does may start late (a script's navigation, an app's own routing): watched for 4 s
+        var changed = false
+        for _ in 0..<20 {
+            try? await Task.sleep(for: .milliseconds(200))
+            if web.isLoading || !committed { await waitLoad(); changed = true; break }
+            if await js(BrowserProto.pageState) != before {
+                try? await Task.sleep(for: .milliseconds(600))
+                await waitLoad()
+                changed = true
+                break
+            }
+            if await playing() { break }
+        }
+        if await playing() {
+            // a video started: the watch's player
+            picGen += 1
+            await video(picGen)
+            return
+        }
+        let after = await js(BrowserProto.pageState)
+        if !changed || after == before {
             await send([BrowserProto.unchanged])
+            return
+        }
+        // the same page changed (a menu, a section opened): from where the watch is
+        if pics.active, let s = before?.split(separator: "|").first, web.url?.absoluteString == String(s) {
+            picGen += 1
+            let g = picGen
+            await pics.section(from: pics.top) { [unowned self] m in if g == picGen { await send(m) } }
+            await shown(g)
             return
         }
         await snapshot()

@@ -294,6 +294,16 @@ public enum BrowserProto {
     public static func recent(_ i: Int, _ title: String) -> Data { Data([UInt8(ascii: "H"), UInt8(i)]) + utf8(title, 46) }
     public static let nothingBefore = Data("Z".utf8)
     public static let field = Data("K".utf8)
+
+    /// The watch's bottom bar: what was searched on Google, else the site.
+    public static func label(_ u: URL) -> Data {
+        let host = u.host ?? ""
+        let q = host.contains("google.") ? URLComponents(url: u, resolvingAgainstBaseURL: false)?.queryItems?
+            .first(where: { $0.name == "q" })?.value : nil
+        var t = q ?? host
+        for p in ["www.", "m."] where t == host && t.hasPrefix(p) { t.removeFirst(p.count) }
+        return Data("b".utf8) + utf8(t, 64)
+    }
     public static func video(_ on: Bool) -> Data { Data([UInt8(ascii: "M"), on ? 1 : 0]) }
 
     /// Images still to come on a page laid out tall (`h` CSS px): lazy ones told to load now. The page's picture
