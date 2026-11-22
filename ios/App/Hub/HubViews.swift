@@ -40,6 +40,7 @@ struct HubTab: View {
                     row(NavPage(), "location.north.line.fill", TDColor.accent, "Navigation",
                         hub.nav.active ? "Navigating" : "Turn by turn on the watch", NavService.app)
                     row(PhotosPage(), "photo.fill", .purple, "Photos", "Your gallery on the watch", PhotosService.app)
+                    row(BrowserPage(), "globe", .blue, "Browser", "The web on the watch; sign in to sites here", BrowserService.app)
                     row(MailPage(), "envelope.fill", .red, "Mail", mailDetail, MailService.app)
                     row(NotesPage(), "note.text", .yellow, "Notes", "Your notes and reminders", NotesService.app)
                     row(WhatsAppPage(), "message.fill", Color(red: 0.15, green: 0.8, blue: 0.4), "WhatsApp",

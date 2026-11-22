@@ -1,0 +1,306 @@
+import Foundation
+
+/// The watch's Browser (cmf-watch-sdk sdk/examples/browser): a page's reading text pulled out of its HTML (no
+/// scripts run: it works with the phone in a pocket), sent as blocks the watch lays out (page.rs).
+public enum Reader {
+    public static let heading: UInt8 = 0, para: UInt8 = 1, link: UInt8 = 2, item: UInt8 = 3, more: UInt8 = 4
+
+    public struct Block: Equatable {
+        public var kind: UInt8
+        public var link: Int?
+        public var text: String
+        public init(kind: UInt8, link: Int?, text: String) {
+            self.kind = kind
+            self.link = link
+            self.text = text
+        }
+    }
+
+    public struct Page {
+        public var title: String
+        public var blocks: [Block]
+        public var links: [URL]
+    }
+
+    /// Whole elements left out: never reading text.
+    static let skipped: Set<String> = ["script", "style", "noscript", "svg", "template", "iframe", "head", "nav",
+                                       "footer", "aside", "form", "button", "select", "canvas", "object"]
+    /// Elements that end a block of text.
+    static let blockish: Set<String> = ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "br", "section",
+                                        "article", "tr", "td", "th", "blockquote", "pre", "ul", "ol", "dt", "dd",
+                                        "header", "main", "table", "figcaption", "hr", "body", "dl", "summary"]
+    static let maxText = 10_000, maxBlocks = 200, maxLinks = 250
+
+    public static func parse(_ html: String, base: URL) -> Page {
+        let b = Array(html.utf8)
+        var title = ""
+        var blocks: [Block] = []
+        var links: [URL] = []
+        var text = ""
+        // the open link: its index (nil: not a link we keep), its text so far
+        var anchor: (idx: Int?, text: String)?
+        // this block's links: index and text
+        var inBlock: [(Int, String)] = []
+        var skip: (name: String, depth: Int)?
+        var heading = 0, items = 0
+        var total = 0
+        var inTitle = false
+
+        func flush() {
+            let t = collapse(text)
+            text = ""
+            defer { inBlock = [] }
+            guard blocks.count < maxBlocks, total < maxText else { return }
+            let kind = heading > 0 ? Reader.heading : items > 0 ? Reader.item : Reader.para
+            let named = inBlock.filter { $0.1.count >= 2 }
+            // a block that is one link (most of its text): the link alone
+            if named.count == 1, named[0].1.count * 5 >= t.count * 4 {
+                blocks.append(Block(kind: link, link: named[0].0, text: named[0].1))
+                total += named[0].1.utf8.count
+                return
+            }
+            if !t.isEmpty {
+                blocks.append(Block(kind: kind, link: nil, text: t))
+                total += t.utf8.count
+            }
+            for (i, s) in named where blocks.count < maxBlocks && blocks.last?.link != i {
+                blocks.append(Block(kind: link, link: i, text: s))
+                total += s.utf8.count
+            }
+        }
+
+        var i = 0
+        while i < b.count {
+            if b[i] == UInt8(ascii: "<") {
+                // a comment
+                if i + 3 < b.count, b[i + 1] == UInt8(ascii: "!"), b[i + 2] == UInt8(ascii: "-"), b[i + 3] == UInt8(ascii: "-") {
+                    i = find(b, [UInt8(ascii: "-"), UInt8(ascii: "-"), UInt8(ascii: ">")], from: i + 4).map { $0 + 3 } ?? b.count
+                    continue
+                }
+                guard let end = b[i...].firstIndex(of: UInt8(ascii: ">")) else { break }
+                let tag = Tag(Array(b[(i + 1)..<end]))
+                i = end + 1
+                guard !tag.name.isEmpty else { continue }
+                if tag.name == "title" {
+                    inTitle = !tag.closing
+                    continue
+                }
+                if let s = skip {
+                    if tag.name == s.name, !tag.selfClosing {
+                        let d = s.depth + (tag.closing ? -1 : 1)
+                        skip = d == 0 ? nil : (s.name, d)
+                    }
+                    continue
+                }
+                if skipped.contains(tag.name), !tag.closing, !tag.selfClosing, !["br", "hr"].contains(tag.name) {
+                    skip = (tag.name, 1)
+                    continue
+                }
+                if blockish.contains(tag.name) {
+                    flush()
+                    if ["h1", "h2", "h3"].contains(tag.name) { heading = max(0, heading + (tag.closing ? -1 : 1)) }
+                    if tag.name == "li" { items = max(0, items + (tag.closing ? -1 : 1)) }
+                    continue
+                }
+                if tag.name == "a" {
+                    if tag.closing {
+                        if let a = anchor, let idx = a.idx { inBlock.append((idx, collapse(a.text))) }
+                        anchor = nil
+                    } else {
+                        var idx: Int?
+                        if let h = tag.href, let u = target(h, base: base), links.count < maxLinks {
+                            if let k = links.firstIndex(of: u) { idx = k } else {
+                                links.append(u)
+                                idx = links.count - 1
+                            }
+                        }
+                        anchor = (idx, "")
+                    }
+                }
+                continue
+            }
+            // text up to the next tag
+            let j = b[i...].firstIndex(of: UInt8(ascii: "<")) ?? b.count
+            let s = entities(String(decoding: b[i..<j], as: UTF8.self))
+            i = j
+            if inTitle {
+                title += s
+                continue
+            }
+            guard skip == nil else { continue }
+            text += s
+            anchor?.text += s
+        }
+        flush()
+        return Page(title: collapse(title), blocks: blocks, links: links)
+    }
+
+    /// A link's place: absolute http(s) (DuckDuckGo's result redirects to where they go); nil for the rest.
+    static func target(_ href: String, base: URL) -> URL? {
+        let h = entities(href).trimmingCharacters(in: .whitespaces)
+        guard !h.isEmpty, !h.hasPrefix("#"), !h.lowercased().hasPrefix("javascript:"), !h.lowercased().hasPrefix("mailto:"),
+              let u = URL(string: h, relativeTo: base)?.absoluteURL, ["http", "https"].contains(u.scheme?.lowercased() ?? "")
+        else { return nil }
+        if u.host?.hasSuffix("duckduckgo.com") == true {
+            if u.path.hasPrefix("/y.js") { return nil }
+            if u.path == "/l" || u.path.hasPrefix("/l/"), let q = URLComponents(url: u, resolvingAgainstBaseURL: false)?.queryItems,
+               let to = q.first(where: { $0.name == "uddg" })?.value, let t = URL(string: to) {
+                return t
+            }
+        }
+        return u
+    }
+
+    struct Tag {
+        var name = ""
+        var closing = false
+        var selfClosing = false
+        var href: String?
+
+        init(_ b: [UInt8]) {
+            var s = String(decoding: b, as: UTF8.self)
+            if s.hasPrefix("/") {
+                closing = true
+                s.removeFirst()
+            }
+            if s.hasSuffix("/") { selfClosing = true }
+            name = String(s.prefix { $0.isLetter || $0.isNumber }).lowercased()
+            if name == "a", !closing, let r = s.range(of: "href", options: .caseInsensitive) {
+                var rest = s[r.upperBound...].drop { $0 == " " }
+                guard rest.first == "=" else { return }
+                rest = rest.dropFirst().drop { $0 == " " }
+                if let q = rest.first, q == "\"" || q == "'" {
+                    href = String(rest.dropFirst().prefix { $0 != q })
+                } else {
+                    href = String(rest.prefix { $0 != " " && $0 != ">" })
+                }
+            }
+        }
+    }
+
+    static func find(_ b: [UInt8], _ pat: [UInt8], from: Int) -> Int? {
+        guard pat.count <= b.count else { return nil }
+        var i = from
+        while i + pat.count <= b.count {
+            if b[i] == pat[0], Array(b[i..<(i + pat.count)]) == pat { return i }
+            i += 1
+        }
+        return nil
+    }
+
+    static func collapse(_ s: String) -> String {
+        s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    static let named: [String: String] = ["amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ",
+                                          "mdash": "—", "ndash": "–", "hellip": "…", "rsquo": "’", "lsquo": "‘",
+                                          "rdquo": "”", "ldquo": "“", "copy": "©", "middot": "·", "bull": "•"]
+
+    static func entities(_ s: String) -> String {
+        guard s.contains("&") else { return s }
+        var out = ""
+        var i = s.startIndex
+        while i < s.endIndex {
+            if s[i] == "&", let semi = s[i...].prefix(12).firstIndex(of: ";") {
+                let body = s[s.index(after: i)..<semi]
+                var rep: String?
+                if body.hasPrefix("#x") || body.hasPrefix("#X") {
+                    rep = UInt32(body.dropFirst(2), radix: 16).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
+                } else if body.hasPrefix("#") {
+                    rep = UInt32(body.dropFirst()).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
+                } else {
+                    rep = named[String(body)]
+                }
+                if let rep {
+                    out += rep
+                    i = s.index(after: semi)
+                    continue
+                }
+            }
+            out.append(s[i])
+            i = s.index(after: i)
+        }
+        return out
+    }
+
+    /// The page as the watch takes it: `N title`, `t kind link text` (a long block in pieces: kind 4 for the rest),
+    /// `F`.
+    public static func messages(_ p: Page) -> [Data] {
+        var out = [Data("N".utf8) + utf8(p.title, 80)]
+        for bl in p.blocks {
+            for (k, piece) in pieces(bl.text, 120).enumerated() {
+                out.append(Data([UInt8(ascii: "t"), k == 0 ? bl.kind : more, UInt8(bl.link.map { min($0, 254) } ?? 255)])
+                           + Data(piece.utf8))
+            }
+        }
+        out.append(Data("F".utf8))
+        return out
+    }
+
+    /// `s` in pieces of at most `n` bytes, cut at a space when there is one (whole characters always).
+    static func pieces(_ s: String, _ n: Int) -> [String] {
+        var out: [String] = []
+        var rest = Substring(s)
+        while !rest.isEmpty {
+            if rest.utf8.count <= n {
+                out.append(String(rest))
+                break
+            }
+            var cut = rest.startIndex, bytes = 0
+            for c in rest.indices {
+                let w = String(rest[c]).utf8.count
+                if bytes + w > n { break }
+                bytes += w
+                cut = rest.index(after: c)
+            }
+            if let sp = rest[..<cut].lastIndex(of: " "), sp > rest.startIndex {
+                cut = rest.index(after: sp)
+            }
+            out.append(String(rest[..<cut]).trimmingCharacters(in: .whitespaces))
+            rest = rest[cut...]
+        }
+        return out
+    }
+}
+
+/// The Browser's protocol beyond the page (cmf-watch-sdk sdk/examples/browser/src/ui.rs).
+public enum BrowserProto {
+    public static func note(_ t: String) -> Data { Data("!".utf8) + utf8(t, 78) }
+    public static func recent(_ i: Int, _ title: String) -> Data { Data([UInt8(ascii: "H"), UInt8(i)]) + utf8(title, 46) }
+    public static let nothingBefore = Data("Z".utf8)
+    public static let field = Data("K".utf8)
+    public static func video(_ on: Bool) -> Data { Data([UInt8(ascii: "M"), on ? 1 : 0]) }
+
+    public enum Ask: Equatable {
+        case ready, go(String), recent(Int), link(Int), back, view(page: Bool), tap(x: Int, y: Int), scroll(Int),
+             type(String), leave
+    }
+
+    public static func parse(_ m: Data) -> Ask? {
+        let b = [UInt8](m)
+        guard let c = b.first else { return nil }
+        switch (Character(UnicodeScalar(c)), b.count) {
+        case ("R", 1): return .ready
+        case ("Q", 2...): return .go(String(decoding: b.dropFirst(), as: UTF8.self))
+        case ("O", 2): return .recent(Int(b[1]))
+        case ("L", 2): return .link(Int(b[1]))
+        case ("B", 1): return .back
+        case ("V", 2): return .view(page: b[1] == 1)
+        case ("T", 5): return .tap(x: Int(UInt16(b[1]) | UInt16(b[2]) << 8), y: Int(UInt16(b[3]) | UInt16(b[4]) << 8))
+        case ("S", 3): return .scroll(Int(Int16(bitPattern: UInt16(b[1]) | UInt16(b[2]) << 8)))
+        case ("W", 1...): return .type(String(decoding: b.dropFirst(), as: UTF8.self))
+        case ("X", 1): return .leave
+        default: return nil
+        }
+    }
+
+    /// Typed words: an address (has a dot and no spaces, or a scheme) or a search (DuckDuckGo's plain HTML page).
+    public static func url(for typed: String) -> URL {
+        let t = typed.trimmingCharacters(in: .whitespaces)
+        if t.lowercased().hasPrefix("http://") || t.lowercased().hasPrefix("https://"), let u = URL(string: t) { return u }
+        if !t.contains(" "), t.contains("."), let u = URL(string: "https://" + t), u.host?.contains(".") == true { return u }
+        var c = URLComponents(string: "https://html.duckduckgo.com/html/")!
+        c.queryItems = [.init(name: "q", value: t)]
+        return c.url!
+    }
+}

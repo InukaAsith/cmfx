@@ -130,6 +130,41 @@ enum Checks {
                 || AtlasProto.parse(Data([UInt8(ascii: "J"), 4, 255])) != .addStop(id: 4, idx: nil) {
                 bad.append("atlas add stop")
             }
+            // the Browser's reader: the text, the links (DuckDuckGo's redirects undone), no scripts or menus
+            let html = """
+            <html><head><title>Test &amp; page</title><script>var x="<p>no</p>";</script></head><body>
+            <nav><a href="/x">Menu</a></nav><h1>Big news</h1>
+            <p>Hello <b>world</b>, see <a href="/more">the details</a> here.</p>
+            <p><a href="https://example.org/one">Only a link</a></p><ul><li>First</li><li>Second &#x2013; two</li></ul>
+            <!-- <p>hidden</p> --><a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&amp;rut=x">Result</a>
+            </body></html>
+            """
+            let rp = Reader.parse(html, base: URL(string: "https://news.test/today")!)
+            let want: [Reader.Block] = [
+                .init(kind: Reader.heading, link: nil, text: "Big news"),
+                .init(kind: Reader.para, link: nil, text: "Hello world, see the details here."),
+                .init(kind: Reader.link, link: 0, text: "the details"),
+                .init(kind: Reader.link, link: 1, text: "Only a link"),
+                .init(kind: Reader.item, link: nil, text: "First"),
+                .init(kind: Reader.item, link: nil, text: "Second \u{2013} two"),
+                .init(kind: Reader.link, link: 2, text: "Result"),
+            ]
+            if rp.title != "Test & page" || rp.blocks != want
+                || rp.links.map(\.absoluteString) != ["https://news.test/more", "https://example.org/one", "https://example.com/a"] {
+                bad.append("reader \(rp.title) \(rp.blocks) \(rp.links)")
+            }
+            let long = String(repeating: "word ", count: 60)
+            let rm = Reader.messages(Reader.Page(title: "T", blocks: [.init(kind: Reader.para, link: nil, text: long)], links: []))
+            if rm.first != Data("NT".utf8) || rm.last != Data("F".utf8) || rm.count != 5
+                || rm.dropFirst().dropLast().contains(where: { $0.count > 123 }) || rm[2][1] != Reader.more {
+                bad.append("reader messages \(rm.map(\.count))")
+            }
+            if BrowserProto.parse(Data([UInt8(ascii: "T"), 0x10, 0x01, 0x20, 0x00])) != .tap(x: 272, y: 32)
+                || BrowserProto.parse(Data([UInt8(ascii: "S"), 0x88, 0xFF])) != .scroll(-120)
+                || BrowserProto.url(for: "example.com").absoluteString != "https://example.com"
+                || BrowserProto.url(for: "cmf watch").host != "html.duckduckgo.com" {
+                bad.append("browser proto")
+            }
             let pl = NavProto.places([(name: "Home", detail: "Colombo")], walking: true)
             if pl[0] != Data([UInt8(ascii: "P"), 1, 1]) || pl[1] != Data("p\u{0}Home\u{0}Colombo".utf8)
                 || NavProto.parse(Data("Qpark".utf8)) != .search("park")

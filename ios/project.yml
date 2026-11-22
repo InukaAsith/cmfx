@@ -44,7 +44,7 @@ targets:
         CFBundleDisplayName: CMFX
         UILaunchScreen: {}
         # the watch wakes the app by BLE; location only while navigating
-        UIBackgroundModes: [bluetooth-central, location]
+        UIBackgroundModes: [bluetooth-central, location, audio]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSBluetoothAlwaysUsageDescription: CMFX talks to your CMF Watch Pro 2 next to Nothing X.
         NSCalendarsFullAccessUsageDescription: Watch apps you allow show your upcoming events on the watch.
