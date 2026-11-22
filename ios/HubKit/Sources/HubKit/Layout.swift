@@ -54,7 +54,9 @@ public enum Layout {
             if (!s) { const st = getComputedStyle(el), er = el.getBoundingClientRect();
               // screen-reader-only text (a pixel big, clipped to nothing) is not on the page
               const hidden = er.width <= 2 || er.height <= 2 || (st.clip || '').startsWith('rect(0') || (st.clipPath || '').startsWith('inset(50%')
-                || (st.position == 'absolute' && st.overflow == 'hidden' && (er.width <= 3 || er.height <= 3));
+                || (st.position == 'absolute' && st.overflow == 'hidden' && (er.width <= 3 || er.height <= 3))
+                // keyboard-only links ("Skip to main content"): shown on focus, not on the page
+                || /^(skip to|skip navigation|accessibility (help|feedback))/i.test(((el.closest('a') || {}).textContent || '').trim());
               s = { ok: !hidden && st.visibility != 'hidden' && (!el.checkVisibility || el.checkVisibility({ opacityProperty: true, visibilityProperty: true })),
                     c: col(st.color) || [0, 0, 0, 1], b: (parseInt(st.fontWeight) || 400) >= 600 ? 1 : 0,
                     u: (st.textDecorationLine || '').includes('underline') ? 2 : 0 };
@@ -149,10 +151,24 @@ public enum Layout {
             d.le(c565(f[4], f[5], f[6]))
             under.append(Op(top: y, bottom: y + h, bytes: d))
         }
-        for t in r.texts where t.count == 9 {
-            let (x, top, w, h) = (Int(t[0].n * k), t[1].n * k, Int(t[2].n * k), t[3].n * k)
+        // the watch's font is wider than a page's: on one line, each piece starts after the one before it ends
+        // (as the watch draws it, about 10.5 px a character), not on it
+        var pieces = r.texts.filter { $0.count == 9 }.map { t in
+            (x: Int(t[0].n * k), y: Int(t[1].n * k + t[3].n * k / 2) - 11, t: t)
+        }
+        pieces.sort { abs($0.y - $1.y) <= 6 ? $0.x < $1.x : $0.y < $1.y }
+        for i in pieces.indices.dropFirst() {
+            let (p, q) = (pieces[i - 1], pieces[i])
+            guard abs(p.y - q.y) <= 6, q.x >= p.x else { continue }
+            let end = p.x + Int(Double(watchText(p.t[8].s).count) * 10.5) + 5
+            if q.x < end { pieces[i].x = end }
+        }
+        for (px, py, t) in pieces {
+            let (w, h) = (Int(t[2].n * k), t[3].n * k)
+            let x = px
+            _ = h
             // the watch's 21 px line in the middle of the page's
-            let y = Int(top + h / 2) - 11
+            let y = py
             let s = utf8(watchText(t[8].s), 100)
             // the watch's font runs a little wider than a page's: room to the screen's edge, a quarter more at most
             let room = min(w + w / 4 + 8, max(w + 8, 466 - x))

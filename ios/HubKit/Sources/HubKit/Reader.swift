@@ -472,6 +472,19 @@ public enum BrowserProto {
         return c.url
     }
 
+    /// On Google's plain results (udm=14): a "Show AI Overview" button at the top, a link to the full results.
+    public static let overviewButton = """
+    (() => { const u = new URL(location.href); if (u.searchParams.get('udm') != '14' || document.getElementById('cmf-ai')) return 0;
+      u.searchParams.delete('udm');
+      const a = document.createElement('a'); a.id = 'cmf-ai'; a.href = u.toString(); a.textContent = 'Show AI Overview';
+      a.style.cssText = 'display:inline-block;margin:10px 16px 4px;padding:9px 18px;border-radius:20px;background:#303134;'
+        + 'color:#8ab4f8;font:500 15px Arial,sans-serif;text-decoration:none';
+      // above the results (under Google's bar and its tabs)
+      const at = document.querySelector('#search, #rso, #botstuff');
+      if (at) at.before(a); else document.body.prepend(a);
+      return 1; })()
+    """
+
     public static func isGoogleSearch(_ u: URL) -> Bool {
         (u.host ?? "").contains("google.") && u.path == "/search"
     }
