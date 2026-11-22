@@ -4,13 +4,17 @@ import SwiftUI
 
 // The Hub tab: the watch apps that need the phone, each with its own page.
 
+/// More's pages pushed by value: Apps pushes its own pages by value (an app's page, the store's), and a value push
+/// over a page pushed by view pops back to the list (SwiftUI): one path, values only, for those.
+enum HubRoute: Hashable { case apps, settings }
+
 struct HubTab: View {
     @State private var hub = Hub.shared
     @Environment(WatchModel.self) private var watch
-    /// The ask notification opens Apps (and that app's page in it).
-    @State private var apps = false
+    /// More's stack: the ask notification puts Apps on it (and Apps opens that app's page)
+    @State private var path = NavigationPath()
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             PageScroll(title: "More") {
                 HStack(spacing: 10) {
                     Circle().fill(hub.linked ? TDColor.good : TDColor.muted).frame(width: 8, height: 8)
@@ -21,7 +25,8 @@ struct HubTab: View {
                 .glassCard(22)
                 // FMC Companion's watch tools: the apps on the watch (and the store's), firmware and the App Loader
                 VStack(spacing: 0) {
-                    tool(AppsPage(), "square.grid.3x3.fill", .blue, "Apps", appsDetail, badge: Permissions.shared.pending.count, first: true)
+                    tool(EmptyView(), "square.grid.3x3.fill", .blue, "Apps", appsDetail, badge: Permissions.shared.pending.count,
+                         first: true, route: .apps)
                     tool(FirmwareView(), "cpu.fill", .gray, "Firmware & App Loader", firmwareDetail,
                          badge: FirmwareModel.shared.updates(watch.loader))
                 }
@@ -49,12 +54,22 @@ struct HubTab: View {
                 .glassCard(22)
                 Text("Each runs only while its app is open on the watch or while you use it here; Mail checks the inbox each minute while it is open.")
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 6)
+                VStack(spacing: 0) {
+                    tool(EmptyView(), "gearshape.fill", .gray, "Settings", String(localized: "Appearance, accent, about"),
+                         badge: 0, first: true, route: .settings)
+                }
+                .glassCard(22)
             }
-            .navigationDestination(isPresented: $apps) { AppsPage() }
+            .navigationDestination(for: HubRoute.self) { r in
+                switch r {
+                case .apps: AppsPage()
+                case .settings: SettingsPage()
+                }
+            }
             // updates are checked once the watch is read: the Firmware row shows them
             .task(id: watch.phase) { if case .checked = watch.phase { await FirmwareModel.shared.refresh() } }
         }
-        .onChange(of: Permissions.shared.open, initial: true) { if $1 != nil { apps = true } }
+        .onChange(of: Permissions.shared.open, initial: true) { if $1 != nil, path.isEmpty { path.append(HubRoute.apps) } }
     }
 
     private var appsDetail: String {
@@ -69,10 +84,18 @@ struct HubTab: View {
     }
 
     private func tool<D: View>(_ dest: D, _ symbol: String, _ color: Color, _ title: String, _ detail: String,
-                               badge: Int, first: Bool = false) -> some View {
+                               badge: Int, first: Bool = false, route: HubRoute? = nil) -> some View {
         VStack(spacing: 0) {
             if !first { Divider().overlay(TDColor.line).padding(.vertical, 8) }
-            NavigationLink { dest } label: {
+            if let route {
+                NavigationLink(value: route) { toolLabel(symbol, color, title, detail, badge) }.buttonStyle(.plain)
+            } else {
+                NavigationLink { dest } label: { toolLabel(symbol, color, title, detail, badge) }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func toolLabel(_ symbol: String, _ color: Color, _ title: String, _ detail: String, _ badge: Int) -> some View {
                 HStack(spacing: 12) {
                     FeatureIcon(symbol: symbol, color: color, size: 34)
                     VStack(alignment: .leading, spacing: 2) {
@@ -84,9 +107,6 @@ struct HubTab: View {
                     Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                 }
                 .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
     }
 
     private var mailDetail: String {
@@ -945,11 +965,16 @@ struct WhatsAppPage: View {
     }
 }
 
+/// Settings in its own stack (Overview's sheet).
 struct SettingsTab: View {
+    var body: some View { NavigationStack { SettingsPage() } }
+}
+
+/// Settings: Overview's sheet, and More › Settings.
+struct SettingsPage: View {
     @AppStorage("appearance") private var appearance = Appearance.system.rawValue
     var body: some View {
-        NavigationStack {
-            PageScroll(title: "Settings") {
+        PageScroll(title: "Settings") {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Appearance").font(.headline)
                     Picker("Appearance", selection: $appearance) {
@@ -972,6 +997,5 @@ struct SettingsTab: View {
                 }
                 .glassCard()
             }
-        }
     }
 }
