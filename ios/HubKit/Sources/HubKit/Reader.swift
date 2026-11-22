@@ -325,13 +325,17 @@ public enum BrowserProto {
     public static let videoState = """
     (() => { const v = [...document.querySelectorAll('video')].find(v => v.readyState > 0) || document.querySelector('video');
       if (!v) return JSON.stringify([0]);
+      // an ad (YouTube's player says so), and whether it can be skipped now
+      const ad = !!document.querySelector('.ad-showing, .ad-interrupting');
+      const skip = !!document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, [id^=skip-button] button');
       return JSON.stringify([1, v.paused ? 1 : 0, v.ended ? 1 : 0, v.currentTime || 0, isFinite(v.duration) ? v.duration : 0,
-        (document.title || '').replace(/ - YouTube$/, '')]); })()
+        (document.title || '').replace(/ - YouTube$/, ''), ad ? 1 : 0, skip ? 1 : 0]); })()
     """
 
     /// Pause / play the player's video.
     public static let toggleScript = """
-    (() => { const v = [...document.querySelectorAll('video')].find(v => v.readyState > 0) || document.querySelector('video');
+    (() => { const sk = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, [id^=skip-button] button');
+      if (sk) { sk.click(); return 3; } const v = [...document.querySelectorAll('video')].find(v => v.readyState > 0) || document.querySelector('video');
       if (!v) return 0; if (v.paused) { v.play(); return 1; } v.pause(); return 2; })()
     """
 
@@ -349,6 +353,8 @@ public enum BrowserProto {
     public static func isVideo(_ u: URL) -> Bool {
         let h = (u.host ?? "").lowercased(), p = u.path.lowercased()
         if h == "youtu.be" { return true }
+        // a video file itself
+        if [".mp4", ".webm", ".mov", ".m4v", ".m3u8"].contains(where: { p.hasSuffix($0) }) { return true }
         if h.hasSuffix("youtube.com") { return p.hasPrefix("/watch") || p.hasPrefix("/shorts/") || p.hasPrefix("/live/") }
         if h.hasSuffix("instagram.com") { return p.hasPrefix("/reel") || p.hasPrefix("/p/") || p.hasPrefix("/tv/") }
         return false

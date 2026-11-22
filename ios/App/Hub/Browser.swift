@@ -51,12 +51,15 @@ import WebKit
             pageView = false
             Task { await sendRecent() }
         case .go(let typed):
+            // page view by default (the watch's reader button asks for text)
             history = []
+            pageView = true
             Task { await open(BrowserProto.url(for: typed), push: true) }
         case .recent(let i):
             let r = recent
             guard r.indices.contains(i) else { return }
             history = []
+            pageView = true
             Task { await open(r[i].url, push: true) }
         case .link(let i):
             guard links.indices.contains(i) else { return }
@@ -437,7 +440,7 @@ import WebKit
             // the watch's player: its title and place every few frames; while paused, only that
             if n % 6 == 0 {
                 guard let s = await js(BrowserProto.videoState),
-                      let a = try? JSONSerialization.jsonObject(with: Data(s.utf8)) as? [Any], a.count == 6,
+                      let a = try? JSONSerialization.jsonObject(with: Data(s.utf8)) as? [Any], a.count >= 6,
                       (a[2] as? Int) != 1 else { break }
                 paused = (a[1] as? Int) == 1
                 if n == 0 { await send([BrowserProto.videoTitle(a[5] as? String ?? "")]) }
