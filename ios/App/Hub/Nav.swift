@@ -35,6 +35,17 @@ import MapKit
     var length: Double { cum.last ?? 0 }
     private var last: Date = .distantPast
     private var lastIdx = -1
+    /// Rerouting keeps the frame: the watch's map and the turns so far are in it (a new origin shifted the line
+    /// off the roads by as far as we had come).
+    private var keepOrigin = false
+    /// Where along the route we were (metres): the next fix is looked for near it, not anywhere on the route.
+    private var lastS: Double?
+    /// (when, metres along) over the last minute: how fast we really go, for the time left.
+    private var progress: [(t: Date, s: Double)] = []
+    private var rerouting = false
+    private var reroutedAt: Date = .distantPast
+    private var offCount = 0
+    private var ticker: Task<Void, Never>?
 
     init(target: String = NavService.app) {
         self.target = target
@@ -57,6 +68,8 @@ import MapKit
     /// The route to `item` from here, not started (Maps shows it first). false: we don't know where we are.
     func plan(to item: MKMapItem) async -> Bool {
         destination = item
+        keepOrigin = active && !coords.isEmpty
+        defer { keepOrigin = false }
         status = nil
         working = "Finding where you are…"
         defer { working = nil }
@@ -90,7 +103,19 @@ import MapKit
         manager.showsBackgroundLocationIndicator = true
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()
+        lastS = nil
+        progress = []
+        offCount = 0
         do { try await sendRoute() } catch { status = error.localizedDescription }
+        // standing still brings no fixes: the time left and the arrival still move on
+        ticker?.cancel()
+        ticker = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(10))
+                guard let self, self.active else { return }
+                if -self.last.timeIntervalSinceNow >= 9, let l = self.manager.location { await self.update(l) }
+            }
+        }
     }
 
     /// Apple's route, walking (when chosen) then the roads.
@@ -155,41 +180,66 @@ import MapKit
     }
 
     /// A route from OpenStreetMap (routing.openstreetmap.de, the FOSSGIS OSRM servers: the start and the end are
-    /// all they get). → nil: no answer; true: the chosen way; false: walking had none, the roads are used.
-    private func osrm(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) async -> Bool? {
+    /// all they get, and on a reroute the way we head). → nil: no answer; true: the chosen way; false: walking had
+    /// none, the roads are used. `quick` (a reroute): each server once, a short wait.
+    private func osrm(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D, quick: Bool = false) async -> Bool? {
         // the FOSSGIS servers now and then fail a connection: each is tried twice; the OSRM demo server (roads
         // only) last
         let base = "https://routing.openstreetmap.de/routed-"
+        let n = quick ? 1 : 2
         let own: [(String, String)] = switch mode {
-        case .walk: [("foot", base + "foot"), ("foot", base + "foot")]
-        case .bike: [("bike", base + "bike"), ("bike", base + "bike")]
+        case .walk: Array(repeating: ("foot", base + "foot"), count: n)
+        case .bike: Array(repeating: ("bike", base + "bike"), count: n)
         case .drive: []
         }
-        let tries = own + [("car", base + "car"), ("car", base + "car"), ("car", "https://router.project-osrm.org")]
+        let tries = own + Array(repeating: ("car", base + "car"), count: n) + [("car", "https://router.project-osrm.org")]
         for (profile, server) in tries {
-            let url = URL(string: server + "/route/v1/driving/" +
-                "\(a.longitude),\(a.latitude);\(b.longitude),\(b.latitude)?steps=true&overview=full&geometries=geojson&alternatives=true")!
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 20
-            req.setValue("CMFX (watch navigation)", forHTTPHeaderField: "User-Agent")
-            guard let (data, _) = try? await URLSession.shared.data(for: req),
-                  let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  j["code"] as? String == "Ok", let routes = j["routes"] as? [[String: Any]], let r = routes.first,
-                  let line = (r["geometry"] as? [String: Any])?["coordinates"] as? [[Double]], line.count >= 2
-            else { continue }
-            alternatives = routes.prefix(3).map { .osrm($0) }
-            loadOSRM(r)
+            guard let routes = await osrmRoutes(server, a, b, wait: quick ? 8 : 20) else { continue }
+            var all = routes
+            // on foot, a way by the roads that is shorter (a footpath detour, a missing crossing): that one, at a
+            // walking pace
+            if mode == .walk, profile == "foot", let foot = all.first,
+               let car = await osrmRoutes(base + "car", a, b, wait: quick ? 6 : 10)?.first,
+               let fd = foot["distance"] as? Double, let cd = car["distance"] as? Double, cd < fd - 30 {
+                var walked = car
+                let pace = (foot["duration"] as? Double ?? fd / 1.4) / max(fd, 1)
+                walked["duration"] = cd * pace
+                all.insert(walked, at: 0)
+            }
+            alternatives = all.prefix(3).map { .osrm($0) }
+            loadOSRM(all[0])
             return profile != "car" || mode == .drive
         }
         return nil
     }
+
+    /// One server's routes (OSRM JSON), nil when it gave none.
+    private func osrmRoutes(_ server: String, _ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D,
+                            wait: TimeInterval) async -> [[String: Any]]? {
+        var q = "steps=true&overview=full&geometries=geojson&alternatives=true"
+        if let h = heading { q += "&bearings=\(Int(h.rounded()) % 360),60;" }
+        let url = URL(string: server + "/route/v1/driving/" +
+            "\(a.longitude),\(a.latitude);\(b.longitude),\(b.latitude)?" + q)!
+        var req = URLRequest(url: url)
+        req.timeoutInterval = wait
+        req.setValue("CMFX (watch navigation)", forHTTPHeaderField: "User-Agent")
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              j["code"] as? String == "Ok", let routes = j["routes"] as? [[String: Any]], let r = routes.first,
+              let line = (r["geometry"] as? [String: Any])?["coordinates"] as? [[Double]], line.count >= 2
+        else { return nil }
+        return routes
+    }
+
+    /// The way we head on a reroute (degrees), so the new route doesn't start with a U-turn.
+    private var heading: Double?
 
     /// One OSRM route (steps, full geometry as GeoJSON) as the route.
     private func loadOSRM(_ r: [String: Any]) {
         guard let line = (r["geometry"] as? [String: Any])?["coordinates"] as? [[Double]], line.count >= 2 else { return }
         do {
             coords = line.map { CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) }
-            origin = coords[0]
+            if !keepOrigin { origin = coords[0] }
             pts = coords.map(local)
             cum = [0]
             for i in 1..<pts.count { cum.append(cum[i - 1] + hypot(pts[i].0 - pts[i - 1].0, pts[i].1 - pts[i - 1].1)) }
@@ -265,10 +315,10 @@ import MapKit
     /// A pin with no route to it: one straight leg.
     private func loadDirect(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) {
         alternatives = []
-        origin = a
+        if !keepOrigin { origin = a }
         coords = [a, b]
         pts = [local(a), local(b)]
-        let d = hypot(pts[1].0, pts[1].1)
+        let d = hypot(pts[1].0 - pts[0].0, pts[1].1 - pts[0].1)
         cum = [0, d]
         expected = d / (mode == .walk ? 1.4 : mode == .bike ? 4.5 : 11)
         steps = [(d, 2, 0, "Straight to the pin")]
@@ -314,6 +364,8 @@ import MapKit
     }
 
     func stop() {
+        ticker?.cancel()
+        ticker = nil
         active = false
         manager.stopUpdatingLocation()
         manager.stopUpdatingHeading()
@@ -329,7 +381,7 @@ import MapKit
         var coords = [CLLocationCoordinate2D](repeating: .init(), count: n)
         r.polyline.getCoordinates(&coords, range: NSRange(location: 0, length: n))
         self.coords = coords
-        origin = coords.first ?? .init()
+        if !keepOrigin { origin = coords.first ?? .init() }
         pts = coords.map(local)
         cum = [0]
         for i in 1..<max(pts.count, 1) where pts.count > 1 {
@@ -378,10 +430,21 @@ import MapKit
         return .init(latitude: a.latitude + (b.latitude - a.latitude) * t, longitude: a.longitude + (b.longitude - a.longitude) * t)
     }
 
-    /// Distance along the route nearest to `p`.
+    /// Distance along the route nearest to `p`: near where we were first (a route that passes by its own end, or
+    /// doubles back, would else jump ahead), anywhere when we are not near that part.
     private func along(_ p: (Double, Double)) -> (s: Double, off: Double) {
+        if let s0 = lastS {
+            let near = along(p, from: s0 - 150, to: s0 + 1500)
+            if near.off < 40 { return near }
+            let any = along(p, from: -.infinity, to: .infinity)
+            return any.off < near.off - 15 ? any : near
+        }
+        return along(p, from: -.infinity, to: .infinity)
+    }
+
+    private func along(_ p: (Double, Double), from lo: Double, to hi: Double) -> (s: Double, off: Double) {
         var best = (s: 0.0, off: Double.infinity)
-        for i in 0..<max(pts.count - 1, 0) {
+        for i in 0..<max(pts.count - 1, 0) where cum[i + 1] >= lo && cum[i] <= hi {
             let (a, b) = (pts[i], pts[i + 1])
             let (dx, dy) = (b.0 - a.0, b.1 - a.1)
             let len2 = max(dx * dx + dy * dy, 1e-9)
@@ -404,23 +467,28 @@ import MapKit
     private func update(_ loc: CLLocation) async {
         guard active, !pts.isEmpty, -last.timeIntervalSinceNow >= 1 else { return }
         last = .now
+        guard !rerouting else { return }
         let p = local(loc.coordinate)
         let (s, off) = along(p)
         let length = cum.last ?? 0
-        if off > 60, let destination {
-            try? await Hub.shared.send(target, NavProto.rerouting)
-            await start(to: destination)
+        // off the route: two fixes past a margin the fix's own accuracy widens (one far one at once)
+        let margin = min(max(30, loc.horizontalAccuracy * 1.5), 60)
+        offCount = off > margin ? offCount + 1 : 0
+        if (offCount >= 2 || off > 90), let destination, -reroutedAt.timeIntervalSinceNow > 6 {
+            await reroute(from: loc, to: destination)
             return
         }
-        if length - s < 20 {
+        lastS = s
+        let end = coords.last.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude).distance(from: loc) } ?? 0
+        if length - s < 20 && end < 50 {
             try? await Hub.shared.send(target, NavProto.arrived)
             stop()
             return
         }
         let idx = steps.firstIndex { $0.at > s + 3 } ?? (steps.count - 1)
         let st = steps[idx]
-        let left = length - s
-        let secs = expected * left / max(length, 1)
+        let left = max(length - s, 0)
+        let secs = timeLeft(left: left, s: s)
         let eta = Calendar.current.dateComponents([.hour, .minute], from: .now + secs)
         let heading = loc.course >= 0 ? loc.course : 0
         try? await Hub.shared.send(target, [
@@ -429,5 +497,66 @@ import MapKit
                           leftM: Int(left), arrive: (eta.hour ?? 0, eta.minute ?? 0), street: st.name),
         ])
         if idx != lastIdx { lastIdx = idx }
+    }
+
+    /// Time left: the plan's for the distance left, scaled by how fast we really went over the last minute (a
+    /// jam, a stop at the lights, a fast road), so the arrival moves with us.
+    private func timeLeft(left: Double, s: Double) -> Double {
+        let length = max(cum.last ?? 0, 1)
+        let planned = expected * left / length
+        let now = Date.now
+        progress.append((now, s))
+        progress.removeAll { now.timeIntervalSince($0.t) > 60 }
+        guard let first = progress.first, expected > 0 else { return planned }
+        let dt = now.timeIntervalSince(first.t)
+        guard dt >= 15 else { return planned }
+        let real = max(s - first.s, 0) / dt
+        let plan = length / expected
+        let ratio = min(max(real / plan, 0.25), 2.5)
+        let w = min(dt / 60, 1) * 0.6
+        return planned / (1 - w + w * ratio)
+    }
+
+    /// Off the route: a way the last plan also had, if we are on it (no wait), else a new route from here that
+    /// starts the way we are heading; the frame stays.
+    private func reroute(from loc: CLLocation, to destination: MKMapItem) async {
+        rerouting = true
+        reroutedAt = .now
+        offCount = 0
+        defer { rerouting = false }
+        try? await Hub.shared.send(target, NavProto.rerouting)
+        let p = local(loc.coordinate)
+        for (k, line) in alternativeLines.enumerated() {
+            let lp = line.map(local)
+            var best = Double.infinity
+            for i in 0..<max(lp.count - 1, 0) {
+                let (a, b) = (lp[i], lp[i + 1])
+                let (dx, dy) = (b.0 - a.0, b.1 - a.1)
+                let t = min(max(((p.0 - a.0) * dx + (p.1 - a.1) * dy) / max(dx * dx + dy * dy, 1e-9), 0), 1)
+                best = min(best, hypot(p.0 - a.0 - dx * t, p.1 - a.1 - dy * t))
+            }
+            if best < 25 {
+                keepOrigin = true
+                choose(k)
+                keepOrigin = false
+                lastS = nil
+                progress = []
+                try? await sendRoute()
+                return
+            }
+        }
+        heading = loc.course >= 0 && loc.speed > 1 ? loc.course : nil
+        defer { heading = nil }
+        keepOrigin = true
+        defer { keepOrigin = false }
+        let to = destination.placemark.coordinate
+        if await osrm(from: loc.coordinate, to: to, quick: true) == nil {
+            let src = MKMapItem(placemark: MKPlacemark(coordinate: loc.coordinate))
+            var why = ""
+            if let r = await appleRoute(src, destination, &why) { load(r) } else { loadDirect(from: loc.coordinate, to: to) }
+        }
+        lastS = nil
+        progress = []
+        try? await sendRoute()
     }
 }
