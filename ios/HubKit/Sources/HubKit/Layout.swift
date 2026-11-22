@@ -109,9 +109,11 @@ public enum Layout {
     /// page's picture `pw` px wide), its text, as `o`/`p` ops and `I`/`D`/`E` bands; `j`. Nil: a fancy page (send
     /// its picture). `cssWidth` / `cssHeight` the page as laid out; `cap` what the watch keeps.
     public static func messages(json: String, rgb: [UInt8], pw: Int, ph: Int, cssWidth: Double, cssHeight: Double,
-                                cap: Int = 55 * 1024, imageCap: Int = 22 * 1024) -> (messages: [Data], height: Int)? {
+                                cap: Int = 55 * 1024, imageCap: Int = 22 * 1024, always: Bool = false)
+        -> (messages: [Data], height: Int)? {
+        // `always`: drawn even when fancy (a site the watch is told to draw)
         guard let r = try? JSONDecoder().decode(Read.self, from: Data(json.utf8)),
-              !fancy(r, width: cssWidth, height: cssHeight) else { return nil }
+              always || !fancy(r, width: cssWidth, height: cssHeight) else { return nil }
         let k = 466 / cssWidth
         let px = Double(pw) / cssWidth
         func c565(_ a: Double, _ b: Double, _ c: Double) -> UInt16 {
