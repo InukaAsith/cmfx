@@ -80,7 +80,7 @@ public enum Layout {
                 // keyboard-only links ("Skip to main content"): shown on focus, not on the page
                 || /^(skip to|skip navigation|accessibility (help|feedback))/i.test(((el.closest('a') || {}).textContent || '').trim());
               s = { ok: !hidden && st.visibility != 'hidden' && (!el.checkVisibility || el.checkVisibility({ opacityProperty: true, visibilityProperty: true })),
-                    c: col(st.color) || [0, 0, 0, 1], b: (parseInt(st.fontWeight) || 400) >= 600 ? 1 : 0,
+                    c: col(st.color) || [0, 0, 0, 1], b: (el.dataset.wb == '1' || (parseInt(st.fontWeight) || 400) >= 600) ? 1 : 0,
                     u: (st.textDecorationLine || '').includes('underline') ? 2 : 0 };
               styles.set(el, s); }
             if (!s.ok || s.c[3] < 0.2) continue;
@@ -184,7 +184,8 @@ public enum Layout {
         for i in pieces.indices.dropFirst() {
             let (p, q) = (pieces[i - 1], pieces[i])
             guard abs(p.y - q.y) <= 6, q.x >= p.x else { continue }
-            let end = p.x + Int(Double(watchText(p.t[8].s).count) * 10.5) + 5
+            // (in the watch's own font on the page: as wide as the page has it)
+            let end = p.x + Int(p.t[2].n * k) + 1
             if q.x < end { pieces[i].x = end }
         }
         for (px, py, t) in pieces {
