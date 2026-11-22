@@ -46,6 +46,11 @@ import MapKit
     private var reroutedAt: Date = .distantPast
     private var offCount = 0
     private var ticker: Task<Void, Never>?
+    /// Stops on the way, in order (Maps adds them, searched for on the watch); passed ones drop off, so a reroute
+    /// goes through the rest.
+    var stops: [MKMapItem] = []
+    /// where along the route each stop left is (metres)
+    private var stopAt: [Double] = []
 
     init(target: String = NavService.app) {
         self.target = target
@@ -57,11 +62,65 @@ import MapKit
     }
 
     func receive(_ m: Data) {
-        if m == Data("R".utf8), active { Task { try? await sendRoute() } }
+        switch NavProto.parse(m) {
+        case .ready:
+            // the route if one is on, else where it may go: the last places gone to
+            if active { Task { try? await sendRoute() } } else { Task { await offer(recent) } }
+        case .search(let q):
+            Task {
+                try? await Hub.shared.send(target, NavProto.note("Searching\u{2026}"))
+                let found = await Place.search(q)
+                if found.isEmpty { try? await Hub.shared.send(target, NavProto.note("Nothing found")) }
+                await offer(found.map { (item: $0.item, detail: $0.detail) })
+            }
+        case .start(let idx, let walk):
+            // as the phone's page does: the page shows it too, and its Stop ends it
+            guard offered.indices.contains(idx) else { return }
+            let item = offered[idx].item
+            walking = walk
+            Task {
+                try? await Hub.shared.send(target, NavProto.note("Finding a route\u{2026}"))
+                await start(to: item)
+                if !active { try? await Hub.shared.send(target, NavProto.note(status ?? "No route there")) }
+            }
+        case nil: break
+        }
+    }
+
+    /// The places the watch was last sent (`S idx` picks one).
+    private var offered: [(item: MKMapItem, detail: String)] = []
+
+    private func offer(_ places: [(item: MKMapItem, detail: String)]) async {
+        offered = Array(places.prefix(8))
+        try? await Hub.shared.send(target, NavProto.places(offered.map { ($0.item.name ?? "Pin", $0.detail) }, walking: walking))
+    }
+
+    /// The last 3 places gone to (on this phone only), newest first: the watch offers them.
+    private static let recentKey = "nav-recent"
+    private var recent: [(item: MKMapItem, detail: String)] {
+        (UserDefaults.standard.array(forKey: Self.recentKey) as? [[String: Any]] ?? []).compactMap { d in
+            guard let lat = d["lat"] as? Double, let lon = d["lon"] as? Double else { return nil }
+            let i = MKMapItem(placemark: MKPlacemark(coordinate: .init(latitude: lat, longitude: lon)))
+            i.name = d["name"] as? String
+            return (i, d["detail"] as? String ?? "")
+        }
+    }
+
+    private func remember(_ item: MKMapItem) {
+        let c = item.placemark.coordinate
+        let p = item.placemark
+        let detail = [p.thoroughfare, p.locality].compactMap { $0 }.joined(separator: ", ")
+        let me: [String: Any] = ["name": item.name ?? "Pin", "lat": c.latitude, "lon": c.longitude,
+                                 "detail": offered.first { $0.item === item }?.detail ?? detail]
+        let rest = (UserDefaults.standard.array(forKey: Self.recentKey) as? [[String: Any]] ?? []).filter {
+            abs(($0["lat"] as? Double ?? 0) - c.latitude) > 0.0003 || abs(($0["lon"] as? Double ?? 0) - c.longitude) > 0.0003
+        }
+        UserDefaults.standard.set(Array(([me] + rest).prefix(3)), forKey: Self.recentKey)
     }
 
     func start(to item: MKMapItem) async {
         guard await plan(to: item) else { return }
+        if target == Self.app { remember(item) }
         await begin()
     }
 
@@ -87,8 +146,8 @@ import MapKit
         alternatives = []
         if let ok = await osrm(from: here.coordinate, to: to) {
             if !ok { status = "No \(mode == .bike ? "cycling" : "walking") route there: following the roads" }
-        } else if let r = await appleRoute(src, item, &why) {
-            load(r)
+        } else if let legs = await appleLegs(from: src, to: item, &why) {
+            load(legs)
         } else {
             loadDirect(from: here.coordinate, to: to)
             status = "No route found\(why.isEmpty ? "" : " (\(why))"): the watch points straight at it"
@@ -137,6 +196,18 @@ import MapKit
         return nil
     }
 
+    /// Apple's route through the stops: one route a leg (Apple takes no stops); nil when a leg has none.
+    private func appleLegs(from src: MKMapItem, to dest: MKMapItem, _ why: inout String) async -> [MKRoute]? {
+        let ends = [src] + stops + [dest]
+        var legs: [MKRoute] = []
+        for i in 0..<(ends.count - 1) {
+            guard let r = await appleRoute(ends[i], ends[i + 1], &why) else { return nil }
+            legs.append(r)
+        }
+        if legs.count > 1 { alternatives = [] }
+        return legs
+    }
+
     /// A way there: OSRM's route (its JSON) or Apple's.
     enum Alt { case osrm([String: Any]), apple(MKRoute) }
     /// The ways there the last plan found (the first is the one loaded), to pick from when there are two or three.
@@ -175,7 +246,7 @@ import MapKit
         guard alternatives.indices.contains(k) else { return }
         switch alternatives[k] {
         case .osrm(let r): loadOSRM(r)
-        case .apple(let r): load(r)
+        case .apple(let r): load([r])
         }
     }
 
@@ -206,6 +277,9 @@ import MapKit
                 walked["duration"] = cd * pace
                 all.insert(walked, at: 0)
             }
+            // a way much longer than the shortest is a detour, not a choice
+            let shortest = all.compactMap { $0["distance"] as? Double }.min() ?? 0
+            all = all.filter { ($0["distance"] as? Double ?? 0) <= max(shortest * 1.8, shortest + 1500) }
             alternatives = all.prefix(3).map { .osrm($0) }
             loadOSRM(all[0])
             return profile != "car" || mode == .drive
@@ -216,10 +290,12 @@ import MapKit
     /// One server's routes (OSRM JSON), nil when it gave none.
     private func osrmRoutes(_ server: String, _ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D,
                             wait: TimeInterval) async -> [[String: Any]]? {
-        var q = "steps=true&overview=full&geometries=geojson&alternatives=true"
-        if let h = heading { q += "&bearings=\(Int(h.rounded()) % 360),60;" }
+        let via = [a] + stops.map(\.placemark.coordinate) + [b]
+        // other ways only between two points (OSRM gives none through stops)
+        var q = "steps=true&overview=full&geometries=geojson&alternatives=\(via.count == 2)"
+        if let h = heading { q += "&bearings=\(Int(h.rounded()) % 360),60" + String(repeating: ";", count: via.count - 1) }
         let url = URL(string: server + "/route/v1/driving/" +
-            "\(a.longitude),\(a.latitude);\(b.longitude),\(b.latitude)?" + q)!
+            via.map { "\($0.longitude),\($0.latitude)" }.joined(separator: ";") + "?" + q)!
         var req = URLRequest(url: url)
         req.timeoutInterval = wait
         req.setValue("CMFX (watch navigation)", forHTTPHeaderField: "User-Agent")
@@ -247,14 +323,19 @@ import MapKit
             // each maneuver where it happens: the step's start along the route
             var at = 0.0
             steps = []
-            for leg in r["legs"] as? [[String: Any]] ?? [] {
+            stopAt = []
+            let legs = r["legs"] as? [[String: Any]] ?? []
+            for (li, leg) in legs.enumerated() {
                 for st in leg["steps"] as? [[String: Any]] ?? [] {
                     let m = st["maneuver"] as? [String: Any] ?? [:]
                     let type = m["type"] as? String ?? "", modifier = m["modifier"] as? String ?? ""
                     if type != "depart" {
                         let (kind, dir) = Self.osrmManeuver(type, modifier)
                         let name = st["name"] as? String ?? ""
-                        steps.append((at, kind, dir, kind == 2 ? "Arrive" : name.isEmpty ? "Continue" : name))
+                        // a leg's end before the last: one of the stops
+                        let stop = kind == 2 && li < legs.count - 1
+                        if stop { stopAt.append(at) }
+                        steps.append((at, kind, dir, stop ? stopName(li) : kind == 2 ? "Arrive" : name.isEmpty ? "Continue" : name))
                     }
                     at += st["distance"] as? Double ?? 0
                 }
@@ -290,7 +371,32 @@ import MapKit
     func summary(to item: MKMapItem, by way: Mode) async -> (secs: Double, metres: Double)? {
         guard let here = await here() else { return nil }
         let a = here.coordinate, b = item.placemark.coordinate
-        let profile = ["car", "bike", "foot"][way.rawValue]
+        if way == .walk {
+            // as the route itself (osrm): the roads' way when the footpaths' is longer, at a walking pace (OSM's
+            // foot router now and then goes a long way round: 13 km to a place 650 m off)
+            async let foot = osrmSummary("foot", a, b, way)
+            async let car = osrmSummary("car", a, b, .drive)
+            let (f, c) = await (foot, car)
+            if let c, c.metres < (f?.metres ?? .infinity) - 30 {
+                let pace = f.map { $0.secs / max($0.metres, 1) } ?? (1 / 1.35)
+                return (c.metres * pace, c.metres)
+            }
+            if let f { return f }
+        } else if let r = await osrmSummary(["car", "bike", "foot"][way.rawValue], a, b, way) {
+            return r
+        }
+        guard way != .bike else { return nil }
+        let req = MKDirections.Request()
+        req.source = MKMapItem(placemark: MKPlacemark(coordinate: a))
+        req.destination = item
+        req.transportType = way == .drive ? .automobile : .walking
+        guard let eta = try? await MKDirections(request: req).calculateETA() else { return nil }
+        return (eta.expectedTravelTime, eta.distance)
+    }
+
+    /// OSRM's time and length (no steps) by `profile`, nil when it has none.
+    private func osrmSummary(_ profile: String, _ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D,
+                             _ way: Mode) async -> (secs: Double, metres: Double)? {
         let base = "https://routing.openstreetmap.de/routed-" + profile
         for server in [base, base] + (way == .drive ? ["https://router.project-osrm.org"] : []) {
             let url = URL(string: server + "/route/v1/driving/\(a.longitude),\(a.latitude);\(b.longitude),\(b.latitude)?overview=false")!
@@ -303,13 +409,7 @@ import MapKit
                   let secs = r["duration"] as? Double, let metres = r["distance"] as? Double else { break }
             return (secs, metres)
         }
-        guard way != .bike else { return nil }
-        let req = MKDirections.Request()
-        req.source = MKMapItem(placemark: MKPlacemark(coordinate: a))
-        req.destination = item
-        req.transportType = way == .drive ? .automobile : .walking
-        guard let eta = try? await MKDirections(request: req).calculateETA() else { return nil }
-        return (eta.expectedTravelTime, eta.distance)
+        return nil
     }
 
     /// A pin with no route to it: one straight leg.
@@ -322,6 +422,7 @@ import MapKit
         cum = [0, d]
         expected = d / (mode == .walk ? 1.4 : mode == .bike ? 4.5 : 11)
         steps = [(d, 2, 0, "Straight to the pin")]
+        stopAt = []
     }
 
     private var fixWaiters: [CheckedContinuation<CLLocation?, Never>] = []
@@ -376,10 +477,20 @@ import MapKit
         ((c.longitude - origin.longitude) * cos(origin.latitude * .pi / 180) * 111_320, (c.latitude - origin.latitude) * 110_540)
     }
 
-    private func load(_ r: MKRoute) {
-        let n = r.polyline.pointCount
-        var coords = [CLLocationCoordinate2D](repeating: .init(), count: n)
-        r.polyline.getCoordinates(&coords, range: NSRange(location: 0, length: n))
+    /// Stop k's name (the watch says "Arrive at <name>").
+    private func stopName(_ k: Int) -> String {
+        stops.indices.contains(k) ? stops[k].name ?? "your stop" : "your stop"
+    }
+
+    /// Apple's route, one MKRoute a leg (through the stops), as the route.
+    private func load(_ legs: [MKRoute]) {
+        var coords: [CLLocationCoordinate2D] = []
+        for r in legs {
+            let n = r.polyline.pointCount
+            var c = [CLLocationCoordinate2D](repeating: .init(), count: n)
+            r.polyline.getCoordinates(&c, range: NSRange(location: 0, length: n))
+            coords += coords.isEmpty ? c : Array(c.dropFirst())
+        }
         self.coords = coords
         if !keepOrigin { origin = coords.first ?? .init() }
         pts = coords.map(local)
@@ -387,14 +498,25 @@ import MapKit
         for i in 1..<max(pts.count, 1) where pts.count > 1 {
             cum.append(cum[i - 1] + hypot(pts[i].0 - pts[i - 1].0, pts[i].1 - pts[i - 1].1))
         }
-        expected = r.expectedTravelTime
+        expected = legs.reduce(0) { $0 + $1.expectedTravelTime }
         var at = 0.0
-        steps = r.steps.map { s in
-            defer { at += s.distance }
-            let (kind, dir) = Self.maneuver(s.instructions)
-            return (at + s.distance, kind, dir, s.instructions.isEmpty ? "Continue" : s.instructions)
+        steps = []
+        stopAt = []
+        for (li, r) in legs.enumerated() {
+            var leg = r.steps.map { s in
+                defer { at += s.distance }
+                let (kind, dir) = Self.maneuver(s.instructions)
+                return (at: at + s.distance, kind: kind, dir: dir, name: s.instructions.isEmpty ? "Continue" : s.instructions)
+            }
+            if let last = leg.indices.last {
+                leg[last].kind = 2
+                if li < legs.count - 1 {
+                    leg[last].name = stopName(li)
+                    stopAt.append(leg[last].at)
+                }
+            }
+            steps += leg
         }
-        if let lastStep = steps.indices.last { steps[lastStep].kind = 2 }
     }
 
     /// MapKit gives words, not maneuver types: read the turn from them (English).
@@ -479,6 +601,11 @@ import MapKit
             return
         }
         lastS = s
+        // a stop passed: off the list, a reroute goes through the rest only
+        while let a = stopAt.first, s >= a - 30 {
+            stopAt.removeFirst()
+            if !stops.isEmpty { stops.removeFirst() }
+        }
         let end = coords.last.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude).distance(from: loc) } ?? 0
         if length - s < 20 && end < 50 {
             try? await Hub.shared.send(target, NavProto.arrived)
@@ -553,7 +680,7 @@ import MapKit
         if await osrm(from: loc.coordinate, to: to, quick: true) == nil {
             let src = MKMapItem(placemark: MKPlacemark(coordinate: loc.coordinate))
             var why = ""
-            if let r = await appleRoute(src, destination, &why) { load(r) } else { loadDirect(from: loc.coordinate, to: to) }
+            if let legs = await appleLegs(from: src, to: destination, &why) { load(legs) } else { loadDirect(from: loc.coordinate, to: to) }
         }
         lastS = nil
         progress = []

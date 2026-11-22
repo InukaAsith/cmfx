@@ -154,6 +154,8 @@ public enum AtlasProto {
         case clear
         /// a mixed search's other group: the map round result idx's group as scene `id`
         case focusRow(id: UInt8, idx: Int)
+        /// the route again with result idx as a stop before its end (nil: no new stop), its map as scene `id`
+        case addStop(id: UInt8, idx: Int?)
         /// directions: the route's map comes as scene `id`; `alt` the way picked of those `O` listed
         case directions(mode: Int, idx: Int, id: UInt8, alt: Int?), start, stop, again(id: UInt8)
 
@@ -166,6 +168,7 @@ public enum AtlasProto {
             case let (.pick(x, y, n), .pick(u, v, m)): return x == u && y == v && n == m
             case let (.ways(i), .ways(j)), let (.info(i), .info(j)): return i == j
             case let (.focusRow(i, p), .focusRow(j, q)): return i == j && p == q
+            case let (.addStop(i, p), .addStop(j, q)): return i == j && p == q
             case let (.directions(m, i, d, a), .directions(n, j, e, b)): return m == n && i == j && d == e && a == b
             case let (.again(i), .again(j)): return i == j
             default: return false
@@ -192,6 +195,7 @@ public enum AtlasProto {
         case ("I", 2): return .info(idx: Int(b[1]))
         case ("K", 1): return .clear
         case ("F", 3): return .focusRow(id: b[1], idx: Int(b[2]))
+        case ("J", 3): return .addStop(id: b[1], idx: b[2] == 255 ? nil : Int(b[2]))
         case ("U", 2): return .ways(idx: Int(b[1]))
         case ("D", 4): return .directions(mode: Int(b[1]), idx: Int(b[2]), id: b[3], alt: nil)
         case ("D", 5): return .directions(mode: Int(b[1]), idx: Int(b[2]), id: b[3], alt: Int(b[4]))

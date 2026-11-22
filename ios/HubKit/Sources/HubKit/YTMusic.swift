@@ -86,11 +86,13 @@ public enum YTMusic {
     nonisolated(unsafe) static var visitor: String?
 
     static func post(_ url: String, _ body: [String: Any], ua: String, clientId: String, version: String,
-                     origin: String? = nil, headers: [String: String] = [:]) async throws -> [String: Any] {
+                     origin: String? = nil, headers: [String: String] = [:], anonymous: Bool = true) async throws -> [String: Any] {
         var r = URLRequest(url: URL(string: url)!)
         r.httpMethod = "POST"
         var body = body
-        if let v = visitor, var ctx = body["context"] as? [String: Any], var c = ctx["client"] as? [String: Any] {
+        // the visitor id is a signed-out session's: sent with the account's cookies, YouTube may answer as that
+        // visitor (its home's mixes, not the account's)
+        if anonymous, let v = visitor, var ctx = body["context"] as? [String: Any], var c = ctx["client"] as? [String: Any] {
             c["visitorData"] = v
             ctx["client"] = c
             body["context"] = ctx
@@ -108,7 +110,7 @@ public enum YTMusic {
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard code == 200 else { throw YTError.http(code) }
         let j = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-        if visitor == nil, let v = (j["responseContext"] as? [String: Any])?["visitorData"] as? String { visitor = v }
+        if anonymous, visitor == nil, let v = (j["responseContext"] as? [String: Any])?["visitorData"] as? String { visitor = v }
         return j
     }
 
@@ -117,7 +119,8 @@ public enum YTMusic {
         var b = body
         b["context"] = ["client": webRemix]
         var headers: [String: String] = [:]
-        if signedIn, let a = account, a.valid {
+        let asAccount = signedIn && account?.valid == true
+        if asAccount, let a = account {
             headers["Cookie"] = a.header
             headers["Authorization"] = a.authorization(origin: "https://music.youtube.com")
             headers["X-Origin"] = "https://music.youtube.com"
@@ -125,7 +128,26 @@ public enum YTMusic {
         }
         return try await post("https://music.youtube.com/youtubei/v1/\(endpoint)?prettyPrint=false", b, ua: webUA,
                               clientId: "67", version: webRemix["clientVersion"] as! String,
-                              origin: "https://music.youtube.com", headers: headers)
+                              origin: "https://music.youtube.com", headers: headers, anonymous: !asAccount)
+    }
+
+    /// Whether YouTube took a request as the account's (`logged_in` in its tracking params); nil: it doesn't say.
+    public static func loggedIn(_ j: [String: Any]) -> Bool? {
+        var found: Bool?
+        walk(j["responseContext"] ?? [:]) { d in
+            if found == nil, d["key"] as? String == "logged_in", let v = d["value"] as? String { found = v == "1" }
+        }
+        return found
+    }
+
+    /// The account's listening history on YouTube Music (newest first), nil when not signed in or not taken as
+    /// the account.
+    public static func history() async throws -> [YTSong]? {
+        guard account?.valid == true else { return nil }
+        let j = try await music("browse", ["browseId": "FEmusic_history"], signedIn: true)
+        guard loggedIn(j) != false else { return nil }
+        let s = songs(inSearch: j)
+        return s.isEmpty ? nil : Array(s.prefix(24))
     }
 
     // MARK: mixes
@@ -134,6 +156,9 @@ public enum YTMusic {
     /// playlists: (playlist id, name, what it is), 24 at most.
     public static func mixes() async throws -> [(id: String, name: String, sub: String)] {
         let j = try await music("browse", ["browseId": "FEmusic_home"], signedIn: true)
+        if account?.valid == true, loggedIn(j) == false {
+            log("home: signed in, but YouTube answered as signed out (the cookies may have expired)")
+        }
         return lists(inHome: j)
     }
 

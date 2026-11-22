@@ -126,6 +126,20 @@ enum Checks {
             if a.contains(where: { $0.count > 128 }) || a.first?[2] != 4 || back.utf8.count > 480 || back.contains("\u{FFFD}") {
                 bad.append("atlas about pieces")
             }
+            if AtlasProto.parse(Data([UInt8(ascii: "J"), 4, 2])) != .addStop(id: 4, idx: 2)
+                || AtlasProto.parse(Data([UInt8(ascii: "J"), 4, 255])) != .addStop(id: 4, idx: nil) {
+                bad.append("atlas add stop")
+            }
+            let pl = NavProto.places([(name: "Home", detail: "Colombo")], walking: true)
+            if pl[0] != Data([UInt8(ascii: "P"), 1, 1]) || pl[1] != Data("p\u{0}Home\u{0}Colombo".utf8)
+                || NavProto.parse(Data("Qpark".utf8)) != .search("park")
+                || NavProto.parse(Data([UInt8(ascii: "S"), 2, 0])) != .start(idx: 2, walking: false)
+                || NavProto.parse(Data("R".utf8)) != .ready {
+                bad.append("nav places")
+            }
+            let track: [String: Any] = ["responseContext": ["serviceTrackingParams": [["service": "GFEEDBACK",
+                "params": [["key": "logged_in", "value": "1"]]]]]]
+            if YTMusic.loggedIn(track) != true || YTMusic.loggedIn([:]) != nil { bad.append("youtube logged_in") }
             let l = AtlasProto.results([(name: "A", sub: "", dist: 1, at: (5, 6)), (name: "B", sub: "", dist: 9, at: (.nan, .nan))], near: 1)
             if l[0] != Data([UInt8(ascii: "L"), 2, 1]) || l[2][6...9] != Data([0, 0x80, 0, 0x80])
                 || AtlasProto.parse(Data([UInt8(ascii: "F"), 7, 3])) != .focusRow(id: 7, idx: 3) {

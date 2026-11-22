@@ -64,6 +64,8 @@ import WireKit
             Task { await pick((Double(x), Double(y)), name: name) }
         case .focusRow(let id, let idx):
             Task { await focusGroup(of: idx, id: id) }
+        case .addStop(let id, let idx):
+            Task { await addStop(idx, id: id) }
         case .clear:
             // ✕ on the watch: the pins go, and new maps come without them
             nearCount = 0
@@ -444,10 +446,13 @@ import WireKit
     /// `alt` is the one picked.
     private func directions(mode: Int, idx: Int, id: UInt8, alt: Int?) async {
         guard let f = found(idx) else { return fail("That place is gone: search again") }
+        routeTo = (mode, f)
         if let alt, let l = listed, l.mode == mode, l.idx == idx, nav.alternatives.count > alt {
             nav.choose(alt)
         } else {
             nav.stop()
+            // a new route: no stops yet
+            nav.stops = []
             nav.mode = NavService.Mode(rawValue: mode) ?? .drive
             guard await nav.plan(to: f.item) else { return fail(nav.status ?? "Couldn't find where you are") }
             if alt == nil, nav.alternatives.count >= 2 {
@@ -462,6 +467,36 @@ import WireKit
             }
             if let alt { nav.choose(alt) }
         }
+        await sendRoute(mode: mode, id: id)
+    }
+
+    /// Where the route goes and how (the last directions): stops are added to it.
+    private var routeTo: (mode: Int, f: Found)?
+
+    /// A stop (result idx, searched for on the watch) before the route's end, the route planned again through
+    /// the stops; nil: the route as it is, sent again (the watch searched and came back without one).
+    private func addStop(_ idx: Int?, id: UInt8) async {
+        guard let to = routeTo else { return fail("Pick where to go first") }
+        var replan = nav.coords.isEmpty
+        if let idx {
+            guard let f = found(idx) else { return fail("That place is gone: search again") }
+            if nav.stops.count >= 3 {
+                fail("3 stops at most")
+            } else {
+                nav.stops.append(f.item)
+                replan = true
+            }
+        }
+        if replan {
+            nav.stop()
+            nav.mode = NavService.Mode(rawValue: to.mode) ?? .drive
+            guard await nav.plan(to: to.f.item) else { return fail(nav.status ?? "Couldn't find where you are") }
+        }
+        await sendRoute(mode: to.mode, id: id)
+    }
+
+    /// The route (its steps and line) to the watch, and its map round it as scene `id`, in its frame.
+    private func sendRoute(mode: Int, id: UInt8) async {
         let eta = Calendar.current.dateComponents([.hour, .minute], from: .now + nav.expected)
         let msgs = AtlasProto.route(mode: UInt8(mode), secs: nav.expected, metres: nav.length,
                                     arrive: (eta.hour ?? 0, eta.minute ?? 0), steps: nav.steps)

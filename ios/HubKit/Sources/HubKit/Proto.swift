@@ -163,6 +163,33 @@ public enum NavProto {
     public static let arrived = Data("W".utf8)
     public static let rerouting = Data("r".utf8)
 
+    /// `P n walking`, then `p idx name 0 detail` each (8 at most): places to start a route to from the watch (what
+    /// it searched for, or the last ones gone to); `walking` the phone's choice of walking or the roads.
+    public static func places(_ rows: [(name: String, detail: String)], walking: Bool) -> [Data] {
+        let rows = rows.prefix(8)
+        return [Data([UInt8(ascii: "P"), UInt8(rows.count), walking ? 1 : 0])] + rows.enumerated().map { i, r in
+            let name = utf8(r.name, 40)
+            return Data([UInt8(ascii: "p"), UInt8(i)]) + name + Data([0]) + utf8(r.detail, Rle.msgMax - 3 - name.count)
+        }
+    }
+
+    /// `E text`: what the phone is doing or why it couldn't (a search, a route).
+    public static func note(_ t: String) -> Data { Data("E".utf8) + utf8(t, 60) }
+
+    /// What the watch asked for: its state again (`R`), places for words (`Q text`), a route to one of the places
+    /// last sent (`S idx walking`).
+    public enum Ask: Equatable { case ready, search(String), start(idx: Int, walking: Bool) }
+
+    public static func parse(_ m: Data) -> Ask? {
+        let b = [UInt8](m)
+        switch (b.first, b.count) {
+        case (UInt8(ascii: "R"), 1): return .ready
+        case (UInt8(ascii: "Q"), 2...): return .search(String(decoding: b.dropFirst(), as: UTF8.self))
+        case (UInt8(ascii: "S"), 3): return .start(idx: Int(b[1]), walking: b[2] == 1)
+        default: return nil
+        }
+    }
+
     /// Douglas–Peucker to at most `max` points (the watch keeps 400).
     public static func simplify(_ pts: [(Double, Double)], max: Int = 400) -> [(Double, Double)] {
         var tol = 1.0

@@ -115,7 +115,7 @@ import WireKit
                 results = try await find(q)
                 try await rows(Character("S"), results.map { ($0.title, sub($0), false) })
             case .pick(let gen, let kind, let i):
-                let from = kind == UInt8(ascii: "S") ? results : kind == UInt8(ascii: "H") ? history : nil
+                let from = kind == UInt8(ascii: "S") ? results : kind == UInt8(ascii: "H") ? historyShown : nil
                 if kind == UInt8(ascii: "P") {
                     // a playlist: its songs in order
                     guard i < shelf.count else { return }
@@ -148,7 +148,9 @@ import WireKit
                 let shown = queue.indices.contains(upFrom) ? Array(queue[upFrom...]) : []
                 try await rows(Character("Q"), shown.enumerated().map { ($0.element.title, sub($0.element), $0.offset == 0) })
             case .history:
-                try await rows(Character("H"), history.map { ($0.title, sub($0), false) })
+                // the account's history when signed in, else the songs played from the watch
+                historyShown = (try? await accountHistory()).flatMap { $0 } ?? history
+                try await rows(Character("H"), historyShown.map { ($0.title, sub($0), false) })
             case .library:
                 shelf = try await library()
                 try await rows(Character("P"), shelf.map { ($0.name, $0.sub, false) })
@@ -174,6 +176,10 @@ import WireKit
     private var shelf: [(id: String, name: String, sub: String)] = []
     func library() async throws -> [(id: String, name: String, sub: String)] { try await YTMusic.mixes() }
     func songs(of id: String) async throws -> [YTSong] { try await YTMusic.playlist(id) }
+    /// The history the watch was last shown (a pick from it plays that song).
+    private var historyShown: [YTSong] = []
+    /// The account's history (YouTube Music's, signed in); nil: the watch's own (Spotify player: always).
+    func accountHistory() async throws -> [YTSong]? { try await YTMusic.history() }
 
     /// Songs for the watch's search (SpotifyPlayerService: Spotify's catalog).
     func find(_ q: String) async throws -> [YTSong] { try await YTMusic.search(q) }
@@ -389,6 +395,8 @@ struct YouTubeSignIn: UIViewRepresentable {
     override func songs(of id: String) async throws -> [YTSong] {
         try await Hub.shared.spotify.songs(of: id)
     }
+
+    override func accountHistory() async throws -> [YTSong]? { nil }
 
     override func resolve(_ song: YTSong) async throws -> YTSong {
         guard song.id.hasPrefix("spotify:") else { return song }
