@@ -41,7 +41,10 @@ public final class VideoCoder {
         guard rgb.count == width * height * 3 else { return [] }
         frames += 1
         let n = width * height
-        if frames == 1 || frames % keyEvery == 0 {
+        if grey > 1 {
+            return greyFrame(rgb)
+        }
+        if whole || frames == 1 || frames % keyEvery == 0 {
             return put(rgb, x0: 0, y0: 0, x1: width, y1: height).0
         }
         var diff = [Int](repeating: 0, count: n)
@@ -78,6 +81,47 @@ public final class VideoCoder {
         return []
     }
 
+    /// black and white: this many grey levels (fixed, so they don't flicker; 0: colour)
+    public var grey = 0
+    /// the frame's dark and light ends (slowly followed: the contrast stretched without pumping)
+    var lo = 16.0, hi = 235.0
+
+    /// A whole frame in `grey` levels, its contrast stretched to the scene's darkest and lightest.
+    func greyFrame(_ rgb: [UInt8]) -> [Data] {
+        let n = width * height
+        var y = [Int](repeating: 0, count: n)
+        var hist = [Int](repeating: 0, count: 256)
+        for p in 0..<n {
+            let v = (77 * Int(rgb[3 * p]) + 150 * Int(rgb[3 * p + 1]) + 29 * Int(rgb[3 * p + 2])) >> 8
+            y[p] = v
+            hist[v] += 1
+        }
+        // 2 % and 98 %: the ends, followed at a quarter a frame
+        var acc = 0, a = 0, b = 255
+        for v in 0..<256 { acc += hist[v]; if acc >= n / 50 { a = v; break } }
+        acc = 0
+        for v in stride(from: 255, through: 0, by: -1) { acc += hist[v]; if acc >= n / 50 { b = v; break } }
+        lo += (Double(a) - lo) / 4
+        hi += (Double(max(b, a + 24)) - hi) / 4
+        let k = grey - 1, span = max(hi - lo, 24)
+        var idx = [UInt8](repeating: 0, count: n)
+        for p in 0..<n {
+            let f = (Double(y[p]) - lo) / span
+            idx[p] = UInt8(max(0, min(k, Int((f * Double(k)).rounded()))))
+        }
+        // the levels as greys, a little gamma so the darks stay apart
+        let pal = (0...k).map { i -> UInt16 in
+            let g = UInt8(min(255, (pow(Double(i) / Double(k), 0.9) * 255).rounded()))
+            return Rle.rgb565(g, g, g)
+        }
+        let (ox, oy) = origin
+        let hdr = Rle.header(width: width, height: height, scale: UInt8(scale), x0: Int16(ox), y0: Int16(oy), palette: pal)
+        return Rle.messages(header: hdr, tokens: Rle.tokens(idx, width: width, height: height))
+    }
+
+    /// every frame sent whole (its own `colours`), nothing kept from the last
+    public var whole = true
+
     /// a pixel's difference (three channels summed) above this: changed
     public var threshold = 36
 
@@ -89,7 +133,7 @@ public final class VideoCoder {
             let s = 3 * ((y0 + y) * width + x0)
             part.replaceSubrange((3 * y * w)..<(3 * (y + 1) * w), with: rgb[s..<(s + 3 * w)])
         }
-        let (msgs, pal, idx) = picture(part, w: w, h: h, x: x0, y: y0, colours: 16)
+        let (msgs, pal, idx) = picture(part, w: w, h: h, x: x0, y: y0, colours: colours)
         for y in 0..<h {
             for x in 0..<w {
                 let c = pal[Int(idx[y * w + x])], i = 3 * ((y0 + y) * width + x0 + x)
