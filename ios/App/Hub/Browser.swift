@@ -179,6 +179,7 @@ import WebKit
     private func google(_ url: URL, _ g: Int) async {
         await note("Searching Google\u{2026}")
         host()
+        committed = false
         web.load(URLRequest(url: url))
         await waitLoad()
         guard g == gen else { return }
@@ -274,6 +275,7 @@ import WebKit
         guard let url = current else { return }
         if web.url != url {
             await note("Loading the page\u{2026}")
+            committed = false
             web.load(URLRequest(url: url))
             await waitLoad()
         }
@@ -293,13 +295,29 @@ import WebKit
         await snapshot()
     }
 
+    /// The navigation under way has its new document (its text may still be coming).
+    private var committed = true
+
+    /// Till the page's text is in (its document parsed), not every image and ad: its picture in about a second.
     private func waitLoad() async {
-        guard web.isLoading else { return }
-        await withCheckedContinuation { c in
-            loadWaiters.append(c)
-            // a page that never says it is done still gets its picture
-            Task { try? await Task.sleep(for: .seconds(12)); self.loaded() }
+        try? await Task.sleep(for: .milliseconds(150))
+        guard web.isLoading || !committed else { return }
+        // the new document, not the one before it
+        for _ in 0..<100 where !committed {
+            try? await Task.sleep(for: .milliseconds(100))
         }
+        for _ in 0..<60 where await js("document.readyState") == "loading" {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        try? await Task.sleep(for: .milliseconds(400))
+    }
+
+    nonisolated func webView(_ v: WKWebView, didStartProvisionalNavigation n: WKNavigation!) {
+        Task { @MainActor in self.committed = false }
+    }
+
+    nonisolated func webView(_ v: WKWebView, didCommit n: WKNavigation!) {
+        Task { @MainActor in self.committed = true }
     }
 
     private func loaded() {
@@ -317,7 +335,7 @@ import WebKit
     }
 
     nonisolated func webView(_ v: WKWebView, didFailProvisionalNavigation n: WKNavigation!, withError e: Error) {
-        Task { @MainActor in self.loaded() }
+        Task { @MainActor in self.committed = true; self.loaded() }
     }
 
     /// Page view's picture: the whole page (as much as the watch keeps, Rle.longPicture), laid out tall once, its
@@ -330,7 +348,7 @@ import WebKit
         let tall = min(max(full, Double(Self.side)), Double(Self.side) * 12)
         web.frame = CGRect(x: 0, y: 0, width: Self.side, height: tall)
         _ = await js("window.scrollTo(0, 0)")
-        try? await Task.sleep(for: .milliseconds(500))
+        try? await Task.sleep(for: .milliseconds(250))
         let rows = (await js(BrowserProto.pageBoxes)).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [[Double]] } ?? []
         let img = await shot(width: Self.picture)
         web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
