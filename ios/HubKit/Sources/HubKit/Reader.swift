@@ -296,6 +296,65 @@ public enum BrowserProto {
     public static let field = Data("K".utf8)
     public static func video(_ on: Bool) -> Data { Data([UInt8(ascii: "M"), on ? 1 : 0]) }
 
+    /// A tap in page view did nothing to the page: the watch takes its outline off.
+    public static let unchanged = Data([UInt8(ascii: "Y")])
+
+    /// The whole page laid out tall (`cssHeight`) at the phone's width: its tappable places (page px) and folded
+    /// sections opened. → JSON [[x, y, w, h, kind]…], document coordinates in CSS px.
+    public static let pageBoxes = """
+    (() => { document.querySelectorAll('details:not([open])').forEach(d => d.open = true);
+      const out = [];
+      document.querySelectorAll('a[href], button, input, textarea, select, [role=button], [onclick], summary').forEach(e => {
+        const r = e.getBoundingClientRect(); if (r.width < 4 || r.height < 4) return;
+        const st = getComputedStyle(e); if (st.visibility == 'hidden' || st.display == 'none') return;
+        const t = e.tagName.toLowerCase(), ty = (e.type || '').toLowerCase();
+        const k = (t == 'textarea' || (t == 'input' && !['button','submit','checkbox','radio','image','reset','hidden'].includes(ty))) ? 1 : (t == 'a' ? 0 : 2);
+        out.push([r.left + scrollX, r.top + scrollY, r.width, r.height, k]); });
+      out.sort((a, b) => a[1] - b[1]);
+      return JSON.stringify(out.slice(0, 400)); })()
+    """
+
+    /// The page's height to lay it out at, CSS px: all of it up to `cap` (folded sections opened first).
+    public static let pageHeight = """
+    (() => { document.querySelectorAll('details:not([open])').forEach(d => d.open = true);
+      return Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0); })()
+    """
+
+    /// A tap at page px (x, y) on a page laid out `side` CSS px wide: scrolled to it, then clicked; 2 a text field
+    /// (focused), 1 clicked, 0 nothing there.
+    public static func tapScript(x: Int, y: Int, side: Double) -> String {
+        let k = side / 466
+        let px = Double(x) * k, py = Double(y) * k
+        return """
+        (() => { window.scrollTo(0, Math.max(0, \(py) - innerHeight / 2));
+          const e = document.elementFromPoint(\(px), \(py) - scrollY); if (!e) return 0;
+          const f = e.closest('input,textarea,[contenteditable="true"]');
+          if (f && !['button','submit','checkbox','radio','image','reset'].includes((f.type||'').toLowerCase())) { f.focus(); return 2; }
+          const v = e.closest('video') || (e.closest('div,figure') || document.body).querySelector('video');
+          if (v && v.paused && v.getBoundingClientRect().height > 20) { v.muted = false; v.play(); }
+          e.click(); return 1; })()
+        """
+    }
+
+    /// What tells whether a tap changed the page: its address, height and text length.
+    public static let pageState = "location.href + '|' + document.documentElement.scrollHeight + '|' + (document.body ? document.body.innerText.length : 0)"
+
+    /// Page view's tappable places on the page just sent, page px: `A n`, then `a x y w h kind` each
+    /// (i16s; kind 0 link, 1 text field, 2 button), 160 at most, 12 a message.
+    public static func boxes(_ b: [(x: Int, y: Int, w: Int, h: Int, kind: UInt8)]) -> [Data] {
+        let b = Array(b.prefix(160))
+        var out = [Data([UInt8(ascii: "A"), UInt8(b.count)])]
+        for start in stride(from: 0, to: b.count, by: 12) {
+            var m = Data([UInt8(ascii: "a"), UInt8(start)])
+            for r in b[start..<min(start + 12, b.count)] {
+                for v in [r.x, r.y, r.w, r.h] { m.le(Int16(clamping: v)) }
+                m.append(r.kind)
+            }
+            out.append(m)
+        }
+        return out
+    }
+
     public enum Ask: Equatable {
         case ready, go(String), recent(Int), link(Int), back, view(page: Bool), tap(x: Int, y: Int), scroll(Int),
              type(String), leave

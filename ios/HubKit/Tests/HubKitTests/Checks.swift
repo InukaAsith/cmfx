@@ -162,6 +162,7 @@ enum Checks {
             if BrowserProto.parse(Data([UInt8(ascii: "T"), 0x10, 0x01, 0x20, 0x00])) != .tap(x: 272, y: 32)
                 || BrowserProto.parse(Data([UInt8(ascii: "S"), 0x88, 0xFF])) != .scroll(-120)
                 || BrowserProto.url(for: "example.com").absoluteString != "https://example.com"
+                || BrowserProto.boxes([(x: 10, y: -2, w: 30, h: 20, kind: 1)]) != [Data([65, 1]), Data([97, 0, 10, 0, 254, 255, 30, 0, 20, 0, 1])]
                 || BrowserProto.url(for: "cmf watch").host != "www.google.com"
                 || BrowserProto.fallback(for: BrowserProto.url(for: "cmf watch"))?.absoluteString != "https://html.duckduckgo.com/html/?q=cmf%20watch"
                 || BrowserProto.results([["A", "https://a.test/", "about a"], ["A", "https://a.test/"], ["", "https://b.test/"]], query: "q").blocks.count != 2 {

@@ -88,6 +88,34 @@ extension Rle {
 }
 
 extension Rle {
+    /// A whole page for the watch to keep and scroll (cmf-watch-sdk browser long.rs): `J h:u16` (panel px), then bands
+    /// of `band` rows top down, each with its own 16 colours (`I` with its page place as y0 / `D`… / `E`), as many as
+    /// fit `cap` bytes on the watch, then `j`. → the messages and the height that went, panel px.
+    public static func longPicture(rgb: [UInt8], width: Int, height: Int, scale: UInt8 = 2, band: Int = 32,
+                                   cap: Int = 55 * 1024, colours: Int = 16) -> (messages: [Data], height: Int) {
+        var parts: [Data] = []
+        var used = 0, rows = 0
+        while rows < height, rows / band < 96 {
+            let r1 = min(rows + band, height)
+            let part = Array(rgb[(3 * width * rows)..<(3 * width * r1)])
+            let (palette, idx) = Quantize.refined(rgb: part, colours: colours)
+            let pal = (palette + Array(repeating: (0, 0, 0), count: max(0, 16 - palette.count))).prefix(16).map { rgb565($0.0, $0.1, $0.2) }
+            let t = tokens(idx, width: width, height: r1 - rows)
+            let hdr = header(width: width, height: r1 - rows, scale: scale, x0: 0, y0: Int16(clamping: rows * Int(scale)),
+                             palette: pal)
+            guard used + hdr.count + t.count <= cap else { break }
+            used += hdr.count + t.count
+            parts += messages(header: hdr, tokens: t)
+            rows = r1
+        }
+        let h = rows * Int(scale)
+        var j = Data([UInt8(ascii: "J")])
+        j.le(UInt16(clamping: h))
+        return ([j] + parts + [Data([UInt8(ascii: "j")])], h)
+    }
+}
+
+extension Rle {
     /// 256-colour runs: a byte < 255 is one pixel of that colour; 255, c, n is n (3…255) pixels of colour c; no run
     /// crosses a row (cmf-watch-sdk photos proto.rs, the sharp version).
     public static func tokens8(_ idx: [UInt8], width: Int, height: Int) -> Data {

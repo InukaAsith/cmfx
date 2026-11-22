@@ -75,12 +75,9 @@ import WebKit
             }
         case .tap(let x, let y):
             Task { await tap(x, y) }
-        case .scroll(let dy):
-            Task {
-                guard self.made else { return }
-                _ = await js("window.scrollBy(0, \(Double(dy) * Self.side / 466))")
-                await snapshot()
-            }
+        case .scroll:
+            // the watch scrolls page view itself (it has the whole page): an older watch app's ask
+            break
         case .type(let text):
             Task { await type(text) }
         case .leave:
@@ -174,9 +171,10 @@ import WebKit
         guard g == gen else { return }
         let script = """
         (() => { const out = [];
-          document.querySelectorAll('a h3').forEach(h => { const a = h.closest('a'); if (!a || !a.href) return;
-            let s = ''; const box = a.closest('div[data-hveid], div.g, div.MjjYud');
-            if (box) { const sn = box.querySelector('div[data-sncf], div.VwiC3b, div[style*="-webkit-line-clamp"]'); if (sn) s = sn.innerText; }
+          document.querySelectorAll('a h3, a [role=heading]').forEach(h => { const a = h.closest('a'); if (!a || !a.href) return;
+            let s = ''; const box = a.closest('div.MjjYud, div[data-hveid], div.g');
+            if (box) { const sn = box.querySelector('div[data-sncf], div.VwiC3b, div[style*="-webkit-line-clamp"]');
+              s = sn ? sn.innerText : box.innerText.replace(a.innerText, '').split('\\n').map(x => x.trim()).filter(x => x.length > 40).join(' ').slice(0, 300); }
             out.push([h.innerText, a.href, s]); });
           return JSON.stringify(out); })()
         """
@@ -296,22 +294,57 @@ import WebKit
         Task { @MainActor in self.loaded() }
     }
 
-    /// Page view's picture: the page as it is now, 8 bands of 16 colours; then, while a video plays, its frames.
+    /// Page view's picture: the whole page (as much as the watch keeps, Rle.longPicture), laid out tall once, its
+    /// folded sections opened, sent once; the watch scrolls it. Then, while a video plays, its frames.
     private func snapshot() async {
         picGen += 1
         let g = picGen
-        guard pageView, let img = await shot(width: Self.picture) else { return }
-        let side = Self.picture
-        let rgb = Self.rgb(img, side: side)
-        let msgs = await Task.detached(priority: .userInitiated) {
-            Rle.bandedPicture(rgb: rgb, width: side, height: side, scale: 2)
+        guard pageView, made else { return }
+        let full = Double(await js(BrowserProto.pageHeight) ?? "") ?? Double(Self.side)
+        let tall = min(max(full, Double(Self.side)), Double(Self.side) * 12)
+        web.frame = CGRect(x: 0, y: 0, width: Self.side, height: tall)
+        _ = await js("window.scrollTo(0, 0)")
+        try? await Task.sleep(for: .milliseconds(500))
+        let rows = (await js(BrowserProto.pageBoxes)).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [[Double]] } ?? []
+        let img = await shot(width: Self.picture)
+        web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
+        guard g == picGen, let img, let cg = img.cgImage else { return }
+        let w = Self.picture, h = max(1, Int(Double(w) * Double(cg.height) / Double(max(cg.width, 1))))
+        let rgb = Self.rgb(cg, width: w, height: h)
+        let (msgs, came) = await Task.detached(priority: .userInitiated) {
+            Rle.longPicture(rgb: rgb, width: w, height: h, scale: 2)
         }.value
         guard g == picGen else { return }
+        let k = 466 / Self.side
+        let boxes = rows.compactMap { r -> (x: Int, y: Int, w: Int, h: Int, kind: UInt8)? in
+            guard r.count == 5, Int(r[1] * k) < came else { return nil }
+            return (Int(r[0] * k), Int(r[1] * k), Int(r[2] * k), Int(r[3] * k), UInt8(r[4]))
+        }
         for m in msgs {
             guard g == picGen else { return }
             await send([m])
         }
+        await send(BrowserProto.boxes(boxes))
         if await playing() { await video(g) }
+    }
+
+    /// A tall picture as `width` × `height` RGB.
+    static func rgb(_ cg: CGImage, width: Int, height: Int) -> [UInt8] {
+        var px = [UInt8](repeating: 0, count: width * height * 4)
+        px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                                      bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return }
+            ctx.interpolationQuality = .medium
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        var out = [UInt8](repeating: 0, count: width * height * 3)
+        for i in 0..<(width * height) {
+            out[3 * i] = px[4 * i]
+            out[3 * i + 1] = px[4 * i + 1]
+            out[3 * i + 2] = px[4 * i + 2]
+        }
+        return out
     }
 
     private func shot(width: Int) async -> UIImage? {
@@ -367,27 +400,22 @@ import WebKit
         await snapshot()
     }
 
+    /// A tap at page px (the watch has the whole page): a field brings the keyboard; the page changed (a link, a
+    /// section opened, a video started): all of it again; else the watch takes the tap's outline off.
     private func tap(_ x: Int, _ y: Int) async {
         guard pageView, made else { return }
-        let k = Self.side / 466
-        let px = Double(x) * k, py = Double(y) * k
-        let script = """
-        (() => { const e = document.elementFromPoint(\(px), \(py)); if (!e) return 0;
-          const f = e.closest('input,textarea,[contenteditable="true"]');
-          if (f && !['button','submit','checkbox','radio','image','reset'].includes((f.type||'').toLowerCase())) { f.focus(); return 2; }
-          const o = { bubbles: true, cancelable: true, clientX: \(px), clientY: \(py), view: window };
-          e.dispatchEvent(new PointerEvent('pointerdown', o)); e.dispatchEvent(new MouseEvent('mousedown', o));
-          e.dispatchEvent(new PointerEvent('pointerup', o)); e.dispatchEvent(new MouseEvent('mouseup', o));
-          e.click(); return 1; })()
-        """
-        let r = await js(script)
+        let before = await js(BrowserProto.pageState)
+        let r = await js(BrowserProto.tapScript(x: x, y: y, side: Double(Self.side)))
         if r == "2" {
             await send([BrowserProto.field])
             return
         }
-        // a link may be loading: its picture once it has, else the page as the tap left it
-        try? await Task.sleep(for: .milliseconds(700))
+        try? await Task.sleep(for: .milliseconds(800))
         await waitLoad()
+        if await js(BrowserProto.pageState) == before, !(await playing()) {
+            await send([BrowserProto.unchanged])
+            return
+        }
         await snapshot()
     }
 
