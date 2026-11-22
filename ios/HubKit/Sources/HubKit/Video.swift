@@ -44,6 +44,9 @@ public final class VideoCoder {
         if grey > 1 {
             return greyFrame(rgb)
         }
+        if whole && colours >= 16 {
+            return runFrame(rgb)
+        }
         if whole || frames == 1 || frames % keyEvery == 0 {
             return put(rgb, x0: 0, y0: 0, x1: width, y1: height).0
         }
@@ -79,6 +82,39 @@ public final class VideoCoder {
             return msgs
         }
         return []
+    }
+
+    /// how near (three channels summed) a pixel may be to the run's colour and still extend it; follows `budget`
+    var tolerance = 40.0
+
+    /// A whole frame in 16 colours that costs about what a few colours cost: on the watch a colour is free, a
+    /// colour change along a row is a byte. So along each row the run's colour goes on while the next pixel is
+    /// near it (`tolerance`); real edges change colour, noise doesn't. The tolerance follows `budget`.
+    func runFrame(_ rgb: [UInt8]) -> [Data] {
+        let n = width * height
+        let (palette, near) = Quantize.refined(rgb: rgb, colours: 16, rounds: 2)
+        let pal = palette.isEmpty ? [(UInt8(0), UInt8(0), UInt8(0))] : palette
+        func dist(_ p: Int, _ c: (UInt8, UInt8, UInt8)) -> Int {
+            abs(Int(rgb[3 * p]) - Int(c.0)) + abs(Int(rgb[3 * p + 1]) - Int(c.1)) + abs(Int(rgb[3 * p + 2]) - Int(c.2))
+        }
+        var idx = near
+        let tol = Int(tolerance)
+        for y in 0..<height {
+            var cur = near[y * width]
+            for x in 0..<width {
+                let p = y * width + x
+                if dist(p, pal[Int(cur)]) <= tol { idx[p] = cur } else { cur = near[p]; idx[p] = cur }
+            }
+        }
+        let p565 = pal.prefix(16).map { Rle.rgb565($0.0, $0.1, $0.2) }
+        let (ox, oy) = origin
+        let hdr = Rle.header(width: width, height: height, scale: UInt8(scale), x0: Int16(ox), y0: Int16(oy), palette: p565)
+        let msgs = Rle.messages(header: hdr, tokens: Rle.tokens(idx, width: width, height: height))
+        // next frame's tolerance: wider over budget, narrower under it (most of 16 colours' look kept)
+        let bytes = msgs.reduce(0) { $0 + $1.count }
+        tolerance = min(200, max(12, tolerance * (bytes > budget ? 1.15 : 0.95)))
+        _ = n
+        return msgs
     }
 
     /// black and white: this many grey levels (fixed, so they don't flicker; 0: colour)
