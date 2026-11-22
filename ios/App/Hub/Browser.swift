@@ -15,6 +15,11 @@ import WebKit
     nonisolated static let app = "Browser"
     var status: String?
     private(set) var current: URL?
+    /// What the watch's page comes from, live (the Browser page shows it): the page view's address as it moves (taps,
+    /// redirects), loading it, sending it
+    private(set) var watching: URL?
+    private(set) var loading = false
+    private(set) var sending = false
     private var title = ""
     /// reader view's pages before this one (back)
     private var history: [URL] = []
@@ -118,6 +123,8 @@ import WebKit
     }
 
     private func send(_ msgs: [Data]) async {
+        sending = true
+        defer { sending = false }
         do { try await Hub.shared.send(Self.app, msgs) } catch { status = error.localizedDescription }
     }
 
@@ -320,14 +327,23 @@ import WebKit
     }
 
     nonisolated func webView(_ v: WKWebView, didStartProvisionalNavigation n: WKNavigation!) {
-        Task { @MainActor in self.committed = false }
+        Task { @MainActor in
+            self.committed = false
+            self.loading = true
+            self.watching = v.url ?? self.watching
+        }
     }
 
     nonisolated func webView(_ v: WKWebView, didCommit n: WKNavigation!) {
-        Task { @MainActor in self.committed = true }
+        Task { @MainActor in
+            self.committed = true
+            self.watching = v.url ?? self.watching
+        }
     }
 
     private func loaded() {
+        loading = false
+        watching = web.url ?? watching
         let w = loadWaiters
         loadWaiters = []
         for c in w { c.resume() }
@@ -542,6 +558,23 @@ struct BrowserPage: View {
     @State private var url: URL?
     var body: some View {
         PageScroll(title: "Browser") {
+            if let w = b.watching ?? b.current {
+                // what the watch is showing, as it changes; opened again here each time this page opens
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        if b.loading || b.sending { ProgressView().controlSize(.small) }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(b.loading ? "Loading on the watch" : b.sending ? "Sending to the watch" : "On the watch")
+                                .font(.headline)
+                            Text(w.absoluteString).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    LiveWebView(url: w)
+                        .frame(height: 420)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .glassCard()
+            }
             VStack(alignment: .leading, spacing: 12) {
                 CardHeader(symbol: "globe", color: .blue, title: "Sign in for the watch",
                            detail: "Open a site and sign in here: the watch's page view stays signed in.")
@@ -575,6 +608,31 @@ struct BrowserPage: View {
                 .glassCard()
             }
         }
+    }
+}
+
+/// The watch's page on the phone: loaded fresh when it appears, and again whenever the watch moves to another
+/// page (the same cookies: what the watch shows).
+private struct LiveWebView: UIViewRepresentable {
+    let url: URL
+    func makeUIView(context: Context) -> WKWebView {
+        let c = WKWebViewConfiguration()
+        c.websiteDataStore = .default()
+        c.allowsInlineMediaPlayback = true
+        let w = WKWebView(frame: .zero, configuration: c)
+        w.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+        context.coordinator.asked = url
+        return w
+    }
+
+    /// (the address asked for, not the view's own: a redirect here doesn't load it again)
+    final class Asked { var asked: URL? }
+    func makeCoordinator() -> Asked { Asked() }
+
+    func updateUIView(_ w: WKWebView, context: Context) {
+        guard context.coordinator.asked != url else { return }
+        context.coordinator.asked = url
+        w.load(URLRequest(url: url))
     }
 }
 
