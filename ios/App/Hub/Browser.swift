@@ -130,6 +130,10 @@ import WebKit
             await showPage()
             return
         }
+        if BrowserProto.isGoogleSearch(url) {
+            await google(url, g)
+            return
+        }
         await note("Loading \(url.host ?? "the page")\u{2026}")
         let bg = UIApplication.shared.beginBackgroundTask(withName: "browser")
         defer { UIApplication.shared.endBackgroundTask(bg) }
@@ -158,6 +162,36 @@ import WebKit
         if p.blocks.isEmpty { p.blocks = [.init(kind: Reader.para, link: nil, text: "No text here: try page view.")] }
         remember(title, final)
         await send(Reader.messages(p))
+    }
+
+    /// Google's results need its scripts: the search in the browser here, its results read out of the page;
+    /// nothing there (no answer, a check page): the same search on DuckDuckGo.
+    private func google(_ url: URL, _ g: Int) async {
+        await note("Searching Google\u{2026}")
+        host()
+        web.load(URLRequest(url: url))
+        await waitLoad()
+        guard g == gen else { return }
+        let script = """
+        (() => { const out = [];
+          document.querySelectorAll('a h3').forEach(h => { const a = h.closest('a'); if (!a || !a.href) return;
+            let s = ''; const box = a.closest('div[data-hveid], div.g, div.MjjYud');
+            if (box) { const sn = box.querySelector('div[data-sncf], div.VwiC3b, div[style*="-webkit-line-clamp"]'); if (sn) s = sn.innerText; }
+            out.push([h.innerText, a.href, s]); });
+          return JSON.stringify(out); })()
+        """
+        let rows = (await js(script)).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [[String]] } ?? []
+        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "q" }?.value ?? ""
+        let page = BrowserProto.results(rows, query: q)
+        guard g == gen else { return }
+        if page.blocks.isEmpty, let ddg = BrowserProto.fallback(for: url) {
+            current = ddg
+            await open(ddg, push: false)
+            return
+        }
+        links = page.links
+        title = page.title
+        await send(Reader.messages(page))
     }
 
     private func back() async {

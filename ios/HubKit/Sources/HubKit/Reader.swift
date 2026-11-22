@@ -37,10 +37,17 @@ public enum Reader {
         var blocks: [Block] = []
         var links: [URL] = []
         var text = ""
-        // the open link: its index (nil: not a link we keep), its text so far
-        var anchor: (idx: Int?, text: String)?
-        // this block's links: index and text
-        var inBlock: [(Int, String)] = []
+        // the open link: where it goes (nil: not a link we keep), its text so far
+        var anchor: (url: URL?, text: String)?
+        // this block's links: where and their text
+        var inBlock: [(URL, String)] = []
+        // a link's index on the page: given when its line is made (only the links shown count)
+        func index(_ u: URL) -> Int? {
+            if let k = links.firstIndex(of: u) { return k }
+            guard links.count < maxLinks else { return nil }
+            links.append(u)
+            return links.count - 1
+        }
         var skip: (name: String, depth: Int)?
         var heading = 0, items = 0
         var total = 0
@@ -54,8 +61,8 @@ public enum Reader {
             let kind = heading > 0 ? Reader.heading : items > 0 ? Reader.item : Reader.para
             let named = inBlock.filter { $0.1.count >= 2 }
             // a block that is one link (most of its text): the link alone
-            if named.count == 1, named[0].1.count * 5 >= t.count * 4 {
-                blocks.append(Block(kind: link, link: named[0].0, text: named[0].1))
+            if named.count == 1, named[0].1.count * 5 >= t.count * 4, let i = index(named[0].0) {
+                blocks.append(Block(kind: link, link: i, text: named[0].1))
                 total += named[0].1.utf8.count
                 return
             }
@@ -63,7 +70,10 @@ public enum Reader {
                 blocks.append(Block(kind: kind, link: nil, text: t))
                 total += t.utf8.count
             }
-            for (i, s) in named where blocks.count < maxBlocks && blocks.last?.link != i {
+            // a paragraph's own link or two under it (more: an article's every term linked, left as text)
+            guard named.count <= 2 else { return }
+            for (u, s) in named where blocks.count < maxBlocks {
+                guard let i = index(u), blocks.last?.link != i else { continue }
                 blocks.append(Block(kind: link, link: i, text: s))
                 total += s.utf8.count
             }
@@ -104,17 +114,10 @@ public enum Reader {
                 }
                 if tag.name == "a" {
                     if tag.closing {
-                        if let a = anchor, let idx = a.idx { inBlock.append((idx, collapse(a.text))) }
+                        if let a = anchor, let u = a.url { inBlock.append((u, collapse(a.text))) }
                         anchor = nil
                     } else {
-                        var idx: Int?
-                        if let h = tag.href, let u = target(h, base: base), links.count < maxLinks {
-                            if let k = links.firstIndex(of: u) { idx = k } else {
-                                links.append(u)
-                                idx = links.count - 1
-                            }
-                        }
-                        anchor = (idx, "")
+                        anchor = (tag.href.flatMap { target($0, base: base) }, "")
                     }
                 }
                 continue
@@ -132,7 +135,29 @@ public enum Reader {
             anchor?.text += s
         }
         flush()
-        return Page(title: collapse(title), blocks: blocks, links: links)
+        return Page(title: collapse(title), blocks: tidy(blocks), links: links)
+    }
+
+    /// The same link again right after (a search result's title, its address, its summary): an address-like
+    /// repeat goes, other text stays as plain text.
+    static func tidy(_ blocks: [Block]) -> [Block] {
+        var out: [Block] = []
+        var lastLink: Int?
+        for var b in blocks {
+            if b.kind == link, let l = b.link {
+                if l == lastLink {
+                    if !b.text.contains(" "), b.text.contains(".") { continue }
+                    b.kind = para
+                    b.link = nil
+                } else {
+                    lastLink = l
+                }
+            } else if b.kind != para {
+                lastLink = nil
+            }
+            out.append(b)
+        }
+        return out
     }
 
     /// A link's place: absolute http(s) (DuckDuckGo's result redirects to where they go); nil for the rest.
@@ -294,13 +319,40 @@ public enum BrowserProto {
         }
     }
 
-    /// Typed words: an address (has a dot and no spaces, or a scheme) or a search (DuckDuckGo's plain HTML page).
+    /// Typed words: an address (has a dot and no spaces, or a scheme) or a Google search.
     public static func url(for typed: String) -> URL {
         let t = typed.trimmingCharacters(in: .whitespaces)
         if t.lowercased().hasPrefix("http://") || t.lowercased().hasPrefix("https://"), let u = URL(string: t) { return u }
         if !t.contains(" "), t.contains("."), let u = URL(string: "https://" + t), u.host?.contains(".") == true { return u }
-        var c = URLComponents(string: "https://html.duckduckgo.com/html/")!
+        var c = URLComponents(string: "https://www.google.com/search")!
         c.queryItems = [.init(name: "q", value: t)]
         return c.url!
+    }
+
+    /// The same search on DuckDuckGo's plain page (no scripts needed): when Google gives nothing.
+    public static func fallback(for google: URL) -> URL? {
+        guard let q = URLComponents(url: google, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "q" })?.value
+        else { return nil }
+        var c = URLComponents(string: "https://html.duckduckgo.com/html/")!
+        c.queryItems = [.init(name: "q", value: q)]
+        return c.url
+    }
+
+    public static func isGoogleSearch(_ u: URL) -> Bool {
+        (u.host ?? "").contains("google.") && u.path == "/search"
+    }
+
+    /// Google's results (title, address, summary) as a reader page.
+    public static func results(_ rows: [[String]], query: String) -> Reader.Page {
+        var blocks: [Reader.Block] = []
+        var links: [URL] = []
+        for r in rows where r.count >= 2 {
+            guard let u = URL(string: r[1]), ["http", "https"].contains(u.scheme ?? ""), !links.contains(u),
+                  !r[0].trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+            links.append(u)
+            blocks.append(.init(kind: Reader.link, link: links.count - 1, text: Reader.collapse(r[0])))
+            if r.count >= 3, !r[2].isEmpty { blocks.append(.init(kind: Reader.para, link: nil, text: Reader.collapse(r[2]))) }
+        }
+        return Reader.Page(title: query + " - Google", blocks: blocks, links: links)
     }
 }

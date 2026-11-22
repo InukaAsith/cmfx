@@ -162,7 +162,9 @@ enum Checks {
             if BrowserProto.parse(Data([UInt8(ascii: "T"), 0x10, 0x01, 0x20, 0x00])) != .tap(x: 272, y: 32)
                 || BrowserProto.parse(Data([UInt8(ascii: "S"), 0x88, 0xFF])) != .scroll(-120)
                 || BrowserProto.url(for: "example.com").absoluteString != "https://example.com"
-                || BrowserProto.url(for: "cmf watch").host != "html.duckduckgo.com" {
+                || BrowserProto.url(for: "cmf watch").host != "www.google.com"
+                || BrowserProto.fallback(for: BrowserProto.url(for: "cmf watch"))?.absoluteString != "https://html.duckduckgo.com/html/?q=cmf%20watch"
+                || BrowserProto.results([["A", "https://a.test/", "about a"], ["A", "https://a.test/"], ["", "https://b.test/"]], query: "q").blocks.count != 2 {
                 bad.append("browser proto")
             }
             let pl = NavProto.places([(name: "Home", detail: "Colombo")], walking: true)
