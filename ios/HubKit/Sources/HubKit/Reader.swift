@@ -458,7 +458,8 @@ public enum BrowserProto {
         if t.lowercased().hasPrefix("http://") || t.lowercased().hasPrefix("https://"), let u = URL(string: t) { return u }
         if !t.contains(" "), t.contains("."), let u = URL(string: "https://" + t), u.host?.contains(".") == true { return u }
         var c = URLComponents(string: "https://www.google.com/search")!
-        c.queryItems = [.init(name: "q", value: t)]
+        // udm=14: Google's plain web results (no AI overview, no widgets): about twice as fast, half the bytes
+        c.queryItems = [.init(name: "q", value: t), .init(name: "udm", value: "14")]
         return c.url!
     }
 

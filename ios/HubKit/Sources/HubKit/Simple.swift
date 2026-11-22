@@ -33,6 +33,45 @@ public enum Simple {
         return c.url!
     }
 
+    /// Instagram's tabs: name, address (Messages: the inbox as a page, drawn).
+    public static let tabs: [(String, String)] = [("Home", "https://www.instagram.com/"), ("Search", "https://www.instagram.com/explore/"),
+                                                 ("Reels", "https://www.instagram.com/reels/"), ("Messages", "https://www.instagram.com/direct/inbox/")]
+
+    /// Instagram's home: its feed (a post a row, as the app), not a grid.
+    public static func isFeed(_ u: URL) -> Bool {
+        (u.host ?? "").hasSuffix("instagram.com") && (u.path.isEmpty || u.path == "/")
+    }
+
+    /// The tab a page is under (nil: none).
+    public static func tab(for u: URL) -> Int? {
+        let p = u.path.lowercased()
+        if isFeed(u) { return 0 }
+        if p.hasPrefix("/explore") { return 1 }
+        if p.hasPrefix("/reel") { return 2 }
+        if p.hasPrefix("/direct") { return 3 }
+        return nil
+    }
+
+    /// Instagram's feed: JSON [[caption, post, author, "Video" or likes, picture]…] (ads left out).
+    public static let feedScript = """
+    (() => { const out = [];
+      for (const a of document.querySelectorAll('article')) {
+        const lines = a.innerText.split('\\n').map(t => t.trim()).filter(Boolean);
+        if (lines.slice(0, 4).includes('Ad') || lines.slice(0, 4).includes('Sponsored')) continue;
+        const img = [...a.querySelectorAll('img')].find(i => i.width >= 150);
+        const link = a.querySelector('a[href*="/p/"], a[href*="/reel/"]');
+        if (!link || (!img && !a.querySelector('video'))) continue;
+        const m = /\\/(p|reel)\\/([\\w-]+)/.exec(link.getAttribute('href')); if (!m) continue;
+        const likes = lines.find(t => /^Liked by|likes?$/.test(t)) || '';
+        const author = lines[0] || '';
+        const cap = lines.slice(lines.indexOf(likes) + 1).find(t => t !== author && t.length > 2) || '';
+        const poster = img ? (img.currentSrc || img.src) : (a.querySelector('video').poster || '');
+        out.push([cap.slice(0, 160), 'https://www.instagram.com/' + m[1] + '/' + m[2] + '/', author,
+                  a.querySelector('video') ? 'Video' : likes.slice(0, 40), poster]);
+        if (out.length >= 8) break; }
+      return JSON.stringify(out); })()
+    """
+
     /// What the page lists: JSON [[title, link, byline, length, thumbnail]…].
     public static func script(_ site: Site) -> String {
         switch site {
@@ -123,7 +162,8 @@ public enum Simple {
 
     /// The screen: its title, the search bar (`query` in it, or the site's placeholder), then a row per item (its
     /// thumbnail from `thumbs`, the same order, nil: a grey box).
-    public static func screen(_ site: Site, query: String, items: [Item], thumbs: [[UInt8]?]) -> Screen {
+    public static func screen(_ site: Site, query: String, items: [Item], thumbs: [[UInt8]?], feed: Bool = false,
+                              tab: Int? = nil) -> Screen {
         let (name, accent): (String, (UInt8, UInt8, UInt8)) = site == .youtube ? ("YouTube", (0xFF, 0x00, 0x33)) : ("Instagram", (0xE1, 0x30, 0x6C))
         let bg = Rle.rgb565(0x0F, 0x0F, 0x0F), card = Rle.rgb565(0x27, 0x27, 0x27)
         let white = Rle.rgb565(0xF1, 0xF1, 0xF1), grey = Rle.rgb565(0xAA, 0xAA, 0xAA)
@@ -142,9 +182,10 @@ public enum Simple {
             d.append(bold ? 1 : 0); d.append(UInt8(b.count)); d.append(b)
             ops.append((y, y + 24, d, true))
         }
-        let rowH = site == .youtube ? 132 : 150
-        let top = 132
-        let height = top + max(1, site == .youtube ? items.count : (items.count + 2) / 3) * rowH + 140
+        let rowH = site == .youtube ? 132 : (feed ? 400 : 150)
+        let top = site == .youtube ? 132 : 180
+        let count = site == .youtube || feed ? items.count : (items.count + 2) / 3
+        let height = top + max(1, count) * rowH + 140
         rect(0, 0, 466, height, bg)
         // the name, the search bar
         text(C - name.count * 6, 22, 200, name, Rle.rgb565(accent.0, accent.1, accent.2), bold: true)
@@ -152,6 +193,19 @@ public enum Simple {
         rect(field.x, field.y, field.w, field.h, card, r: 24, under: bg)
         text(field.x + 24, field.y + 13, field.w - 40, query.isEmpty ? "Search \(name)" : query, query.isEmpty ? grey : white)
         var rows: [(x: Int, y: Int, w: Int, h: Int, link: URL)] = []
+        if site == .instagram {
+            // the tabs (as the app's): the one shown white
+            // each as wide as its name
+            let widths = tabs.map { $0.0.count * 11 + 22 }, gap = 4
+            var x = C - (widths.reduce(0, +) + gap * (tabs.count - 1)) / 2
+            for (k, t) in tabs.enumerated() {
+                let w = widths[k], on = k == tab
+                defer { x += w + gap }
+                rect(x, 122, w, 42, on ? white : card, r: 21, under: bg)
+                text(x + (w - t.0.count * 10) / 2, 131, w - 8, t.0, on ? Rle.rgb565(0, 0, 0) : white, bold: on)
+                rows.append((x, 122, w, 42, URL(string: t.1)!))
+            }
+        }
         if items.isEmpty {
             text(C - 80, top + 30, 300, "Nothing here yet", grey)
         }
@@ -175,6 +229,24 @@ public enum Simple {
                 for (k, l) in lines.enumerated() { text(tx + tw + 14, y + 2 + k * 26, 230, l, white, bold: true) }
                 text(tx + tw + 14, y + 6 + lines.count * 26, 230, it.byline, grey)
                 rows.append((tx, y, 400, th, it.link))
+            } else if feed {
+                // a post: who, its picture (4:5, 3 px a pixel), what it says, its likes
+                let y = top + i * rowH
+                let (px0, pw, ph) = (122, 222, 279)
+                text(px0, y, 222, it.byline, white, bold: true)
+                if let px = thumb {
+                    pics.append((y + 30, picture(px, w: pw / 3, h: ph / 3, x: px0, y: y + 30, scale: 3)))
+                } else {
+                    rect(px0, y + 30, pw, ph, card, under: bg)
+                }
+                if it.length == "Video" {
+                    rect(px0 + pw - 70, y + 38, 62, 26, Rle.rgb565(0, 0, 0), r: 8, under: bg)
+                    text(px0 + pw - 64, y + 39, 60, "Video", white)
+                }
+                var ty = y + 30 + ph + 8
+                if !it.length.isEmpty && it.length != "Video" { text(px0 - 20, ty, 262, it.length, grey); ty += 26 }
+                for l in wrap(it.title, px: 250, lines: 2) { text(px0 - 20, ty, 262, l, white); ty += 26 }
+                rows.append((px0, y, pw, ph + 30, it.link))
             } else {
                 // a grid of three
                 let (col, row) = (i % 3, i / 3)
@@ -222,16 +294,16 @@ public enum Simple {
     static let C = 233
 
     /// A `w` × `h` RGB picture at panel (x, y), 2 px a pixel, its own 16 colours.
-    static func picture(_ rgb: [UInt8], w: Int, h: Int, x: Int, y: Int) -> [Data] {
+    static func picture(_ rgb: [UInt8], w: Int, h: Int, x: Int, y: Int, scale: UInt8 = 2) -> [Data] {
         let (palette, idx) = Quantize.refined(rgb: rgb, colours: 16)
         let pal = (palette + Array(repeating: (0, 0, 0), count: max(0, 16 - palette.count))).prefix(16).map { Rle.rgb565($0.0, $0.1, $0.2) }
-        return Rle.messages(header: Rle.header(width: w, height: h, scale: 2, x0: Int16(x), y0: Int16(clamping: y), palette: pal),
+        return Rle.messages(header: Rle.header(width: w, height: h, scale: scale, x0: Int16(x), y0: Int16(clamping: y), palette: pal),
                             tokens: Rle.tokens(idx, width: w, height: h))
     }
 
     /// Thumbnails fetched together (a few at once), each `w` × `h` RGB; nil where one didn't come.
-    public static func thumbs(_ items: [Item], site: Site) async -> [[UInt8]?] {
-        let (w, h) = site == .youtube ? (88, 50) : (64, 64)
+    public static func thumbs(_ items: [Item], site: Site, feed: Bool = false) async -> [[UInt8]?] {
+        let (w, h) = site == .youtube ? (88, 50) : (feed ? (74, 93) : (64, 64))
         return await withTaskGroup(of: (Int, [UInt8]?).self) { g in
             for (i, it) in items.enumerated() {
                 g.addTask {
