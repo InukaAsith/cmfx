@@ -17,11 +17,27 @@ public enum Layout {
             return [255, 255, 255, 1]; };
           const box = r => [r.left, r.top + scrollY, r.width, r.height];
           const out = { bg: under(document.body), boxes: [], frames: [], texts: [], imgs: [], canvas: 0, img: 0, video: 0, chars: 0 };
+          // what a box's overflow cuts off (a collapsed "more" block, a carousel's hidden cards) is not on the page:
+          // the window each element is seen through, from its clipping ancestors
+          const clips = new Map();
+          const clipOf = e => { if (!e || e == document.body || e == document.documentElement) return null;
+            if (clips.has(e)) return clips.get(e);
+            let c = clipOf(e.parentElement);
+            const st = getComputedStyle(e);
+            // (overflow doesn't apply to inline boxes: a bold word, a link)
+            if ((st.overflowX != 'visible' || st.overflowY != 'visible') && st.display != 'inline' && st.display != 'contents') { const b = e.getBoundingClientRect();
+              c = c ? { l: Math.max(c.l, b.left), t: Math.max(c.t, b.top), r: Math.min(c.r, b.right), b: Math.min(c.b, b.bottom) }
+                    : { l: b.left, t: b.top, r: b.right, b: b.bottom }; }
+            clips.set(e, c); return c; };
+          const outside = (c, r) => !!c && (r.bottom <= c.t + 1 || r.top >= c.b - 1 || r.right <= c.l + 1 || r.left >= c.r - 1);
+          const cut = (e, r) => outside(clipOf(e.parentElement), r);
           const seen = (r) => r.width >= 2 && r.height >= 2 && r.bottom > 0 && r.top + scrollY < H && r.right > 0 && r.left < W;
           for (const e of document.body.querySelectorAll('*')) {
             const tag = e.tagName.toLowerCase();
             if (['script', 'style', 'noscript', 'template', 'head'].includes(tag) || e.closest('svg') && tag != 'svg') continue;
-            const r = e.getBoundingClientRect(); if (!seen(r)) continue;
+            const r = e.getBoundingClientRect(); if (!seen(r) || cut(e, r)) continue;
+            // laid out but not painted (a collapsed section: hidden="until-found", content-visibility)
+            if (e.checkVisibility && !e.checkVisibility({ contentVisibilityAuto: false, visibilityProperty: true })) continue;
             const st = getComputedStyle(e);
             if (st.visibility == 'hidden' || st.display == 'none' || +st.opacity < 0.1) continue;
             const area = Math.min(r.width, W) * Math.min(r.height, H);
@@ -33,8 +49,13 @@ public enum Layout {
                 out.texts.push([r.left + pl, r.top + scrollY, Math.max(10, r.width - pl), r.height, c[0], c[1], c[2], 0, v.slice(0, 80)]); out.chars += v.length; }
             }
             if (tag == 'img' || tag == 'svg' || tag == 'picture') { if (tag != 'picture') { out.img += area; out.imgs.push(box(r)); } continue; }
+            // an icon drawn by a mask (its colour in a shape): a picture, never a solid box
+            const mask = st.webkitMaskImage || st.maskImage || 'none';
+            if (mask != 'none') { if (r.width <= 64 && r.height <= 64) { out.img += area; out.imgs.push(box(r)); } continue; }
+            // a background picture: only where no text is on it (a heading's arrow, a button's icon would bring a
+            // picture of the page's own text under the watch's)
             const bi = st.backgroundImage;
-            if (bi && bi.includes('url(') && r.width * r.height > 64) { out.img += area; out.imgs.push(box(r)); }
+            if (bi && bi.includes('url(') && r.width * r.height > 64 && !(e.innerText || '').trim()) { out.img += area; out.imgs.push(box(r)); }
             const c = col(st.backgroundColor);
             if (c && c[3] > 0.5) { const p = under(e.parentElement);
               if (Math.abs(c[0] - p[0]) + Math.abs(c[1] - p[1]) + Math.abs(c[2] - p[2]) > 6)
@@ -50,6 +71,7 @@ public enum Layout {
           while ((n = tw.nextNode()) && words < 6000) {
             const t = n.data; if (!t.trim()) continue;
             const el = n.parentElement; if (!el || el.closest('script,style,noscript,svg,template')) continue;
+            if (el.checkVisibility && !el.checkVisibility({ visibilityProperty: true })) continue;
             let s = styles.get(el);
             if (!s) { const st = getComputedStyle(el), er = el.getBoundingClientRect();
               // screen-reader-only text (a pixel big, clipped to nothing) is not on the page
@@ -69,7 +91,7 @@ public enum Layout {
             while ((m = re.exec(t)) && words < 6000) {
               words++;
               rg.setStart(n, m.index); rg.setEnd(n, m.index + m[0].length);
-              const r = rg.getBoundingClientRect(); if (r.width == 0 || r.height == 0) continue;
+              const r = rg.getBoundingClientRect(); if (r.width == 0 || r.height == 0 || outside(clipOf(el), r)) continue;
               if (line && Math.abs(r.top - line.top) < 3 && r.left >= line.right - 2) { line.text += ' ' + m[0]; line.right = r.right; line.bottom = Math.max(line.bottom, r.bottom); }
               else { flush(); line = { left: r.left, top: r.top, right: r.right, bottom: r.bottom, text: m[0] }; }
             }
