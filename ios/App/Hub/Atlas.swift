@@ -645,6 +645,25 @@ import WireKit
         return msgs
     }
 
+    /// The Navigation app's map view: Maps' streets round `centre` (metres east and north of `origin`, the route's
+    /// frame), as bytes and the half side they cover; nil when the tiles can't be had. Built ones come from memory.
+    func navScene(origin: CLLocationCoordinate2D, centre: (Double, Double)) async -> (data: Data, r: Double)? {
+        let o = (lat: origin.latitude, lon: origin.longitude)
+        let key = builtKey(o, centre)
+        if let b = built[key] { return (b.data, b.r) }
+        let need = AtlasScene.tiles(round: centre, r: AtlasScene.radii[0], origin: o)
+        guard let got = try? await tiles.features(need) else { return nil }
+        let (data, r) = await Task.detached(priority: .userInitiated) {
+            AtlasScene.scene(tiles: got, origin: o, centre: centre)
+        }.value
+        built[key] = (data, r)
+        builtOrder.append(key)
+        while builtOrder.count > 24 { built[builtOrder.removeFirst()] = nil }
+        let ring = AtlasScene.tiles(round: centre, r: AtlasScene.radii[0] * 2.2, origin: o)
+        Task.detached(priority: .utility) { [tiles] in _ = try? await tiles.features(ring) }
+        return (data, r)
+    }
+
     /// Wikipedia's summary of a place: an article within 1.5 km of it whose title is its name (or holds it). Only
     /// the place's position and name go to Wikipedia; nil when there is none.
     static func about(_ name: String, at c: CLLocationCoordinate2D) async -> String? {

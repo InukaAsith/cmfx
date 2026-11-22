@@ -359,54 +359,247 @@ struct NavPage: View {
     @State private var query = ""
     @State private var results: [Place] = []
     @State private var searching = false
+    /// the next place searched for or pinned goes in as a stop
+    @State private var addingStop = false
+    @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
+    /// a place tapped on the map
+    @State private var pin: CLLocationCoordinate2D?
+
+    private var planned: Bool { !n.active && n.destination != nil && !n.coords.isEmpty }
+
     var body: some View {
         PageScroll(title: "Navigation") {
-            if n.active {
-                VStack(alignment: .leading, spacing: 12) {
-                    CardHeader(symbol: "location.north.line.fill", color: TDColor.accent, title: n.destination?.name ?? "Navigating",
-                               detail: "Turns go to the watch. Location stops when you arrive.")
-                    Button("Stop", role: .destructive) { n.end() }.primaryButton()
-                }
-                .glassCard()
-            }
+            if n.active { navigating }
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Mode", selection: $n.walking) {
-                    Text("Walk").tag(true)
-                    Text("Drive").tag(false)
+                if !n.active {
+                    Picker("Mode", selection: Binding(get: { n.walking }, set: { w in
+                        n.walking = w
+                        replan()
+                    })) {
+                        Text("Walk").tag(true)
+                        Text("Drive").tag(false)
+                    }
+                    .pickerStyle(.segmented)
                 }
-                .pickerStyle(.segmented)
-                TextField("Where to? (or a Google Maps link)", text: $query).onSubmit(search)
-                PasteButton(payloadType: String.self) { texts in
-                    guard let t = texts.first else { return }
-                    Task { @MainActor in
-                        query = t
-                        await go(link: t)
+                HStack {
+                    TextField(addingStop ? "Add a stop…" : "Where to? (or a Google Maps link)", text: $query)
+                        .onSubmit(search)
+                    if addingStop {
+                        Button("Cancel") { addingStop = false; results = [] }.font(.footnote)
                     }
                 }
-                .buttonBorderShape(.capsule)
-                Text("From Google Maps: drop a pin (or open a place) › Share › Copy, then Paste here.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if !addingStop && !planned {
+                    PasteButton(payloadType: String.self) { texts in
+                        guard let t = texts.first else { return }
+                        Task { @MainActor in
+                            query = t
+                            await go(link: t)
+                        }
+                    }
+                    .buttonBorderShape(.capsule)
+                }
                 if searching { Working(text: "Searching…") }
                 if let w = n.working { Working(text: w) }
                 ForEach(results) { p in
-                    Button { Task { await n.start(to: p.item) } } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(p.name).foregroundStyle(TDColor.text)
-                            Text(p.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    HStack {
+                        // the row: the ways there to look at (or the stop added); ▶: off at once
+                        Button { Task { await pick(p.item) } } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(p.name).foregroundStyle(TDColor.text)
+                                Text(p.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        if !addingStop && !n.active {
+                            Button {
+                                results = []
+                                Task { await n.start(to: p.item) }
+                            } label: {
+                                Image(systemName: "play.circle.fill").font(.title2).foregroundStyle(TDColor.accent)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Start now")
+                        }
                     }
-                    .buttonStyle(.plain)
                     .disabled(n.working != nil)
                 }
                 Status(text: n.status)
             }
             .glassCard()
+            map
+            if planned { plan }
         }
     }
 
-    /// A Google Maps link or "lat, lng": straight to it.
+    // --- the map: the ways there, the stops, a pin where it is tapped
+
+    private var map: some View {
+        VStack(spacing: 8) {
+            MapReader { proxy in
+                Map(position: $camera) {
+                    UserAnnotation()
+                    if !n.active {
+                        ForEach(Array(n.alternativeLines.enumerated()), id: \.offset) { k, line in
+                            if k != n.chosen { MapPolyline(coordinates: line).stroke(.gray.opacity(0.7), lineWidth: 5) }
+                        }
+                    }
+                    if !n.coords.isEmpty { MapPolyline(coordinates: n.coords).stroke(TDColor.accent, lineWidth: 6) }
+                    ForEach(Array(n.stops.enumerated()), id: \.offset) { k, s in
+                        Marker(s.name ?? "Stop \(k + 1)", systemImage: "\(k + 1).circle", coordinate: s.placemark.coordinate)
+                            .tint(.orange)
+                    }
+                    if let d = n.destination { Marker(d.name ?? "There", coordinate: d.placemark.coordinate).tint(.red) }
+                    if let pin { Marker("Pin", systemImage: "mappin", coordinate: pin).tint(.purple) }
+                }
+                .onTapGesture { p in
+                    guard !n.active, let c = proxy.convert(p, from: .local) else { return }
+                    pin = c
+                }
+            }
+            .frame(height: 300)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            if let pin, !n.active {
+                HStack {
+                    Button("Route here") {
+                        self.pin = nil
+                        Task { await pick(pinned(pin), asStop: false) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    if n.destination != nil {
+                        Button("Add stop here") {
+                            self.pin = nil
+                            Task { await pick(pinned(pin), asStop: true) }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(n.stops.count >= 3)
+                    }
+                    Spacer()
+                    Button { self.pin = nil } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+            } else if !n.active && !planned {
+                Text("Tap the map to drop a pin.").font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    // --- the plan: the ways (pick one), the stops, Start
+
+    private var plan: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(n.destination?.name ?? "There").font(.headline)
+                Spacer()
+                Button { n.clearPlan(); camera = .userLocation(fallback: .automatic) } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
+            }
+            let rows = n.alternativeRows
+            if rows.count >= 2 {
+                ForEach(Array(rows.enumerated()), id: \.offset) { k, r in
+                    Button { n.choose(k) } label: {
+                        way(secs: r.secs, metres: r.metres, via: r.via, on: k == n.chosen)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                way(secs: n.expected, metres: n.length, via: nil, on: true)
+            }
+            ForEach(Array(n.stops.enumerated()), id: \.offset) { k, s in
+                HStack {
+                    Image(systemName: "\(k + 1).circle.fill").foregroundStyle(.orange)
+                    Text(s.name ?? "Stop").lineLimit(1)
+                    Spacer()
+                    Button { removeStop(k) } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.plain).foregroundStyle(.red)
+                }
+            }
+            HStack {
+                Button { addingStop = true; results = []; query = "" } label: { Label("Add stop", systemImage: "plus") }
+                    .buttonStyle(.bordered)
+                    .disabled(n.stops.count >= 3 || n.working != nil)
+                Button { Task { await n.startPlanned() } } label: {
+                    Label("Start", systemImage: "location.north.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(n.working != nil)
+            }
+        }
+        .glassCard()
+    }
+
+    private func way(secs: Double, metres: Double, via: String?, on: Bool) -> some View {
+        HStack {
+            Image(systemName: on ? "largecircle.fill.circle" : "circle").foregroundStyle(on ? TDColor.accent : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(Self.time(secs)) · \(Self.km(metres))").foregroundStyle(TDColor.text)
+                Text("Arrive \(Date.now.addingTimeInterval(secs).formatted(date: .omitted, time: .shortened))"
+                     + (via.map { " · via \($0)" } ?? ""))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+        }
+        .contentShape(Rectangle())
+    }
+
+    static func time(_ s: Double) -> String {
+        let m = Int((s / 60).rounded())
+        return m < 60 ? "\(max(m, 1)) min" : "\(m / 60) hr \(m % 60) min"
+    }
+
+    static func km(_ m: Double) -> String {
+        m < 1000 ? "\(Int(m / 10) * 10) m" : String(format: "%.1f km", m / 1000)
+    }
+
+    private var navigating: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CardHeader(symbol: "location.north.line.fill", color: TDColor.accent, title: n.destination?.name ?? "Navigating",
+                       detail: "Turns go to the watch. Location stops when you arrive.")
+            Button("Stop", role: .destructive) { n.end() }.primaryButton()
+        }
+        .glassCard()
+    }
+
+    // --- picking
+
+    private func pinned(_ c: CLLocationCoordinate2D) -> MKMapItem {
+        let i = MKMapItem(placemark: MKPlacemark(coordinate: c))
+        i.name = "Dropped pin"
+        return i
+    }
+
+    /// A place: a stop on the plan (adding one), else the ways there to look at (a new plan, no stops).
+    private func pick(_ item: MKMapItem, asStop: Bool? = nil) async {
+        results = []
+        query = ""
+        if asStop ?? addingStop, let d = n.destination {
+            addingStop = false
+            n.stops.append(item)
+            if await n.plan(to: d) { camera = .automatic }
+            return
+        }
+        addingStop = false
+        n.stops = []
+        if await n.plan(to: item) { camera = .automatic }
+    }
+
+    private func removeStop(_ k: Int) {
+        guard n.stops.indices.contains(k) else { return }
+        n.stops.remove(at: k)
+        replan()
+    }
+
+    /// The plan again (a stop gone, walk or drive changed).
+    private func replan() {
+        guard planned, let d = n.destination else { return }
+        Task { _ = await n.plan(to: d) }
+    }
+
+    /// A Google Maps link or "lat, lng": the ways there.
     private func go(link: String) async {
         n.status = "Reading the link…"
         guard let p = await MapsLink.place(in: link) else {
@@ -415,12 +608,12 @@ struct NavPage: View {
         }
         let item = MKMapItem(placemark: MKPlacemark(coordinate: p.coordinate))
         item.name = p.name
-        results = []
-        await n.start(to: item)
+        n.status = nil
+        await pick(item)
     }
 
     private func search() {
-        if MapsLink.parse(query) != nil || MapsLink.firstURL(query) != nil {
+        if !addingStop, MapsLink.parse(query) != nil || MapsLink.firstURL(query) != nil {
             Task { await go(link: query) }
             return
         }

@@ -179,8 +179,9 @@ public enum NavProto {
     public static func note(_ t: String) -> Data { Data("E".utf8) + utf8(t, 60) }
 
     /// What the watch asked for: its state again (`R`), places for words (`Q text`), a route to one of the places
-    /// last sent (`S idx walking`), the route stopped (`C`, the watch's ✕).
-    public enum Ask: Equatable { case ready, search(String), start(idx: Int, walking: Bool), cancel }
+    /// last sent (`S idx walking`), the route stopped (`C`, the watch's ✕), the streets round a route frame point
+    /// for its map view (`M id x:i16 y:i16`; they come as Maps' scene `id`: AtlasProto.scene).
+    public enum Ask: Equatable { case ready, search(String), start(idx: Int, walking: Bool), cancel, map(id: UInt8, x: Int, y: Int) }
 
     public static func parse(_ m: Data) -> Ask? {
         let b = [UInt8](m)
@@ -189,6 +190,9 @@ public enum NavProto {
         case (UInt8(ascii: "Q"), 2...): return .search(String(decoding: b.dropFirst(), as: UTF8.self))
         case (UInt8(ascii: "S"), 3): return .start(idx: Int(b[1]), walking: b[2] == 1)
         case (UInt8(ascii: "C"), 1): return .cancel
+        case (UInt8(ascii: "M"), 6):
+            return .map(id: b[1], x: Int(Int16(bitPattern: UInt16(b[2]) | UInt16(b[3]) << 8)),
+                        y: Int(Int16(bitPattern: UInt16(b[4]) | UInt16(b[5]) << 8)))
         default: return nil
         }
     }

@@ -78,6 +78,19 @@ import UIKit
         case .cancel:
             end()
             Task { await offer(recent) }
+        case .map(let id, let x, let y):
+            // the streets round where the watch's map view is, as Maps draws them (only one at a time: a newer ask
+            // drops the older)
+            guard active, target == Self.app else { return }
+            mapGen += 1
+            let g = mapGen
+            let o = origin
+            Task {
+                let centre = (Double(x), Double(y))
+                guard let b = await Hub.shared.atlas.navScene(origin: o, centre: centre), g == mapGen, active else { return }
+                let me = manager.location.map { local($0.coordinate) } ?? centre
+                await stream(AtlasProto.scene(id: id, data: b.data, me: me, centre: centre, r: b.r), gen: g)
+            }
         case .search(let q):
             Task {
                 try? await Hub.shared.send(target, NavProto.note("Searching\u{2026}"))
@@ -134,6 +147,23 @@ import UIKit
         UserDefaults.standard.set(Array(([me] + rest).prefix(3)), forKey: Self.recentKey)
     }
 
+    /// The page's Start: the route planned (and picked) on its way to the watch.
+    func startPlanned() async {
+        guard let d = destination, !coords.isEmpty else { return }
+        if target == Self.app { remember(d) }
+        await begin()
+    }
+
+    /// The page's plan dropped (not while navigating).
+    func clearPlan() {
+        guard !active else { return }
+        destination = nil
+        stops = []
+        alternatives = []
+        coords = []
+        status = nil
+    }
+
     func start(to item: MKMapItem) async {
         guard await plan(to: item) else { return }
         if target == Self.app { remember(item) }
@@ -143,6 +173,7 @@ import UIKit
     /// The route to `item` from here, not started (Maps shows it first). false: we don't know where we are.
     func plan(to item: MKMapItem) async -> Bool {
         destination = item
+        chosen = 0
         keepOrigin = active && !coords.isEmpty
         defer { keepOrigin = false }
         status = nil
@@ -261,9 +292,13 @@ import UIKit
         }
     }
 
+    /// The way of `alternatives` loaded now.
+    private(set) var chosen = 0
+
     /// Way `k` of the last plan's, loaded as the route.
     func choose(_ k: Int) {
         guard alternatives.indices.contains(k) else { return }
+        chosen = k
         switch alternatives[k] {
         case .osrm(let r): loadOSRM(r)
         case .apple(let r): load([r])
@@ -481,6 +516,36 @@ import UIKit
             let w = self.authWaiters
             self.authWaiters = []
             for c in w { c.resume() }
+        }
+    }
+
+    /// The watch's last map ask: an older one's chunks stop going.
+    private var mapGen = 0
+
+    /// A map's chunks over the sliding window (as Maps sends them): refused ones go again, in any order.
+    private var mapQueue: [Data] = []
+
+    private func stream(_ msgs: [Data], gen g: Int) async {
+        mapQueue = msgs
+        var delay = 25
+        let start = ContinuousClock.now
+        while g == mapGen, !mapQueue.isEmpty, ContinuousClock.now - start < .seconds(30) {
+            do {
+                let again = try await Hub.shared.stream(target) { @MainActor [weak self] in
+                    guard let self, self.mapGen == g, !self.mapQueue.isEmpty else { return nil }
+                    return self.mapQueue.removeFirst()
+                }
+                guard g == mapGen else { return }
+                mapQueue.insert(contentsOf: again, at: 0)
+                if !again.isEmpty {
+                    try? await Task.sleep(for: .milliseconds(delay))
+                    delay = min(delay * 2, 250)
+                } else {
+                    delay = 25
+                }
+            } catch {
+                return
+            }
         }
     }
 
