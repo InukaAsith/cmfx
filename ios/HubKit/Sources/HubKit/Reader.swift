@@ -296,6 +296,52 @@ public enum BrowserProto {
     public static let field = Data("K".utf8)
     public static func video(_ on: Bool) -> Data { Data([UInt8(ascii: "M"), on ? 1 : 0]) }
 
+    /// Images still to come on a page laid out tall (`h` CSS px): lazy ones told to load now. The page's picture
+    /// waits till this is 0 (a short while at most).
+    public static func imagesPending(_ h: Double) -> String {
+        """
+        (() => { let n = 0; for (const i of document.images) {
+            if (i.loading == 'lazy') i.loading = 'eager';
+            const ds = i.dataset && (i.dataset.src || i.dataset.lazySrc); if (ds && !i.src) i.src = ds;
+            const r = i.getBoundingClientRect();
+            if (r.width > 1 && r.top < \(h) && !(i.complete && i.naturalWidth > 0)) n++; }
+          return n; })()
+        """
+    }
+
+    /// The video player (page view while a video plays): its title, `U title`.
+    public static func videoTitle(_ t: String) -> Data { Data([UInt8(ascii: "U")]) + utf8(t, 80) }
+
+    /// Where it is: `u cur:u16 dur:u16 paused` (seconds).
+    public static func progress(cur: Double, dur: Double, paused: Bool) -> Data {
+        var d = Data([UInt8(ascii: "u")])
+        d.le(UInt16(clamping: Int(cur.isFinite ? cur : 0)))
+        d.le(UInt16(clamping: Int(dur.isFinite ? dur : 0)))
+        d.append(paused ? 1 : 0)
+        return d
+    }
+
+    /// The player's video: `[exists, paused, ended, cur, dur, title]` as JSON.
+    public static let videoState = """
+    (() => { const v = [...document.querySelectorAll('video')].find(v => v.readyState > 0) || document.querySelector('video');
+      if (!v) return JSON.stringify([0]);
+      return JSON.stringify([1, v.paused ? 1 : 0, v.ended ? 1 : 0, v.currentTime || 0, isFinite(v.duration) ? v.duration : 0,
+        (document.title || '').replace(/ - YouTube$/, '')]); })()
+    """
+
+    /// Pause / play the player's video.
+    public static let toggleScript = """
+    (() => { const v = [...document.querySelectorAll('video')].find(v => v.readyState > 0) || document.querySelector('video');
+      if (!v) return 0; if (v.paused) { v.play(); return 1; } v.pause(); return 2; })()
+    """
+
+    public static func seekScript(_ dt: Int) -> String {
+        """
+        (() => { const v = [...document.querySelectorAll('video')].find(v => v.readyState > 0); if (!v) return 0;
+          v.currentTime = Math.max(0, v.currentTime + \(dt)); return 1; })()
+        """
+    }
+
     /// The watch goes to page view by itself: a page with no text, a video.
     public static let toPage = Data([UInt8(ascii: "G")])
 
@@ -377,7 +423,7 @@ public enum BrowserProto {
 
     public enum Ask: Equatable {
         case ready, go(String), recent(Int), link(Int), back, view(page: Bool), tap(x: Int, y: Int), scroll(Int),
-             type(String), leave
+             type(String), leave, toggle, seek(Int)
     }
 
     public static func parse(_ m: Data) -> Ask? {
@@ -394,6 +440,8 @@ public enum BrowserProto {
         case ("S", 3): return .scroll(Int(Int16(bitPattern: UInt16(b[1]) | UInt16(b[2]) << 8)))
         case ("W", 1...): return .type(String(decoding: b.dropFirst(), as: UTF8.self))
         case ("X", 1): return .leave
+        case ("P", 1): return .toggle
+        case ("k", 3): return .seek(Int(Int16(bitPattern: UInt16(b[1]) | UInt16(b[2]) << 8)))
         default: return nil
         }
     }

@@ -166,6 +166,8 @@ enum Checks {
                 || !BrowserProto.isVideo(URL(string: "https://m.youtube.com/watch?v=x")!)
                 || !BrowserProto.isVideo(URL(string: "https://www.instagram.com/reel/abc/")!)
                 || BrowserProto.isVideo(URL(string: "https://www.youtube.com/")!)
+                || BrowserProto.parse(Data([107, 246, 255])) != .seek(-10) || BrowserProto.parse(Data([80])) != .toggle
+                || BrowserProto.progress(cur: 70, dur: 300, paused: true) != Data([117, 70, 0, 44, 1, 1])
                 || BrowserProto.url(for: "cmf watch").host != "www.google.com"
                 || BrowserProto.fallback(for: BrowserProto.url(for: "cmf watch"))?.absoluteString != "https://html.duckduckgo.com/html/?q=cmf%20watch"
                 || BrowserProto.results([["A", "https://a.test/", "about a"], ["A", "https://a.test/"], ["", "https://b.test/"]], query: "q").blocks.count != 2 {

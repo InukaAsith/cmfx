@@ -82,6 +82,10 @@ import WebKit
             Task { await type(text) }
         case .leave:
             otherApp()
+        case .toggle:
+            Task { _ = await js(BrowserProto.toggleScript) }
+        case .seek(let dt):
+            Task { _ = await js(BrowserProto.seekScript(dt)) }
         }
     }
 
@@ -348,15 +352,23 @@ import WebKit
         let tall = min(max(full, Double(Self.side)), Double(Self.side) * 12)
         web.frame = CGRect(x: 0, y: 0, width: Self.side, height: tall)
         _ = await js("window.scrollTo(0, 0)")
-        try? await Task.sleep(for: .milliseconds(250))
+        try? await Task.sleep(for: .milliseconds(150))
+        // its images in (lazy ones told to load: all of the tall page is in view), 1.5 s at most
+        for _ in 0..<15 where (Int(await js(BrowserProto.imagesPending(tall)) ?? "0") ?? 0) > 0 {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        let layout = await js(Layout.script(width: Double(Self.side), height: tall))
         let rows = (await js(BrowserProto.pageBoxes)).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [[Double]] } ?? []
         let img = await shot(width: Self.picture)
         web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
         guard g == picGen, let img, let cg = img.cgImage else { return }
         let w = Self.picture, h = max(1, Int(Double(w) * Double(cg.height) / Double(max(cg.width, 1))))
         let rgb = Self.rgb(cg, width: w, height: h)
+        // drawn on the watch as it is laid out; a fancy page: its picture
+        let side = Double(Self.side)
         let (msgs, came) = await Task.detached(priority: .userInitiated) {
-            Rle.longPicture(rgb: rgb, width: w, height: h, scale: 2)
+            layout.flatMap { Layout.messages(json: $0, rgb: rgb, pw: w, ph: h, cssWidth: side, cssHeight: tall) }
+                ?? Rle.longPicture(rgb: rgb, width: w, height: h, scale: 2)
         }.value
         guard g == picGen else { return }
         let k = 466 / Self.side
@@ -420,7 +432,22 @@ import WebKit
         try? AVAudioSession.sharedInstance().setActive(true)
         await send([BrowserProto.video(true)])
         var n = 0
+        var paused = false
         while g == picGen, pageView {
+            // the watch's player: its title and place every few frames; while paused, only that
+            if n % 6 == 0 {
+                guard let s = await js(BrowserProto.videoState),
+                      let a = try? JSONSerialization.jsonObject(with: Data(s.utf8)) as? [Any], a.count == 6,
+                      (a[2] as? Int) != 1 else { break }
+                paused = (a[1] as? Int) == 1
+                if n == 0 { await send([BrowserProto.videoTitle(a[5] as? String ?? "")]) }
+                await send([BrowserProto.progress(cur: a[3] as? Double ?? 0, dur: a[4] as? Double ?? 0, paused: paused)])
+            }
+            if paused {
+                try? await Task.sleep(for: .milliseconds(400))
+                n = 6
+                continue
+            }
             var img: UIImage?
             if let s = await js(Self.grab), s.hasPrefix("data:"), let comma = s.firstIndex(of: ","),
                let d = Data(base64Encoded: String(s[s.index(after: comma)...])) {
@@ -436,7 +463,6 @@ import WebKit
             guard g == picGen else { break }
             await send(msgs)
             n += 1
-            if n % 8 == 0, !(await playing()) { break }
         }
         guard g == picGen else { return }
         await send([BrowserProto.video(false)])
