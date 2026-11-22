@@ -120,6 +120,23 @@ enum Checks {
             let r = AtlasProto.results([(name: String(repeating: "N", count: 80), sub: String(repeating: "s", count: 120), dist: 5, at: (0, 0))])
             if r[1].count > 128 { bad.append("atlas: result row too long") }
         }
+        do {
+            let a = AtlasProto.about(2, String(repeating: "é", count: 300))
+            let back = String(decoding: a.map { $0.dropFirst(3) }.reduce(Data(), +), as: UTF8.self)
+            if a.contains(where: { $0.count > 128 }) || a.first?[2] != 4 || back.utf8.count > 480 || back.contains("\u{FFFD}") {
+                bad.append("atlas about pieces")
+            }
+            let l = AtlasProto.results([(name: "A", sub: "", dist: 1, at: (5, 6)), (name: "B", sub: "", dist: 9, at: (.nan, .nan))], near: 1)
+            if l[0] != Data([UInt8(ascii: "L"), 2, 1]) || l[2][6...9] != Data([0, 0x80, 0, 0x80])
+                || AtlasProto.parse(Data([UInt8(ascii: "F"), 7, 3])) != .focusRow(id: 7, idx: 3) {
+                bad.append("atlas mixed search")
+            }
+            let w = AtlasProto.altLines([(0..<100).map { (Double($0) * 700, -Double($0) * 10) }, [(0, 0), (5, 5)]])
+            // way 0: 60 points in 2 parts, unit 3 (69 300 m / 32 000); way 1: one part
+            if w.count != 3 || w[0].count != 5 + 30 * 4 || w[0][3] != 3 || w[2][1] != 1 || w[2].count != 5 + 8 {
+                bad.append("atlas way lines")
+            }
+        }
         // YouTube Music's credit with held, and the song heard (not the last one sent) is the current one
         if YTMusicProto.parse(Data([0x46, 0x2C, 0x01, 9, 3, 0x40, 0x01])) != .credit(next: 300, room: 9, gen: 3, held: 320) {
             bad.append("ytmusic credit with held")

@@ -15,17 +15,24 @@ public enum AtlasProto {
 
     public typealias Row = (name: String, sub: String, dist: Int, at: (Double, Double))
 
-    /// `L n`, then `l idx dist:u32 x:i16 y:i16 name 0 sub…` (8 at most; `at` frame metres).
-    public static func results(_ rows: [Row]) -> [Data] {
+    /// `L n [near]`, then `l idx dist:u32 x:i16 y:i16 name 0 sub…` (8 at most; `at` frame metres, NaN: not on this
+    /// map, sent as -32768). `near` > 0: a mixed search, the first `near` round us, the rest round a town far away.
+    public static func results(_ rows: [Row], near: Int = 0) -> [Data] {
         let rows = rows.prefix(8)
-        return [Data([UInt8(ascii: "L"), UInt8(rows.count)])] + rows.enumerated().map { row($0.offset, $0.element) }
+        let head = near > 0 ? Data([UInt8(ascii: "L"), UInt8(rows.count), UInt8(min(near, rows.count))])
+            : Data([UInt8(ascii: "L"), UInt8(rows.count)])
+        return [head] + rows.enumerated().map { row($0.offset, $0.element) }
     }
 
     /// One `l`.
     public static func row(_ i: Int, _ r: Row) -> Data {
         var m = Data([UInt8(ascii: "l"), UInt8(i)])
         m.le(UInt32(clamping: max(r.dist, 0)))
-        m.le(AtlasScene.i16(r.at.0)); m.le(AtlasScene.i16(r.at.1))
+        if r.at.0.isNaN {
+            m.le(Int16.min); m.le(Int16.min)
+        } else {
+            m.le(AtlasScene.i16(r.at.0)); m.le(AtlasScene.i16(r.at.1))
+        }
         let name = utf8(r.name, 44)
         return m + name + Data([0]) + utf8(r.sub, Rle.msgMax - m.count - name.count - 1)
     }
@@ -35,6 +42,44 @@ public enum AtlasProto {
         lines.prefix(4).enumerated().compactMap { k, t in
             t.isEmpty ? nil : Data([UInt8(ascii: "i"), UInt8(idx), UInt8(k)]) + utf8(t, Rle.msgMax - 3)
         }
+    }
+
+    /// `i idx k text` for k 4 and up: the place's description in pieces (480 bytes at most, whole characters).
+    public static func about(_ idx: Int, _ text: String) -> [Data] {
+        var pieces: [String] = [""]
+        var total = 0
+        for ch in text {
+            let n = String(ch).utf8.count
+            if total + n > 480 { break }
+            if pieces[pieces.count - 1].utf8.count + n > Rle.msgMax - 3 { pieces.append("") }
+            pieces[pieces.count - 1].append(ch)
+            total += n
+        }
+        return pieces.enumerated().filter { !$0.element.isEmpty }.map {
+            Data([UInt8(ascii: "i"), UInt8(idx), UInt8(4 + $0.offset)]) + Data($0.element.utf8)
+        }
+    }
+
+    /// `w k part unit pts…`: way k's line (frame metres), at most 60 points, 30 a message; `unit` metres a step so
+    /// that the farthest point fits an i16.
+    public static func altLines(_ lines: [[(Double, Double)]]) -> [Data] {
+        let far = lines.joined().map { max(abs($0.0), abs($0.1)) }.max() ?? 0
+        let unit = max(1, Int((far / 32000).rounded(.up)))
+        var out: [Data] = []
+        for (k, line) in lines.prefix(3).enumerated() {
+            // evenly thinned, the ends kept
+            let pts: [(Double, Double)] = line.count <= 60 ? line
+                : (0..<60).map { line[Int((Double($0) * Double(line.count - 1) / 59).rounded())] }
+            for (part, start) in stride(from: 0, to: pts.count, by: 30).enumerated() {
+                var m = Data([UInt8(ascii: "w"), UInt8(k), UInt8(part)])
+                m.le(UInt16(unit))
+                for p in pts[start..<min(start + 30, pts.count)] {
+                    m.le(AtlasScene.i16(p.0 / Double(unit))); m.le(AtlasScene.i16(p.1 / Double(unit)))
+                }
+                out.append(m)
+            }
+        }
+        return out
     }
 
     /// `O n`, then `o k secs metres hh mm via…`: the ways there to pick (2 or 3).
@@ -107,6 +152,8 @@ public enum AtlasProto {
         case pick(x: Int, y: Int, name: String), info(idx: Int)
         /// the search's places cleared on the watch (✕)
         case clear
+        /// a mixed search's other group: the map round result idx's group as scene `id`
+        case focusRow(id: UInt8, idx: Int)
         /// directions: the route's map comes as scene `id`; `alt` the way picked of those `O` listed
         case directions(mode: Int, idx: Int, id: UInt8, alt: Int?), start, stop, again(id: UInt8)
 
@@ -118,6 +165,7 @@ public enum AtlasProto {
             case let (.category(i, p), .category(j, q)): return i == j && p == q
             case let (.pick(x, y, n), .pick(u, v, m)): return x == u && y == v && n == m
             case let (.ways(i), .ways(j)), let (.info(i), .info(j)): return i == j
+            case let (.focusRow(i, p), .focusRow(j, q)): return i == j && p == q
             case let (.directions(m, i, d, a), .directions(n, j, e, b)): return m == n && i == j && d == e && a == b
             case let (.again(i), .again(j)): return i == j
             default: return false
@@ -143,6 +191,7 @@ public enum AtlasProto {
             return .pick(x: x, y: y, name: String(decoding: b.dropFirst(5), as: UTF8.self))
         case ("I", 2): return .info(idx: Int(b[1]))
         case ("K", 1): return .clear
+        case ("F", 3): return .focusRow(id: b[1], idx: Int(b[2]))
         case ("U", 2): return .ways(idx: Int(b[1]))
         case ("D", 4): return .directions(mode: Int(b[1]), idx: Int(b[2]), id: b[3], alt: nil)
         case ("D", 5): return .directions(mode: Int(b[1]), idx: Int(b[2]), id: b[3], alt: Int(b[4]))

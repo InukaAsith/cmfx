@@ -130,6 +130,21 @@ import MapKit
         }
     }
 
+    /// Each way's line, for the watch's pick map.
+    var alternativeLines: [[CLLocationCoordinate2D]] {
+        alternatives.map { a in
+            switch a {
+            case .osrm(let r):
+                let line = (r["geometry"] as? [String: Any])?["coordinates"] as? [[Double]] ?? []
+                return line.compactMap { $0.count >= 2 ? CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) : nil }
+            case .apple(let r):
+                var c = [CLLocationCoordinate2D](repeating: .init(), count: r.polyline.pointCount)
+                r.polyline.getCoordinates(&c, range: NSRange(location: 0, length: c.count))
+                return c
+            }
+        }
+    }
+
     /// Way `k` of the last plan's, loaded as the route.
     func choose(_ k: Int) {
         guard alternatives.indices.contains(k) else { return }
