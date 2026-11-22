@@ -469,10 +469,37 @@ extension SpotifyService {
     /// Songs from Spotify's catalog for the watch's search, as YTSongs with the Spotify URI as id (resolved to
     /// YouTube when one plays).
     func tracks(_ q: String) async throws -> [YTSong] {
-        let r = try await call("GET", "/search", query: ["q": q, "type": "track", "limit": "12"]) as? [String: Any]
+        // 10: Spotify's most for an app in development mode since Feb 2026 (12 was refused: nothing found)
+        let r = try await call("GET", "/search", query: ["q": q, "type": "track", "limit": "10"]) as? [String: Any]
         let items = ((r?["tracks"] as? [String: Any])?["items"] as? [[String: Any]]) ?? []
-        return items.map { t in
-            YTSong(id: t.str("uri"), title: t.str("name"), artist: artists(t), seconds: (t["duration_ms"] as? Int ?? 0) / 1000)
+        return items.map(song)
+    }
+
+    private func song(_ t: [String: Any]) -> YTSong {
+        YTSong(id: t.str("uri"), title: t.str("name"), artist: artists(t), seconds: (t["duration_ms"] as? Int ?? 0) / 1000)
+    }
+
+    /// The player's library: Liked Songs, then the user's playlists (id "liked" for the first).
+    func library() async throws -> [(id: String, name: String, sub: String)] {
+        let items = ((try await call("GET", "/me/playlists", query: ["limit": "23"]) as? [String: Any])?["items"]
+            as? [[String: Any]]) ?? []
+        return [("liked", "Liked Songs", "Your saved songs")] + items.map {
+            let total = (($0["items"] ?? $0["tracks"]) as? [String: Any])?["total"] as? Int
+            let owner = ($0["owner"] as? [String: Any])?["display_name"] as? String ?? ""
+            return ($0.str("id"), $0.str("name"), total.map { "\($0) songs" } ?? (owner.isEmpty ? "Playlist" : "by \(owner)"))
         }
+    }
+
+    /// A library entry's songs (50 at most), as YTSongs with Spotify URIs.
+    func songs(of id: String) async throws -> [YTSong] {
+        let path = id == "liked" ? "/me/tracks" : "/playlists/\(id)/items"
+        let items: [[String: Any]]
+        do {
+            items = ((try await call("GET", path, query: ["limit": "50"]) as? [String: Any])?["items"] as? [[String: Any]]) ?? []
+        } catch {
+            // Feb 2026: an app sees the songs of the user's own playlists only
+            throw HubError.failed("Spotify hides this playlist's songs")
+        }
+        return items.compactMap { ($0["item"] ?? $0["track"]) as? [String: Any] }.filter { !$0.str("uri").isEmpty }.map(song)
     }
 }

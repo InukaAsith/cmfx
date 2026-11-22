@@ -9,7 +9,7 @@ import Foundation
 // The client names and versions below are what YouTube's apps send; YouTube retires old ones now and then (the
 // same upkeep yt-dlp has): when search or playback stops working, these are the first thing to update.
 
-public struct YTSong: Sendable, Equatable {
+public struct YTSong: Sendable, Equatable, Codable {
     public let id: String
     public let title: String
     public let artist: String
@@ -58,12 +58,20 @@ public enum YTMusic {
         "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
         "osName": "visionOS", "osVersion": "26.5.23O471", "hl": "en"]
 
-    /// Signed in: the TV and the embedded web player with the cookies (yt-dlp's authed defaults). Else visionOS
-    /// (plain URLs), then the TV. A VPN's address gets "confirm you're not a bot" without an account.
+    nonisolated(unsafe) static let androidVR: [String: Any] = [
+        "clientName": "ANDROID_VR", "clientVersion": "1.65.10", "deviceMake": "Oculus", "deviceModel": "Quest 3",
+        "androidSdkVersion": 32, "osName": "Android", "osVersion": "12L", "hl": "en",
+        "userAgent": "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"]
+
+    /// Tried in turn, also when one answers but its stream is refused (the TV's URLs get 403 since late 2026:
+    /// "OK" from the player isn't a song that plays). First the ones with plain URLs (visionOS, the Android VR
+    /// app), then, signed in, the TV and the embedded web player with the cookies (yt-dlp's authed defaults: what
+    /// still plays on a VPN, where the plain ones get "confirm you're not a bot"), then the TV without.
     nonisolated(unsafe) static let players: [Player] = [
+        Player(client: visionOS, id: "101", js: false, signedIn: false),
+        Player(client: androidVR, id: "28", js: false, signedIn: false),
         Player(client: tvSamsung, id: "7", js: true, signedIn: true),
         Player(client: webEmbedded, id: "56", js: true, signedIn: true),
-        Player(client: visionOS, id: "101", js: false, signedIn: false),
         Player(client: tvSamsung, id: "7", js: true, signedIn: false),
     ]
 
@@ -104,12 +112,59 @@ public enum YTMusic {
         return j
     }
 
-    static func music(_ endpoint: String, _ body: [String: Any]) async throws -> [String: Any] {
+    /// `signedIn`: with the account's cookies when there is one (the home's mixes are the account's then).
+    static func music(_ endpoint: String, _ body: [String: Any], signedIn: Bool = false) async throws -> [String: Any] {
         var b = body
         b["context"] = ["client": webRemix]
+        var headers: [String: String] = [:]
+        if signedIn, let a = account, a.valid {
+            headers["Cookie"] = a.header
+            headers["Authorization"] = a.authorization(origin: "https://music.youtube.com")
+            headers["X-Origin"] = "https://music.youtube.com"
+            headers["X-Goog-AuthUser"] = "0"
+        }
         return try await post("https://music.youtube.com/youtubei/v1/\(endpoint)?prettyPrint=false", b, ua: webUA,
                               clientId: "67", version: webRemix["clientVersion"] as! String,
-                              origin: "https://music.youtube.com")
+                              origin: "https://music.youtube.com", headers: headers)
+    }
+
+    // MARK: mixes
+
+    /// The mixes on YouTube Music's home (the account's when signed in: My Supermix, Discover Mix …), then its other
+    /// playlists: (playlist id, name, what it is), 24 at most.
+    public static func mixes() async throws -> [(id: String, name: String, sub: String)] {
+        let j = try await music("browse", ["browseId": "FEmusic_home"], signedIn: true)
+        return lists(inHome: j)
+    }
+
+    static func lists(inHome j: Any) -> [(id: String, name: String, sub: String)] {
+        var out: [(id: String, name: String, sub: String)] = []
+        walk(j) { d in
+            guard let r = d["musicTwoRowItemRenderer"] as? [String: Any] else { return }
+            var id: String?
+            walk(r["navigationEndpoint"] ?? [:]) { e in
+                if id == nil, let w = e["watchPlaylistEndpoint"] as? [String: Any] ?? e["watchEndpoint"] as? [String: Any] {
+                    id = w["playlistId"] as? String
+                }
+                if id == nil, let b = e["browseEndpoint"] as? [String: Any], let v = b["browseId"] as? String, v.hasPrefix("VL") {
+                    id = String(v.dropFirst(2))
+                }
+            }
+            if id == nil { walk(r) { if id == nil, let w = $0["watchPlaylistEndpoint"] as? [String: Any] { id = w["playlistId"] as? String } } }
+            let name = text(r["title"])
+            guard let id, !name.isEmpty else { return }
+            out.append((id, name, text(r["subtitle"])))
+        }
+        var seen = Set<String>()
+        let all = out.filter { seen.insert($0.id).inserted }
+        let mix = all.filter { $0.name.localizedCaseInsensitiveContains("mix") || $0.id.hasPrefix("RDTMAK") }
+        return Array((mix + all.filter { a in !mix.contains { $0.id == a.id } }).prefix(24))
+    }
+
+    /// A playlist's or mix's songs, in order (YouTube Music's queue for it).
+    public static func playlist(_ id: String) async throws -> [YTSong] {
+        let j = try await music("next", ["playlistId": id, "isAudioOnly": true], signedIn: true)
+        return songs(inQueue: j)
     }
 
     // MARK: search and radio
@@ -164,10 +219,11 @@ public enum YTMusic {
 
     /// An audio stream's URL: AAC in MP4 (itag 140) when there is one, which AVFoundation decodes.
     /// The song's AAC stream URL and its size in bytes.
-    public static func audioURL(_ id: String) async throws -> (URL, Int) {
+    /// `skipping`: players (their index) whose stream was refused already; the answer says which one it is.
+    public static func audioURL(_ id: String, skipping: Set<Int> = []) async throws -> (URL, Int, player: Int) {
         var why = "No player answered"
         let account = self.account?.valid == true ? self.account : nil
-        for p in players where !p.signedIn || account != nil {
+        for (k, p) in players.enumerated() where (!p.signedIn || account != nil) && !skipping.contains(k) {
             var body: [String: Any] = ["context": ["client": p.client], "videoId": id, "contentCheckOk": true,
                                        "racyCheckOk": true]
             var headers: [String: String] = [:]
@@ -211,7 +267,7 @@ public enum YTMusic {
             }
             do {
                 // the byte size (for the download's progress); else ~16 KB a second of AAC
-                return (try unlock(f), Int(f["contentLength"] as? String ?? "") ?? secs * 16_000)
+                return (try unlock(f), Int(f["contentLength"] as? String ?? "") ?? secs * 16_000, k)
             } catch {
                 why = error.localizedDescription
                 log("unlock \(p.client["clientName"] ?? "?"): \(why)")
@@ -299,9 +355,20 @@ public enum YTMusic {
     public static func samples(_ id: String, from: Int = 0, level: Bool = false, smooth: Bool = true,
                                progress: @Sendable (Int) async -> Void = { _ in }) async throws -> [Int16] {
         await progress(3)
-        let (url, size) = try await audioURL(id)
-        await progress(8)
-        let data = try await fetch(url, size: size) { f in await progress(8 + Int(f * 72)) }
+        // a player whose stream is refused (403): the next one
+        var refused: Set<Int> = []
+        var data = Data()
+        while true {
+            let (url, size, k) = try await audioURL(id, skipping: refused)
+            await progress(8)
+            do {
+                data = try await fetch(url, size: size) { f in await progress(8 + Int(f * 72)) }
+                break
+            } catch YTError.http(let code) where code == 403 || code == 410 {
+                log("stream of \(players[k].client["clientName"] ?? "?")\(players[k].signedIn ? " signed in" : ""): \(code)")
+                refused.insert(k)
+            }
+        }
         await progress(82)
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
         try data.write(to: file)
@@ -348,6 +415,10 @@ public enum YTMusicProto {
         case next(gen: UInt8), previous(gen: UInt8)
         case seek(gen: UInt8, seconds: Int)
         case upNext
+        /// the songs played before (`o H`), newest first
+        case history
+        /// the account's playlists (`o P`: the Spotify player)
+        case library
         case credit(next: Int, room: Int, gen: UInt8, held: Int)
     }
 
@@ -362,6 +433,8 @@ public enum YTMusicProto {
         case (UInt8(ascii: "b"), 2): return .previous(gen: b[1])
         case (UInt8(ascii: "j"), 4): return .seek(gen: b[1], seconds: Int(b[2]) | Int(b[3]) << 8)
         case (UInt8(ascii: "o"), 2) where b[1] == UInt8(ascii: "Q"): return .upNext
+        case (UInt8(ascii: "o"), 2) where b[1] == UInt8(ascii: "H"): return .history
+        case (UInt8(ascii: "o"), 2) where b[1] == UInt8(ascii: "P"): return .library
         case (UInt8(ascii: "F"), 5): return .credit(next: Int(b[1]) | Int(b[2]) << 8, room: Int(b[3]), gen: b[4], held: 0)
         // with what the watch holds and has not played (its ~7 s buffer): the song at next - held is the one heard
         case (UInt8(ascii: "F"), 7): return .credit(next: Int(b[1]) | Int(b[2]) << 8, room: Int(b[3]), gen: b[4],

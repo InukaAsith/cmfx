@@ -23,6 +23,15 @@ import WireKit
     private var index = 0
     /// the queue index of the watch's Up next row 0
     private var upFrom = 0
+    /// The songs played, newest first (24, the watch's list): kept across launches, per app.
+    @ObservationIgnored private lazy var history: [YTSong] = (UserDefaults.standard.data(forKey: Self.historyKey))
+        .flatMap { try? JSONDecoder().decode([YTSong].self, from: $0) } ?? []
+    private static var historyKey: String { "music-history-\(app)" }
+
+    private func played(_ song: YTSong) {
+        history = Array(([song] + history.filter { $0.id != song.id }).prefix(24))
+        UserDefaults.standard.set(try? JSONEncoder().encode(history), forKey: Self.historyKey)
+    }
     private var stream: YTStream?
     private var feeder: Task<Void, Never>?
     private var sender: Task<Void, Never>?
@@ -106,11 +115,21 @@ import WireKit
                 results = try await find(q)
                 try await rows(Character("S"), results.map { ($0.title, sub($0), false) })
             case .pick(let gen, let kind, let i):
-                if kind == UInt8(ascii: "S"), i < results.count {
-                    queue = [results[i]]
+                let from = kind == UInt8(ascii: "S") ? results : kind == UInt8(ascii: "H") ? history : nil
+                if kind == UInt8(ascii: "P") {
+                    // a playlist: its songs in order
+                    guard i < shelf.count else { return }
+                    let songs = try await songs(of: shelf[i].id)
+                    guard !songs.isEmpty else { return try await Hub.shared.send(Self.app, YTMusicProto.note("No songs in it")) }
+                    queue = songs
                     index = 0
                     start(gen)
-                    radio(after: results[i])
+                } else if let from, i < from.count {
+                    let song = from[i]
+                    queue = [song]
+                    index = 0
+                    start(gen)
+                    radio(after: song)
                 } else {
                     index = upFrom + i
                     start(gen)
@@ -128,6 +147,11 @@ import WireKit
                 upFrom = current
                 let shown = queue.indices.contains(upFrom) ? Array(queue[upFrom...]) : []
                 try await rows(Character("Q"), shown.enumerated().map { ($0.element.title, sub($0.element), $0.offset == 0) })
+            case .history:
+                try await rows(Character("H"), history.map { ($0.title, sub($0), false) })
+            case .library:
+                shelf = try await library()
+                try await rows(Character("P"), shelf.map { ($0.name, $0.sub, false) })
             case .credit:
                 break
             }
@@ -144,6 +168,12 @@ import WireKit
     private func rows(_ kind: Character, _ r: [(String, String, Bool)]) async throws {
         try await Hub.shared.send(Self.app, YTMusicProto.list(kind: kind.asciiValue!, rows: r))
     }
+
+    /// The watch's fourth list and the songs of one: YouTube Music's mixes (the account's when signed in);
+    /// Spotify player: Liked Songs and playlists.
+    private var shelf: [(id: String, name: String, sub: String)] = []
+    func library() async throws -> [(id: String, name: String, sub: String)] { try await YTMusic.mixes() }
+    func songs(of id: String) async throws -> [YTSong] { try await YTMusic.playlist(id) }
 
     /// Songs for the watch's search (SpotifyPlayerService: Spotify's catalog).
     func find(_ q: String) async throws -> [YTSong] { try await YTMusic.search(q) }
@@ -185,6 +215,7 @@ import WireKit
         var failed = 0
         while i < queue.count, failed < 3 {
             var song = queue[i]
+            let picked = song
             playing = song.title
             do {
                 song = try await resolve(song)
@@ -206,6 +237,7 @@ import WireKit
                 let secs = max(song.seconds, from + samples.count / SpeakerProto.rate)
                 stream?.add(YTSong(id: song.id, title: song.title, artist: song.artist, seconds: secs), index: i,
                             from: from, blocks: blocks)
+                played(picked)
                 failed = 0
             } catch {
                 guard !Task.isCancelled else { return }
@@ -348,6 +380,14 @@ struct YouTubeSignIn: UIViewRepresentable {
 
     override func find(_ q: String) async throws -> [YTSong] {
         try await Hub.shared.spotify.tracks(q)
+    }
+
+    override func library() async throws -> [(id: String, name: String, sub: String)] {
+        try await Hub.shared.spotify.library()
+    }
+
+    override func songs(of id: String) async throws -> [YTSong] {
+        try await Hub.shared.spotify.songs(of: id)
     }
 
     override func resolve(_ song: YTSong) async throws -> YTSong {

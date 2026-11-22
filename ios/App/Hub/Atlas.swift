@@ -50,7 +50,7 @@ import WireKit
         case .ready:
             Task { try? await Hub.shared.send(Self.app, AtlasProto.hello) }
         case .home(let id, let round):
-            picture(id) { await self.homeMap(round: round.map { (Double($0.x), Double($0.y)) }) }
+            picture(id) { await self.homeMap(round: round.map { (Double($0.x), Double($0.y)) }, id: id) }
         case .search(let id, let q):
             if let c = Self.category(of: q) { return find(id) { await self.kind(c, near: $0) } }
             find(id) { await self.places(q, near: $0) }
@@ -438,10 +438,19 @@ import WireKit
 
     /// Home's map: round where we are (a new frame there; the search's places sent again in it), or round a point
     /// of the frame the watch has moved to (where it looks: searches go round it).
-    private func homeMap(round: (Double, Double)?) async -> [Data]? {
+    private func homeMap(round: (Double, Double)?, id: UInt8 = 0) async -> [Data]? {
         guard let here = await nav.here() else {
             fail("Location is off for CMFX")
             return nil
+        }
+        // Maps opened again near where the last map round us was made: that map, from memory, at once (no tiles to
+        // read, nothing to build); only where we are is new
+        let dist = { (k: Home) in here.distance(from: CLLocation(latitude: k.origin.latitude, longitude: k.origin.longitude)) }
+        if round == nil, let k = homes.filter({ dist($0) < $0.r / 3 }).min(by: { dist($0) < dist($1) }) {
+            frame = k.origin
+            focus = nil
+            if !results.isEmpty { try? await Hub.shared.send(Self.app, rows(here)) }
+            return AtlasProto.scene(id: id, data: k.data, me: xy(here.coordinate), centre: (0, 0), r: k.r)
         }
         if round == nil || frame == nil {
             frame = here.coordinate
@@ -451,24 +460,51 @@ import WireKit
             focus = latLon(round)
         }
         let me = xy(here.coordinate)
-        return await scene(round: round ?? me, me: me)
+        let msgs = await scene(round: round ?? me, me: me, keep: round == nil)
+        return msgs
+    }
+
+    /// Maps round us lately (8), in memory only: the frame's origin (their centre), the bytes, the half side (m).
+    typealias Home = (origin: CLLocationCoordinate2D, data: Data, r: Double)
+    private var homes: [Home] = []
+    /// Every map built lately (24), by frame and centre: a place seen again in this frame comes at once.
+    private var built: [String: (data: Data, r: Double)] = [:]
+    private var builtOrder: [String] = []
+
+    private func builtKey(_ o: (lat: Double, lon: Double), _ c: (Double, Double)) -> String {
+        String(format: "%.5f,%.5f,%d,%d", o.lat, o.lon, Int((c.0 / 25).rounded()), Int((c.1 / 25).rounded()))
     }
 
     /// The scene round `centre` (metres in `frame`); the watch draws the search's pins itself.
-    private func scene(round centre: (Double, Double), me: (Double, Double)) async -> [Data]? {
+    private func scene(round centre: (Double, Double), me: (Double, Double), keep: Bool = false) async -> [Data]? {
         guard let f = frame else { return nil }
         let o = (lat: f.latitude, lon: f.longitude)
+        let id = currentID
+        let key = builtKey(o, centre)
+        if let b = built[key] {
+            builtOrder.removeAll { $0 == key }
+            builtOrder.append(key)
+            if keep { homes = [(f, b.data, b.r)] + homes.filter { $0.data != b.data }.prefix(7) }
+            return AtlasProto.scene(id: id, data: b.data, me: me, centre: centre, r: b.r)
+        }
         let need = AtlasScene.tiles(round: centre, r: AtlasScene.radii[0], origin: o)
         let got: [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])]
         do { got = try await tiles.features(need) } catch {
             fail("No map here: \(error.localizedDescription)")
             return nil
         }
-        let id = currentID
-        return await Task.detached(priority: .userInitiated) {
+        let (msgs, data, r) = await Task.detached(priority: .userInitiated) {
             let (data, r) = AtlasScene.scene(tiles: got, origin: o, centre: centre)
-            return AtlasProto.scene(id: id, data: data, me: me, centre: centre, r: r)
+            return (AtlasProto.scene(id: id, data: data, me: me, centre: centre, r: r), data, r)
         }.value
+        if keep { homes = [(f, data, r)] + homes.prefix(7) }
+        built[key] = (data, r)
+        builtOrder.append(key)
+        while builtOrder.count > 24 { built[builtOrder.removeFirst()] = nil }
+        // the tiles round this map, ahead of a move to its edge (to disk and memory, in the background)
+        let ring = AtlasScene.tiles(round: centre, r: AtlasScene.radii[0] * 2.2, origin: o)
+        Task.detached(priority: .utility) { [tiles] in _ = try? await tiles.features(ring) }
+        return msgs
     }
 
     /// The id of the scene being made (the last one asked for).
@@ -489,9 +525,9 @@ actor VectorTiles {
     }()
 
     init() {
-        // tiles unused for a month go
+        // tiles unused for three months go
         let fm = FileManager.default
-        let old = Date.now.addingTimeInterval(-30 * 86400)
+        let old = Date.now.addingTimeInterval(-90 * 86400)
         for u in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentAccessDateKey])) ?? [] {
             if let d = try? u.resourceValues(forKeys: [.contentAccessDateKey]).contentAccessDate, d < old {
                 try? fm.removeItem(at: u)
@@ -506,7 +542,12 @@ actor VectorTiles {
         try await withThrowingTaskGroup(of: ((x: Int, y: Int), [AtlasScene.Feature]).self) { g in
             for tile in tiles {
                 let key = "\(AtlasScene.zoom)-\(tile.x)-\(tile.y)"
-                if let f = decoded[key] { out.append((tile, f)); continue }
+                if let f = decoded[key] {
+                    out.append((tile, f))
+                    order.removeAll { $0 == key }
+                    order.append(key)
+                    continue
+                }
                 let file = dir.appendingPathComponent(key + ".pbf")
                 let url = URL(string: t.replacingOccurrences(of: "{z}", with: String(AtlasScene.zoom))
                     .replacingOccurrences(of: "{x}", with: String(tile.x)).replacingOccurrences(of: "{y}", with: String(tile.y)))!
@@ -531,11 +572,11 @@ actor VectorTiles {
         return out
     }
 
-    /// Decoded tiles kept in memory: the last 9.
+    /// Decoded tiles kept in memory: the 64 used last (a map needs 4–9; the prefetched ring round it too).
     private func remember(_ key: String, _ f: [AtlasScene.Feature]) {
+        if decoded[key] == nil { order.append(key) }
         decoded[key] = f
-        order.append(key)
-        while order.count > 9 { decoded[order.removeFirst()] = nil }
+        while order.count > 64 { decoded[order.removeFirst()] = nil }
     }
 
     /// Tile URLs change with each planet build: OpenFreeMap's TileJSON names the current one (read daily).

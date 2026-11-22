@@ -124,6 +124,10 @@ enum Checks {
         if YTMusicProto.parse(Data([0x46, 0x2C, 0x01, 9, 3, 0x40, 0x01])) != .credit(next: 300, room: 9, gen: 3, held: 320) {
             bad.append("ytmusic credit with held")
         }
+        if YTMusicProto.parse(Data("oH".utf8)) != .history || YTMusicProto.parse(Data("oQ".utf8)) != .upNext
+            || YTMusicProto.parse(Data("oP".utf8)) != .library {
+            bad.append("ytmusic history / up next")
+        }
         var st = YTStream(gen: 3)
         let one = YTSong(id: "a", title: "A", artist: "x", seconds: 3)
         st.add(one, index: 0, from: 0, samples: [Int16](repeating: 0, count: 244 * 200))
