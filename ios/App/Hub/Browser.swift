@@ -4,6 +4,7 @@ import HubKit
 import SwiftUI
 import UIKit
 import WebKit
+import WireKit
 
 /// The watch's Browser (cmf-watch-sdk sdk/examples/browser). Reader view: the page fetched here and its text pulled
 /// out (HubKit Reader; no scripts, so it works with the phone in a pocket). Page view: the page in a browser here
@@ -100,6 +101,7 @@ import WebKit
     /// Another watch app talks, or the Browser closed: the page's sound and pictures stop.
     func otherApp() {
         picGen += 1
+        outbox = []
         stopMedia()
         pageView = false
     }
@@ -122,10 +124,53 @@ import WebKit
         }
     }
 
+    /// What is still to go to the watch, in order (a new page or part drops the rest of the last).
+    private var outbox: [Data] = []
+    private var pumping = false
+
+    /// Messages to the watch: queued, sent in the background in order (the page's next screen is shot meanwhile).
     private func send(_ msgs: [Data]) async {
+        outbox += msgs
+        guard !pumping else { return }
+        pumping = true
+        Task { await pump() }
+    }
+
+    /// Till everything queued is out.
+    private func drained() async {
+        while pumping || !outbox.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    /// The queue out, 4 in flight (as the Mac host's channel.Pipe: about 3.5 times one at a time): each window's
+    /// taken ones go; from the first the watch didn't take (its inbox full, a frame lost), again after a pause.
+    private func pump() async {
         sending = true
-        defer { sending = false }
-        do { try await Hub.shared.send(Self.app, msgs) } catch { status = error.localizedDescription }
+        defer { sending = false; pumping = false }
+        var delay = 20, tries = 0
+        while !outbox.isEmpty {
+            let batch = Array(outbox.prefix(4))
+            do {
+                let got = try await Hub.shared.sendWindow(Self.app, batch)
+                let ok = got.firstIndex { $0 != Status.ok.rawValue } ?? got.count
+                // (the queue may have been dropped meanwhile: only what is still its head)
+                if outbox.starts(with: batch.prefix(ok)) { outbox.removeFirst(ok) }
+                if ok == batch.count {
+                    (delay, tries) = (20, 0)
+                    continue
+                }
+            } catch WireError.noApp {
+                outbox = []
+                return
+            } catch {
+                status = error.localizedDescription
+                outbox = []
+                return
+            }
+            tries += 1
+            if tries > 40 { status = "The watch stopped taking the page"; outbox = []; return }
+            try? await Task.sleep(for: .milliseconds(delay))
+            delay = min(delay * 2, 500)
+        }
     }
 
     private func note(_ t: String) async { await send([BrowserProto.note(t)]) }
@@ -323,7 +368,8 @@ import WebKit
         for _ in 0..<60 where await js("document.readyState") == "loading" {
             try? await Task.sleep(for: .milliseconds(100))
         }
-        try? await Task.sleep(for: .milliseconds(400))
+        // (the pictures' capture waits for what is in view: images, fonts)
+        try? await Task.sleep(for: .milliseconds(150))
     }
 
     nonisolated func webView(_ v: WKWebView, didStartProvisionalNavigation n: WKNavigation!) {
@@ -378,6 +424,7 @@ import WebKit
         picGen += 1
         let g = picGen
         guard pageView, made else { return }
+        outbox = []
         web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
         pics.reset()
         await pics.section(from: 0) { [unowned self] m in if g == picGen { await send(m) } }
@@ -390,6 +437,7 @@ import WebKit
         picGen += 1
         let g = picGen
         guard pageView, made else { return }
+        outbox = []
         if !(await pics.more(dir) { [unowned self] m in if g == picGen { await send(m) } }) {
             await send([BrowserProto.unchanged])
             return
@@ -492,6 +540,8 @@ import WebKit
             }.value
             guard g == picGen else { break }
             await send(msgs)
+            // a frame at a time: the next is grabbed once this one is out (the watch shows the newest)
+            await drained()
             n += 1
         }
         guard g == picGen else { return }
