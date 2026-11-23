@@ -125,6 +125,13 @@ import Foundation
             guard b.1 < came, seen.insert([b.0, b.1, b.2, b.3]).inserted else { return nil }
             return (b.0, b.1, b.2, b.3, UInt8(r[4]))
         }
+        if lines == 0 {
+            // nothing could be shot (the phone's browser not drawing: the app in the background, the phone locked):
+            // said on the watch, not a blank page
+            active = false
+            await emit([BrowserProto.note("Couldn't show the page: open CMFX on the phone")])
+            return
+        }
         await emit([Data([UInt8(ascii: "j")]), Data([UInt8(ascii: "y"), (below ? 1 : 0) | (top > 0 ? 2 : 0)])]
                    + BrowserProto.boxes(boxes))
     }

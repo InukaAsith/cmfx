@@ -127,6 +127,9 @@ import WireKit
     /// What is still to go to the watch, in order (a new page or part drops the rest of the last).
     private var outbox: [Data] = []
     private var pumping = false
+    /// messages left to send one at a time: after the watch didn't take one (a refused frame may be followed by
+    /// taken ones, sent again then: one at a time those are rare)
+    private var quiet = 0
 
     /// Messages to the watch: queued, sent in the background in order (the page's next screen is shot meanwhile).
     private func send(_ msgs: [Data]) async {
@@ -148,12 +151,13 @@ import WireKit
         defer { sending = false; pumping = false }
         var delay = 20, tries = 0
         while !outbox.isEmpty {
-            let batch = Array(outbox.prefix(4))
+            let batch = Array(outbox.prefix(quiet > 0 ? 1 : 4))
             do {
                 let got = try await Hub.shared.sendWindow(Self.app, batch)
                 let ok = got.firstIndex { $0 != Status.ok.rawValue } ?? got.count
                 // (the queue may have been dropped meanwhile: only what is still its head)
                 if outbox.starts(with: batch.prefix(ok)) { outbox.removeFirst(ok) }
+                quiet = max(quiet - ok, 0)
                 if ok == batch.count {
                     (delay, tries) = (20, 0)
                     continue
@@ -162,10 +166,10 @@ import WireKit
                 outbox = []
                 return
             } catch {
+                // the link stumbled: tried again (40 tries, about 20 s, before the page is given up)
                 status = error.localizedDescription
-                outbox = []
-                return
             }
+            quiet = 32
             tries += 1
             if tries > 40 { status = "The watch stopped taking the page"; outbox = []; return }
             try? await Task.sleep(for: .milliseconds(delay))
@@ -411,12 +415,75 @@ import WireKit
     /// pictures not in yet striped, sent once they are; the next part when the watch reaches the end of this one.
     @ObservationIgnored private lazy var pics = PagePictures(side: Double(Self.side),
                                                              js: { [unowned self] in await self.js($0) }) { [unowned self] rect, w in
+        await self.capture(rect, width: w)
+    }
+
+    /// How the page's pictures are taken: the first way that gave a picture that isn't blank (iOS may not draw a
+    /// web view it thinks is out of sight: its snapshot comes back empty, black on the watch).
+    enum Capture: Int, CaseIterable { case snapshot, front, hierarchy, visible }
+    private var capturing: Capture?
+    /// what the Browser page shows of it
+    private(set) var captureNote = ""
+
+    /// Part of the page view (`rect`, page points) as RGB `w` px wide.
+    private func capture(_ rect: CGRect, width w: Int) async -> (rgb: [UInt8], height: Int)? {
+        let h = max(1, Int((Double(w) * rect.height / rect.width).rounded()))
+        for way in capturing.map({ [$0] }) ?? Capture.allCases {
+            guard let rgb = await shot(rect, width: w, height: h, way) else { continue }
+            if capturing != nil || !Self.blank(rgb) {
+                if capturing == nil {
+                    capturing = way
+                    captureNote = "Pictures: \(way)"
+                }
+                return (rgb, h)
+            }
+        }
+        captureNote = "Pictures: every way came back blank"
+        return nil
+    }
+
+    private func shot(_ rect: CGRect, width w: Int, height h: Int, _ way: Capture) async -> [UInt8]? {
+        let up = web.superview
+        defer {
+            // back behind the app, all but invisible
+            if way != .snapshot, let up { up.sendSubviewToBack(web) }
+            web.alpha = 0.011
+        }
+        switch way {
+        case .snapshot: break
+        case .front: up?.bringSubviewToFront(web)
+        case .hierarchy:
+            up?.bringSubviewToFront(web)
+            let r = UIGraphicsImageRenderer(bounds: rect, format: { let f = UIGraphicsImageRendererFormat(); f.scale = 1; f.opaque = true; return f }())
+            let img = r.image { _ in
+                web.alpha = 1
+                web.drawHierarchy(in: web.bounds, afterScreenUpdates: true)
+            }
+            return img.cgImage.map { Self.rgb($0, width: w, height: h) }
+        case .visible:
+            up?.bringSubviewToFront(web)
+            web.alpha = 1
+        }
+        if way != .snapshot { try? await Task.sleep(for: .milliseconds(120)) }
         let c = WKSnapshotConfiguration()
         c.rect = rect
         c.snapshotWidth = NSNumber(value: Double(w) / Double(UIScreen.main.scale))
-        guard let img = try? await self.web.takeSnapshot(configuration: c), let cg = img.cgImage else { return nil }
-        let h = max(1, Int((Double(w) * rect.height / rect.width).rounded()))
-        return (Self.rgb(cg, width: w, height: h), h)
+        guard let img = try? await web.takeSnapshot(configuration: c), let cg = img.cgImage else { return nil }
+        return Self.rgb(cg, width: w, height: h)
+    }
+
+    /// One colour all over (a sample of it): nothing drawn.
+    static func blank(_ rgb: [UInt8]) -> Bool {
+        guard rgb.count >= 3 else { return true }
+        let (r, g, b) = (rgb[0], rgb[1], rgb[2])
+        var i = 0
+        while i + 2 < rgb.count {
+            if abs(Int(rgb[i]) - Int(r)) > 6 || abs(Int(rgb[i + 1]) - Int(g)) > 6 || abs(Int(rgb[i + 2]) - Int(b)) > 6 {
+                return false
+            }
+            i += 3 * 37
+        }
+        return true
     }
 
     /// Page view from the top of the page; then, while a video plays, its frames.
@@ -654,6 +721,9 @@ struct BrowserPage: View {
                             Text(b.loading ? "Loading on the watch" : b.sending ? "Sending to the watch" : "On the watch")
                                 .font(.headline)
                             Text(w.absoluteString).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            if !b.captureNote.isEmpty {
+                                Text(b.captureNote).font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
                     LiveWebView(url: w)
