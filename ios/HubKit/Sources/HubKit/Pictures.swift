@@ -21,8 +21,9 @@ import Foundation
     public private(set) var active = false
     var pending: [(id: Int, x: Double, y: Double, w: Double, h: Double)] = []
 
-    /// Watch px a picture pixel (233 px across), screens a part, bytes the watch keeps.
-    static let scale = 2, steps = 6, cap = 55 * 1024
+    /// Watch px a picture pixel (3: 155 px across, under half the bytes of 2), screens a part (two: it comes quickly,
+    /// the next on scrolling), bytes the watch keeps.
+    static let scale = 3, steps = 2, cap = 55 * 1024
 
     public init(side: Double, js: @escaping (String) async -> String?,
                 shot: @escaping (CGRect, Int) async -> (rgb: [UInt8], height: Int)?) {
@@ -136,17 +137,12 @@ import Foundation
                    + BrowserProto.boxes(boxes))
     }
 
-    /// The next part (`dir` 1 down, -1 up), its first screen what the watch shows now. False: no part yet.
+    /// The next screen (`dir` 1 down, -1 up), a little of this one kept at its edge (where you were). False: no
+    /// part yet.
     public func more(_ dir: Int, emit: ([Data]) async -> Void) async -> Bool {
         guard active else { return false }
-        // the watch shows the last 300 px (going down) or the first (going up): the new part keeps them in view
-        let keep = 300 * side / 466
-        if dir > 0 {
-            await section(from: top + height - keep, emit: emit)
-        } else {
-            let y0 = max(0, top - height + keep)
-            await section(from: y0, scroll: Int((top - y0) * 466 / side), emit: emit)
-        }
+        let keep = 60 * side / 466
+        await section(from: dir > 0 ? top + height - keep : max(0, top - side + keep), emit: emit)
         return true
     }
 

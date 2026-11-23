@@ -486,17 +486,52 @@ import WireKit
         return true
     }
 
-    /// Page view from the top of the page; then, while a video plays, its frames.
+    /// Page view (the watch's v5): the whole page laid out tall (12 screens at most), its images in, one picture of
+    /// it sent as a long picture (the watch shows its first screen as soon as it came, the rest while it is read);
+    /// then, while a video plays, its frames.
     private func snapshot() async {
         picGen += 1
         let g = picGen
         guard pageView, made else { return }
         outbox = []
-        web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
         pics.reset()
-        await pics.section(from: 0) { [unowned self] m in if g == picGen { await send(m) } }
-        await shown(g)
-        if g == picGen, await playing() { await video(g) }
+        // the watch to page view (after a search it shows the text view)
+        await send([BrowserProto.toPage])
+        let full = Double(await js(BrowserProto.pageHeight) ?? "") ?? Double(Self.side)
+        let tall = min(max(full, Double(Self.side)), Double(Self.side) * 12)
+        web.frame = CGRect(x: 0, y: 0, width: Self.side, height: tall)
+        _ = await js("window.scrollTo(0, 0)")
+        try? await Task.sleep(for: .milliseconds(150))
+        _ = await js(PagePictures.openFolds)
+        _ = await js(PagePictures.hideBanners)
+        // its images in (lazy ones told to load: all of the tall page is in view), 1.5 s at most
+        for _ in 0..<15 where (Int(await js(BrowserProto.imagesPending(tall)) ?? "0") ?? 0) > 0 {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        let rows = (await js(BrowserProto.pageBoxes)).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [[Double]] } ?? []
+        let w = Self.picture
+        let got = await capture(CGRect(x: 0, y: 0, width: Self.side, height: tall), width: w)
+        web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
+        guard g == picGen else { return }
+        guard let got else {
+            await send([BrowserProto.note("Couldn't show the page: open CMFX on the phone")])
+            return
+        }
+        let (msgs, came) = await Task.detached(priority: .userInitiated) {
+            Rle.longPicture(rgb: got.rgb, width: w, height: got.height, scale: 2)
+        }.value
+        guard g == picGen else { return }
+        let k = 466 / Self.side
+        let boxes = rows.compactMap { r -> (x: Int, y: Int, w: Int, h: Int, kind: UInt8)? in
+            guard r.count == 5, Int(r[1] * k) < came else { return nil }
+            return (Int(r[0] * k), Int(r[1] * k), Int(r[2] * k), Int(r[3] * k), UInt8(r[4]))
+        }
+        await send(msgs + BrowserProto.boxes(boxes))
+        if let u = web.url { await send([BrowserProto.label(u)]) }
+        if await playing() {
+            await drained()
+            if g == picGen { await video(g) }
+        }
     }
 
     /// The next part of the page (`dir` 1 down, -1 up).
