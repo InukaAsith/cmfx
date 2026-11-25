@@ -1,3 +1,4 @@
+import BackgroundTasks
 import Foundation
 import HubKit
 import UIKit
@@ -10,6 +11,11 @@ import WABridge
 // Battery: strictly on demand. It goes online only when the watch app talks (R, o, s; the BLE notify wakes CMFX),
 // and offline 60 s after the watch's last message once CMFX is in the background, when the background time runs
 // out, or at once when another watch app talks (the watch runs one at a time). No timers or polling while idle.
+// Keep chats up to date (a toggle, off by default): short catch-ups so the watch opens on fresh chats instead of
+// waiting for a long gap's offline messages. Only when CMFX is awake anyway (a watch BLE wake, another watch app)
+// or iOS grants a background refresh (BGAppRefreshTask: iOS picks the time from battery and use), at most every
+// 15 minutes, never in Low Power Mode; online until WhatsApp says the offline messages are in (25 s at most), then
+// offline again.
 
 /// Go → Swift, on a Go thread.
 private final class WAEvents: NSObject, WabridgeListenerProtocol {
@@ -58,6 +64,24 @@ private struct WAMsg: Decodable {
     private(set) var pairing = false
     var status: String?
 
+    /// Keep chats up to date between watch openings (off by default).
+    var keepSynced = UserDefaults.standard.bool(forKey: "wa.keepSynced") {
+        didSet {
+            UserDefaults.standard.set(keepSynced, forKey: "wa.keepSynced")
+            if keepSynced { Self.scheduleRefresh() } else {
+                BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.refreshID)
+            }
+        }
+    }
+    /// The last catch-up that got WhatsApp's offline messages in.
+    private(set) var lastSync = UserDefaults.standard.object(forKey: "wa.lastSync") as? Date
+    static let refreshID = "app.cmfx.ios.whatsapp-sync"
+    static let syncEvery: TimeInterval = 15 * 60
+    private var catchingUp = false
+    /// The last catch-up tried (done or not): the 15 minutes count from it, so a bad connection never retries
+    /// at every wake (no burst of logins WhatsApp could find odd).
+    private var lastTry: Date?
+
     private var opened = false
     private let events = WAEvents()
     private var ids = ChatsProto.Ids(first: 2)
@@ -65,7 +89,7 @@ private struct WAMsg: Decodable {
     /// The chat open on the watch.
     private var open: UInt8?
     /// The watch app is open: it talked, and the last message to it went through.
-    private var live = false
+    private(set) var live = false
     private var chain: Task<Void, Never>?
     private var idleTask: Task<Void, Never>?
     private var bg: UIBackgroundTaskIdentifier = .invalid
@@ -248,6 +272,77 @@ private struct WAMsg: Decodable {
         guard live || idleTask != nil else { return }
         live = false
         if !pairing, !(pageShown && UIApplication.shared.applicationState == .active) { goOffline() }
+    }
+
+    // MARK: keeping chats up to date
+
+    /// Asks iOS for a background refresh, not before `syncEvery` (iOS decides when, or not at all).
+    static func scheduleRefresh() {
+        let r = BGAppRefreshTaskRequest(identifier: refreshID)
+        r.earliestBeginDate = .now.addingTimeInterval(syncEvery)
+        try? BGTaskScheduler.shared.submit(r)
+    }
+
+    /// Registered at launch: iOS's refresh runs one catch-up and asks for the next.
+    static func registerRefresh() {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshID, using: .main) { task in
+            MainActor.assumeIsolated {
+                let w = Hub.shared.whatsapp
+                guard w.keepSynced else { return task.setTaskCompleted(success: true) }
+                scheduleRefresh()
+                let job = Task { @MainActor in
+                    let ok = await w.catchUp()
+                    task.setTaskCompleted(success: ok)
+                }
+                task.expirationHandler = {
+                    job.cancel()
+                    Task { @MainActor in if !w.live { w.goOffline() } }
+                }
+            }
+        }
+    }
+
+    /// One short catch-up when it's on and due: online until the offline messages are in (25 s at most), then
+    /// offline unless the watch app opened meanwhile. Free to call often: it does nothing until due.
+    @discardableResult
+    func catchUp() async -> Bool {
+        guard keepSynced, linked, !live, !pairing, !catchingUp, idleTask == nil,
+              !ProcessInfo.processInfo.isLowPowerModeEnabled,
+              lastSync.map({ Date.now.timeIntervalSince($0) >= Self.syncEvery }) ?? true,
+              lastTry.map({ Date.now.timeIntervalSince($0) >= Self.syncEvery }) ?? true else { return false }
+        catchingUp = true
+        lastTry = .now
+        defer { catchingUp = false }
+        let bgTask = UIApplication.shared.beginBackgroundTask(withName: "whatsapp-sync") { }
+        defer { UIApplication.shared.endBackgroundTask(bgTask) }
+        guard openBridge() else { return false }
+        if WabridgeState() != "synced" {
+            startConnect()
+            let deadline = ContinuousClock.now + .seconds(25)
+            while WabridgeState() != "synced", ContinuousClock.now < deadline, !Task.isCancelled {
+                await withCheckedContinuation { c in
+                    syncWaiters.append(c)
+                    Task { try? await Task.sleep(for: .seconds(2)); self.wakeWaiters() }
+                }
+            }
+        }
+        let ok = WabridgeState() == "synced"
+        if ok {
+            lastSync = .now
+            UserDefaults.standard.set(lastSync, forKey: "wa.lastSync")
+        }
+        // nobody uses it: offline at once
+        if !live, idleTask == nil, !pairing, !(pageShown && UIApplication.shared.applicationState == .active) {
+            goOffline()
+        }
+        refresh()
+        return ok
+    }
+
+    private func wakeWaiters() {
+        let w = syncWaiters
+        syncWaiters.removeAll()
+        w.forEach { $0.resume() }
     }
 
     // MARK: link page

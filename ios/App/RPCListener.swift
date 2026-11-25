@@ -192,6 +192,8 @@ actor KLock {
     /// The watch apps' background jobs that are due, while the link is up: in the foreground and in the ~10 s a BLE
     /// wake gives. ponytail: no BGAppRefreshTask; it wakes without the link, and delivering needs it.
     private func runDueJobs(_ session: KSession) async {
+        // awake anyway: WhatsApp catches up if it's on and due (a date check otherwise)
+        Task { @MainActor in await Hub.shared.whatsapp.catchUp() }
         let now = Date.now
         for (package, jobs) in Jobs.shared.all {
             for j in jobs where j.due(now) {
@@ -267,6 +269,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ app: UIApplication,
                      didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        WhatsAppService.registerRefresh()
+        if UserDefaults.standard.bool(forKey: "wa.keepSynced") { WhatsAppService.scheduleRefresh() }
         RPCListener.shared.start()
         NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil,
                                                queue: .main) { _ in

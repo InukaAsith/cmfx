@@ -71,7 +71,11 @@ import WireKit
             return service.receive(m)
         }
         // the watch runs one app at a time: WhatsApp goes offline when another talks
-        if name != WhatsAppService.app { whatsapp.otherApp() }
+        if name != WhatsAppService.app {
+            whatsapp.otherApp()
+            // awake for another watch app: a WhatsApp catch-up if it's on and due
+            Task { await whatsapp.catchUp() }
+        }
         // and music stops when its app is closed: YouTube Music, Spotify
         if name != YouTubeMusicService.app { youtube.otherApp() }
         if name != SpotifyPlayerService.app { spotifyPlayer.otherApp() }

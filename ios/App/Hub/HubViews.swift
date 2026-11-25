@@ -959,6 +959,18 @@ struct WhatsAppPage: View {
                 Status(text: w.status)
             }
             .glassCard()
+            if w.linked {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Keep chats up to date", isOn: $w.keepSynced)
+                    Text("So WhatsApp on the watch opens on your new messages instead of fetching them first (slow after a long time offline). CMFX catches up now and then, at most every 15 minutes: when it is awake for the watch anyway, or when iOS allows a background refresh. Each time it goes online for a few seconds and straight back offline. Never in Low Power Mode, no timers, nothing kept running.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if w.keepSynced, let t = w.lastSync {
+                        Text("Last caught up \(t.formatted(.relative(presentation: .named)))")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                .glassCard()
+            }
             VStack(alignment: .leading, spacing: 8) {
                 Text("On the watch").font(.headline)
                 Text("Open WhatsApp on the watch: your 12 newest chats and the last 12 messages of each. Reply with a quick reply or by typing; a new message buzzes the watch while the app is open. CMFX goes online only while the watch app is open and offline a minute after, so it costs no battery in between; the session and chats stay on this iPhone.")
