@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import HubKit
 
 @Test func matchesThePythonHosts() throws {
     let url = try #require(Bundle.module.url(forResource: "vectors", withExtension: "json"))
