@@ -32,8 +32,6 @@ private struct Feature: Identifiable {
                 detail: hub.atlas.nav.active ? "Navigating" : "Search, routes"),
         Feature(id: "Navigation", symbol: "location.north.line.fill", color: TDColor.accent, app: NavService.app,
                 detail: hub.nav.active ? "Navigating" : "Turn by turn"),
-        Feature(id: "Compass", symbol: "safari.fill", color: .red, app: CompassService.app,
-                detail: hub.compass.running ? "On" : "iPhone heading"),
     ]
 }
 
@@ -47,7 +45,6 @@ private struct Feature: Identifiable {
     case "Gemini": GeminiPage()
     case "Offline Maps": MapsPage()
     case "Maps": AtlasPage()
-    case "Compass": CompassPage()
     default: NavPage()
     }
 }

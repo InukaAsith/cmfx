@@ -224,33 +224,3 @@ public enum NavProto {
         return Array(dp(Array(p[...far]), tol).dropLast()) + dp(Array(p[far...]), tol)
     }
 }
-
-/// The watch's Compass app (cmf-watch-sdk sdk/examples/compass/src/model.rs): the iPhone's heading, as the watch has
-/// no magnetometer.
-public enum CompassProto {
-    public static let trueNorth: UInt8 = 1, calibrate: UInt8 = 2
-
-    /// `H` heading in tenths of a degree (0..3599), accuracy in degrees (255 unknown), flags.
-    public static func heading(_ degrees: Double, accuracy: Double?, trueNorth: Bool, calibrate: Bool) -> Data {
-        var m = Data("H".utf8)
-        let t = Int((degrees * 10).rounded())
-        m.le(UInt16(((t % 3600) + 3600) % 3600))
-        m.append(accuracy.map { $0 < 0 ? 255 : UInt8(clamping: Int($0.rounded())) } ?? 255)
-        m.append((trueNorth ? Self.trueNorth : 0) | (calibrate ? Self.calibrate : 0))
-        return m
-    }
-
-    /// `N text`: why no heading comes.
-    public static func note(_ t: String) -> Data { Data("N".utf8) + utf8(t, 60) }
-
-    /// `R`: start, and again every few seconds while open; `Z`: closed.
-    public enum Ask: Equatable { case ready, closed }
-
-    public static func parse(_ m: Data) -> Ask? {
-        switch m.first {
-        case UInt8(ascii: "R"): .ready
-        case UInt8(ascii: "Z"): .closed
-        default: nil
-        }
-    }
-}
