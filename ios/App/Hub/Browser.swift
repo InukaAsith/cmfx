@@ -36,6 +36,41 @@ import WireKit
     private var picGen = 0
     private var loadWaiters: [CheckedContinuation<Void, Never>] = []
 
+    /// iOS runs and draws web pages only while CMFX is in front: with the phone locked or asleep (or another app
+    /// open) WebKit's page process is suspended (its scripts held, snapshots blank or never back; Apple: by design,
+    /// there is no way round it). Then page view doesn't wait on it: the page's text comes at once (fetched here,
+    /// no browser), and its picture when the phone is unlocked (`pictureLater`).
+    private var canDraw: Bool { UIApplication.shared.applicationState == .active }
+    private var pictureLater = false
+
+    override init() {
+        super.init()
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil,
+                                               queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.unlocked() }
+        }
+    }
+
+    /// The phone unlocked: the picture the watch is still waiting for (its Browser still open, page view asked).
+    private func unlocked() {
+        guard pictureLater else { return }
+        pictureLater = false
+        guard Hub.shared.lastApp == Self.app, current != nil, mode != 0 else { return }
+        Task { await showPage() }
+    }
+
+    /// Page view asked while the phone can't draw: the page's text now, the picture once it is unlocked.
+    private func locked() async {
+        pictureLater = true
+        guard let url = current else { return }
+        let m = mode
+        mode = 0
+        await open(url, push: false)
+        // (the watch's choice stays: page view comes back by itself)
+        if mode == 0 { mode = m }
+        await note("iPhone locked: the text now, the picture once it's unlocked")
+    }
+
     /// The browser page view draws from; one with the Browser page's (WebKit's default store: cookies shared).
     @ObservationIgnored private lazy var web: WKWebView = {
         let c = WKWebViewConfiguration()
@@ -113,6 +148,7 @@ import WireKit
     /// cached on disk while it ran is deleted (its cookies stay: sites signed in to stay signed in).
     func otherApp() {
         picGen += 1
+        pictureLater = false
         outbox = []
         stopMedia()
         pageView = false
@@ -264,6 +300,11 @@ import WireKit
         p.title = title
         remember(title, final)
         if p.blocks.isEmpty {
+            guard canDraw else {
+                pictureLater = true
+                await note("No text on this page: unlock the iPhone to see it")
+                return
+            }
             // no text here: page view by itself
             pageView = true
             await send([BrowserProto.toPage])
@@ -276,6 +317,12 @@ import WireKit
     /// Google's results need its scripts: the search in the browser here, its results read out of the page;
     /// nothing there (no answer, a check page): the same search on DuckDuckGo.
     private func google(_ url: URL, _ g: Int) async {
+        if !canDraw, let ddg = BrowserProto.fallback(for: url) {
+            // Google's results need its scripts, which don't run with the phone locked: DuckDuckGo's page has none
+            current = ddg
+            await open(ddg, push: false)
+            return
+        }
         await note("Searching Google\u{2026}")
         host()
         committed = false
@@ -306,7 +353,7 @@ import WireKit
     }
 
     private func back() async {
-        if pageView, made, web.canGoBack {
+        if pageView, made, canDraw, web.canGoBack {
             web.goBack()
             await waitLoad()
             await snapshot()
@@ -370,6 +417,7 @@ import WireKit
     }
 
     private func showPage(play: Bool = false) async {
+        guard canDraw else { return await locked() }
         host()
         guard let url = current else { return }
         if web.url != url {
@@ -507,7 +555,7 @@ import WireKit
         let c = WKSnapshotConfiguration()
         c.rect = rect
         c.snapshotWidth = NSNumber(value: Double(w) / Double(UIScreen.main.scale))
-        guard let img = try? await web.takeSnapshot(configuration: c), let cg = img.cgImage else { return nil }
+        guard let img = await snap(c), let cg = img.cgImage else { return nil }
         return Self.rgb(cg, width: w, height: h)
     }
 
@@ -535,6 +583,7 @@ import WireKit
         picGen += 1
         let g = picGen
         guard pageView, made else { return }
+        guard canDraw else { return await locked() }
         outbox = []
         pics.reset()
         // the watch to page view (after a search it shows the text view)
@@ -653,6 +702,12 @@ import WireKit
         picGen += 1
         let g = picGen
         guard pageView, made else { return }
+        guard canDraw else {
+            pictureLater = true
+            await send([BrowserProto.unchanged])
+            await note("iPhone locked: unlock it for more of the page")
+            return
+        }
         outbox = []
         if !(await pics.more(dir) { [unowned self] m in if g == picGen { await send(m) } }) {
             await send([BrowserProto.unchanged])
@@ -700,7 +755,26 @@ import WireKit
         let c = WKSnapshotConfiguration()
         c.rect = web.bounds
         c.snapshotWidth = NSNumber(value: Double(width) / Double(UIScreen.main.scale))
-        return try? await web.takeSnapshot(configuration: c)
+        return await snap(c)
+    }
+
+    /// A snapshot, nil after 5 s: WebKit may never answer once the phone locks mid-way (its page process suspended).
+    private func snap(_ c: WKSnapshotConfiguration) async -> UIImage? {
+        final class Once: @unchecked Sendable { var done = false }
+        let once = Once()
+        return await withCheckedContinuation { (k: CheckedContinuation<UIImage?, Never>) in
+            web.takeSnapshot(with: c) { img, _ in
+                guard !once.done else { return }
+                once.done = true
+                k.resume(returning: img)
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(5))
+                guard !once.done else { return }
+                once.done = true
+                k.resume(returning: nil)
+            }
+        }
     }
 
     private func playing() async -> Bool {
@@ -770,6 +844,11 @@ import WireKit
     /// section opened, a video started): all of it again; else the watch takes the tap's outline off.
     private func tap(_ x: Int, _ y: Int) async {
         guard pageView, made else { return }
+        guard canDraw else {
+            await send([BrowserProto.unchanged])
+            await note("iPhone locked: unlock it to use the page")
+            return
+        }
         let before = await js(BrowserProto.pageState)
         let r = await js(BrowserProto.tapScript(x: x, y: y + pics.tapTop, side: Double(Self.side)))
         if r == "2" {
@@ -813,6 +892,7 @@ import WireKit
 
     private func type(_ text: String) async {
         guard made else { return }
+        guard canDraw else { return await note("iPhone locked: unlock it to type on the page") }
         let s = String(data: try! JSONSerialization.data(withJSONObject: [text]), encoding: .utf8)!.dropFirst().dropLast()
         let script = """
         (() => { const f = document.activeElement; if (!f) return;
