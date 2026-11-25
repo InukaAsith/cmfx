@@ -26,6 +26,46 @@ import UIKit
     var working: String?
 
     private let manager = CLLocationManager()
+
+    // --- the watch's own GPS (Maps' ◎ held): its fixes stand in for the phone's while they keep coming
+
+    /// The watch's last fix (its course from the one before); used while under `watchFresh` old.
+    private var watchFix: CLLocation?
+    private static let watchFresh: TimeInterval = 5
+    private var usingWatch: Bool { watchFix.map { -$0.timestamp.timeIntervalSinceNow < Self.watchFresh } ?? false }
+    /// Where we are: the watch's fix while it sends them, else the phone's.
+    private var phoneOrWatch: CLLocation? { usingWatch ? watchFix : manager.location }
+
+    /// A fix from the watch's GPS.
+    func watch(lat: Double, lon: Double, alt: Double, sats: Int) {
+        let c = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        guard CLLocationCoordinate2DIsValid(c) else { return }
+        let here = CLLocation(latitude: lat, longitude: lon)
+        var course = -1.0, speed = -1.0
+        if let p = watchFix {
+            let d = here.distance(from: p), dt = -p.timestamp.timeIntervalSinceNow
+            if dt > 0, dt < 10 { speed = d / dt }
+            // moving: the course from the last fix (standing still the compass keeps the heading)
+            if d >= 3 { course = Self.bearing(p.coordinate, c) } else if p.course >= 0, speed >= 0 { course = p.course }
+        }
+        // the receiver's accuracy isn't given: a few satellites, a wider guess
+        let acc = sats >= 7 ? 8.0 : sats >= 5 ? 15.0 : 30.0
+        let loc = CLLocation(coordinate: c, altitude: alt, horizontalAccuracy: acc, verticalAccuracy: -1, course: course,
+                             courseAccuracy: course >= 0 ? 20 : -1, speed: speed, speedAccuracy: -1, timestamp: .now)
+        watchFix = loc
+        if !fixWaiters.isEmpty { fix(loc) }
+        Task { await update(loc) }
+    }
+
+    /// The watch's GPS off: the phone's own fixes again.
+    func watchOff() { watchFix = nil }
+
+    private static func bearing(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+        let (p1, p2) = (a.latitude * .pi / 180, b.latitude * .pi / 180)
+        let dl = (b.longitude - a.longitude) * .pi / 180
+        let y = sin(dl) * cos(p2), x = cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)
+        return (atan2(y, x) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+    }
     private var origin = CLLocationCoordinate2D()
     private var pts: [(Double, Double)] = []
     private var cum: [Double] = []
@@ -90,7 +130,7 @@ import UIKit
             Task {
                 let centre = (Double(x), Double(y))
                 guard let b = await Hub.shared.atlas.navScene(origin: o, centre: centre), g == mapGen, active else { return }
-                let me = manager.location.map { local($0.coordinate) } ?? centre
+                let me = phoneOrWatch.map { local($0.coordinate) } ?? centre
                 await stream(AtlasProto.scene(id: id, data: b.data, me: me, centre: centre, r: b.r), gen: g)
             }
         case .search(let q):
@@ -227,7 +267,7 @@ import UIKit
                 // never goes quiet (it calls 12 s without one lost and asks again)
                 try? await Task.sleep(for: .seconds(4))
                 guard let self, self.active else { return }
-                if -self.last.timeIntervalSinceNow >= 4, let l = self.manager.location { await self.update(l) }
+                if -self.last.timeIntervalSinceNow >= 4, let l = self.phoneOrWatch { await self.update(l) }
             }
         }
     }
@@ -489,6 +529,8 @@ import UIKit
 
     /// Where the phone is now: asks for location access the first time, then one fix (10 s at most).
     func here() async -> CLLocation? {
+        // the watch's GPS in use: no need for the phone's (or its permission)
+        if usingWatch, let w = watchFix { return w }
         if manager.authorizationStatus == .notDetermined {
             await withCheckedContinuation { c in
                 authWaiters.append(c)
@@ -496,7 +538,7 @@ import UIKit
             }
         }
         guard [.authorizedWhenInUse, .authorizedAlways].contains(manager.authorizationStatus) else { return nil }
-        if let l = manager.location, -l.timestamp.timeIntervalSinceNow < 20, l.horizontalAccuracy < 100 { return l }
+        if let l = phoneOrWatch, -l.timestamp.timeIntervalSinceNow < 20, l.horizontalAccuracy < 100 { return l }
         Task { try? await Task.sleep(for: .seconds(10)); self.fix(nil) }
         return await withCheckedContinuation { c in
             fixWaiters.append(c)
@@ -507,7 +549,7 @@ import UIKit
     private func fix(_ l: CLLocation?) {
         let w = fixWaiters
         fixWaiters = []
-        for c in w { c.resume(returning: l ?? manager.location) }
+        for c in w { c.resume(returning: l ?? phoneOrWatch) }
     }
 
     nonisolated func locationManager(_ m: CLLocationManager, didFailWithError error: Error) {
@@ -558,7 +600,7 @@ import UIKit
 
     /// Where we are on the route now, sent without waiting for the next fix.
     private func updateNow() async {
-        guard active, let l = manager.location ?? planFix else { return }
+        guard active, let l = phoneOrWatch ?? planFix else { return }
         last = .distantPast
         await update(l)
     }
@@ -687,6 +729,8 @@ import UIKit
     nonisolated func locationManager(_ m: CLLocationManager, didUpdateLocations locs: [CLLocation]) {
         guard let loc = locs.last else { return }
         Task { @MainActor in
+            // the watch's GPS in charge: the phone's fixes aren't mixed in
+            guard !self.usingWatch else { return }
             if !self.fixWaiters.isEmpty { self.fix(loc) }
             await self.update(loc)
         }
@@ -756,7 +800,7 @@ import UIKit
     /// 4 times a second and only on a turn of 6° or more, and only while the GPS course isn't in charge.
     private func turned(_ deg: Double) {
         compass = deg
-        guard active, !rerouting, let p = lastP, let loc = manager.location, !(loc.course >= 0 && loc.speed > 2) else { return }
+        guard active, !rerouting, let p = lastP, let loc = phoneOrWatch, !(loc.course >= 0 && loc.speed > 2) else { return }
         let moved = headingSent.map { abs((deg - $0 + 540).truncatingRemainder(dividingBy: 360) - 180) } ?? 360
         guard moved >= 6, -headingSentAt.timeIntervalSinceNow >= 0.25 else { return }
         headingSentAt = .now

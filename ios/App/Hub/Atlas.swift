@@ -45,6 +45,8 @@ import WireKit
     private var gen = 0
     private var queue: [Data] = []
     private var last: (id: UInt8, msgs: [Data])?
+    /// when the watch was last told its GPS is in use (`y`)
+    private var watchSaid = Date.distantPast
 
     func receive(_ m: Data) {
         guard let ask = AtlasProto.parse(m) else { return }
@@ -93,6 +95,15 @@ import WireKit
             }
         case .resync:
             nav.resync()
+        case .watchFix(let lat, let lon, let alt, let sats):
+            nav.watch(lat: lat, lon: lon, alt: alt, sats: sats)
+            // the watch's ◎ steady red: it is in use (said every few fixes, the watch waits 6 s)
+            if -watchSaid.timeIntervalSinceNow >= 3 {
+                watchSaid = .now
+                Task { try? await Hub.shared.send(Self.app, AtlasProto.usingWatchGPS) }
+            }
+        case .watchGPSOff:
+            nav.watchOff()
         case .stop:
             nav.stop()
         case .again(let id):

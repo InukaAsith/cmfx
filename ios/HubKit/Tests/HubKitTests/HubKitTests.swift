@@ -37,3 +37,12 @@ import HubKit
     #expect(r.boxes.count == 1 && r.sources.count == 1 && r.sources[0].url == "https://a/b.png")
     #expect(Layout.background(json: json) == (1, 2, 3))
 }
+
+@Test func atlasWatchFix() {
+    // Y lat_e7 lon_e7 alt_dm sats: 6.9271, 79.8612, 10 m, 8 satellites (the watch sim's bytes)
+    let m = Data([0x59, 0xd8, 0xfd, 0x20, 0x04, 0x20, 0xda, 0x99, 0x2f, 0x64, 0, 0, 0, 8])
+    guard case .watchFix(let lat, let lon, let alt, let sats) = AtlasProto.parse(m) else { Issue.record("no fix"); return }
+    #expect(abs(lat - 6.9271) < 1e-7 && abs(lon - 79.8612) < 1e-7 && alt == 10 && sats == 8)
+    #expect(AtlasProto.parse(Data("y".utf8)) == .watchGPSOff)
+    #expect(AtlasProto.usingWatchGPS == Data("y".utf8))
+}

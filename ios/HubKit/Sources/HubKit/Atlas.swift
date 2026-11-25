@@ -146,6 +146,8 @@ public enum AtlasProto {
     public enum Ask: Equatable {
         /// home: the map round where we are (`round` nil: a new frame may start there) or round a frame point
         case ready, home(id: UInt8, round: (x: Int, y: Int)?), ways(idx: Int), resync
+        /// the watch's own GPS (◎ held): a fix (degrees, metres, satellites), or `watchGPSOff`
+        case watchFix(lat: Double, lon: Double, alt: Double, sats: Int), watchGPSOff
         /// search, category, area: the map round the answer comes as scene `id`, in a new frame
         case search(id: UInt8, String), category(id: UInt8, Int), area(id: UInt8, String)
         /// a place on the map (a pin tapped, or dropped: no name), frame metres; what is known of result idx
@@ -161,7 +163,9 @@ public enum AtlasProto {
 
         public static func == (a: Ask, b: Ask) -> Bool {
             switch (a, b) {
-            case (.ready, .ready), (.start, .start), (.stop, .stop), (.clear, .clear), (.resync, .resync): return true
+            case (.ready, .ready), (.start, .start), (.stop, .stop), (.clear, .clear), (.resync, .resync),
+                 (.watchGPSOff, .watchGPSOff): return true
+            case let (.watchFix(a, b, c, d), .watchFix(e, f, g, h)): return a == e && b == f && c == g && d == h
             case let (.home(i, r), .home(j, s)): return i == j && r?.x == s?.x && r?.y == s?.y
             case let (.search(i, p), .search(j, q)), let (.area(i, p), .area(j, q)): return i == j && p == q
             case let (.category(i, p), .category(j, q)): return i == j && p == q
@@ -175,6 +179,9 @@ public enum AtlasProto {
             }
         }
     }
+
+    /// `y`: the phone uses the watch's fixes (◎ steady red), after each few.
+    public static let usingWatchGPS = Data("y".utf8)
 
     public static func parse(_ m: Data) -> Ask? {
         let b = [UInt8](m)
@@ -204,6 +211,10 @@ public enum AtlasProto {
         // navigating, nothing heard for a while: the route and where we are again
         case ("N", 1): return .resync
         case ("g", 2): return .again(id: b[1])
+        case ("Y", 14):
+            let i = { (k: Int) in Int32(bitPattern: UInt32(b[k]) | UInt32(b[k + 1]) << 8 | UInt32(b[k + 2]) << 16 | UInt32(b[k + 3]) << 24) }
+            return .watchFix(lat: Double(i(1)) / 1e7, lon: Double(i(5)) / 1e7, alt: Double(i(9)) / 10, sats: Int(b[13]))
+        case ("y", 1): return .watchGPSOff
         default: return nil
         }
     }
