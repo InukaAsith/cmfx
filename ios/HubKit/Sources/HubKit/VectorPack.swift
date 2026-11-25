@@ -1,0 +1,222 @@
+import Foundation
+
+/// Offline Maps' map (cmf-watch-sdk sdk/examples/maps/src/pack.rs): OpenStreetMap vector data (OpenFreeMap) cut into
+/// square cells at three levels, each cell a file of Maps' scene records (AtlasScene) clipped to its square, in
+/// metres of one frame round the area's centre. The watch draws them itself, as Maps draws its map, so a city or a
+/// hike tens of km across fits: the overview (main roads, water, towns) reaches the whole area, streets and paths
+/// the part round the centre you pick.
+public enum VectorPack {
+    public struct Level: Equatable, Sendable {
+        /// cell side, metres; tile zoom read; drawn from watch zoom `minK` (px a metre × 256) on
+        public var side: Int, z: Int, minK: Int
+        /// grid: south-west corner (x0 = y0), cells a side
+        public var x0: Int, n: Int
+        /// the largest road class kept (AtlasScene: 0 motorway … 5 path, 6 rail, 7 waterway); POI labels kept
+        public var maxRoad: Int, pois: Int
+        public var tol: Double
+    }
+
+    /// The farthest the frame reaches (i16 metres, a cell's margin spare).
+    public static let maxRadiusKm = 28.0
+    public static let maxDetailKm = 8.0
+
+    /// The levels for an area of `radiusKm` with streets and paths `detailKm` round the centre.
+    public static func levels(radiusKm: Double, detailKm: Double) -> [Level] {
+        let r = min(radiusKm, maxRadiusKm) * 1000
+        let d = min(detailKm, maxDetailKm, radiusKm) * 1000
+        func grid(_ side: Int, _ reach: Double) -> (Int, Int) {
+            let k = max(1, Int((reach / Double(side)).rounded(.up)))
+            return (-k * side, 2 * k)
+        }
+        let specs: [(side: Int, z: Int, minK: Int, reach: Double, maxRoad: Int, pois: Int, tol: Double)] = [
+            (8000, 11, 0, r, AtlasScene.secondary, 0, 10),
+            (3000, 12, 24, min(r, 10_000), AtlasScene.tertiary, 0, 4),
+            (1500, 14, 60, d, AtlasScene.waterway, 48, 1),
+        ]
+        return specs.map { s in
+            let (x0, n) = grid(s.side, s.reach)
+            return Level(side: s.side, z: s.z, minK: s.minK, x0: x0, n: n, maxRoad: s.maxRoad, pois: s.pois, tol: s.tol)
+        }
+    }
+
+    public static func cellCount(_ levels: [Level]) -> Int { levels.reduce(0) { $0 + $1.n * $1.n } }
+
+    /// `idx`: WMV1, lat0 lon0 (1e-7°), mm a degree of longitude, levels, then per level side x0 y0 cols rows min_k.
+    public static func index(_ levels: [Level], lat: Double, lon: Double) -> Data {
+        var d = Data("WMV1".utf8)
+        d.le(Int32((lat * 1e7).rounded())); d.le(Int32((lon * 1e7).rounded()))
+        d.le(UInt32((cos(lat * .pi / 180) * 111_320_000).rounded()))
+        d.append(UInt8(levels.count))
+        for l in levels {
+            d.le(UInt16(l.side)); d.le(Int16(l.x0)); d.le(Int16(l.x0))
+            d += Data([UInt8(l.n), UInt8(l.n), UInt8(l.minK)])
+        }
+        return d
+    }
+
+    public static func cellName(level: Int, col: Int, row: Int) -> String { "v\(level)_\(col)_\(row)" }
+
+    /// Cell (col, row)'s square: south-west and north-east corners, frame metres.
+    public static func square(_ l: Level, col: Int, row: Int) -> (lo: AtlasScene.Pt, hi: AtlasScene.Pt) {
+        let x = Double(l.x0 + col * l.side), y = Double(l.x0 + row * l.side), s = Double(l.side)
+        return ((x, y), (x + s, y + s))
+    }
+
+    /// The zoom-`l.z` tiles under a cell.
+    public static func tiles(_ l: Level, col: Int, row: Int, origin o: AtlasScene.LatLon) -> [(x: Int, y: Int)] {
+        let (lo, hi) = square(l, col: col, row: row)
+        let c = ((lo.0 + hi.0) / 2, (lo.1 + hi.1) / 2)
+        return AtlasScene.tiles(round: c, r: Double(l.side) / 2 + 30, origin: o, z: l.z)
+    }
+
+    /// One cell's records from the tiles under it (empty: nothing there, no file).
+    public static func cell(_ tiles: [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])], level l: Level,
+                            col: Int, row: Int, origin o: AtlasScene.LatLon) -> Data {
+        let (lo, hi) = square(l, col: col, row: row)
+        let c = ((lo.0 + hi.0) / 2, (lo.1 + hi.1) / 2)
+        let feats = tiles.flatMap { t in t.features.map { (tile: t.tile, f: $0) } }
+        // a wide square first (a road crossing the cell with no point in it), then cut exactly to the cell
+        var out: [AtlasScene.Item] = []
+        var pois = 0
+        let minArea = l.tol * l.tol * 64
+        for it in AtlasScene.items(feats, origin: o, centre: c, r: Double(l.side), z: l.z) {
+            switch it.kind {
+            case .area:
+                let xs = it.pts.map(\.0), ys = it.pts.map(\.1)
+                guard let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max(),
+                      (x1 - x0) * (y1 - y0) >= minArea else { continue }
+                let ring = clipRing(it.pts, lo, hi)
+                if ring.count >= 3 { out.append(.init(kind: .area, cls: it.cls, pts: ring)) }
+            case .line, .carrier:
+                guard it.cls <= l.maxRoad else { continue }
+                for piece in clipLine(it.pts, lo, hi) where piece.count >= 2 {
+                    out.append(.init(kind: it.kind, cls: it.cls, pts: piece, name: it.name))
+                }
+            case .label:
+                let p = it.pts[0]
+                guard lo.0 <= p.0, p.0 < hi.0, lo.1 <= p.1, p.1 < hi.1 else { continue }
+                let isPOI = it.cls == AtlasScene.poi || it.cls >= AtlasScene.food
+                if isPOI {
+                    guard pois < l.pois else { continue }
+                    pois += 1
+                }
+                out.append(it)
+            }
+        }
+        return AtlasScene.build(out, tol: l.tol).data
+    }
+
+    // MARK: clipping to a cell
+
+    /// The parts of a line inside the square [lo, hi], cut at its sides.
+    public static func clipLine(_ pts: [AtlasScene.Pt], _ lo: AtlasScene.Pt, _ hi: AtlasScene.Pt) -> [[AtlasScene.Pt]] {
+        var out: [[AtlasScene.Pt]] = [], cur: [AtlasScene.Pt] = []
+        for i in 1..<max(pts.count, 1) {
+            let a = pts[i - 1], b = pts[i]
+            let dx = b.0 - a.0, dy = b.1 - a.1
+            var t0 = 0.0, t1 = 1.0, hit = true
+            for (p, q) in [(-dx, a.0 - lo.0), (dx, hi.0 - a.0), (-dy, a.1 - lo.1), (dy, hi.1 - a.1)] {
+                if p == 0 {
+                    if q < 0 { hit = false; break }
+                } else {
+                    let r = q / p
+                    if p < 0 { t0 = max(t0, r) } else { t1 = min(t1, r) }
+                    if t0 > t1 { hit = false; break }
+                }
+            }
+            guard hit else {
+                if !cur.isEmpty { out.append(cur); cur = [] }
+                continue
+            }
+            let s = (a.0 + dx * t0, a.1 + dy * t0), e = (a.0 + dx * t1, a.1 + dy * t1)
+            if cur.isEmpty || t0 > 0 {
+                if !cur.isEmpty { out.append(cur) }
+                cur = [s]
+            }
+            cur.append(e)
+            if t1 < 1 { out.append(cur); cur = [] }
+        }
+        if !cur.isEmpty { out.append(cur) }
+        return out.filter { $0.count >= 2 }
+    }
+
+    /// A ring cut to the square [lo, hi] (Sutherland–Hodgman: the square's sides become part of it).
+    public static func clipRing(_ ring: [AtlasScene.Pt], _ lo: AtlasScene.Pt, _ hi: AtlasScene.Pt) -> [AtlasScene.Pt] {
+        var pts = ring
+        let edges: [(inside: (AtlasScene.Pt) -> Bool, cut: (AtlasScene.Pt, AtlasScene.Pt) -> AtlasScene.Pt)] = [
+            ({ $0.0 >= lo.0 }, { a, b in (lo.0, a.1 + (b.1 - a.1) * (lo.0 - a.0) / (b.0 - a.0)) }),
+            ({ $0.0 <= hi.0 }, { a, b in (hi.0, a.1 + (b.1 - a.1) * (hi.0 - a.0) / (b.0 - a.0)) }),
+            ({ $0.1 >= lo.1 }, { a, b in (a.0 + (b.0 - a.0) * (lo.1 - a.1) / (b.1 - a.1), lo.1) }),
+            ({ $0.1 <= hi.1 }, { a, b in (a.0 + (b.0 - a.0) * (hi.1 - a.1) / (b.1 - a.1), hi.1) }),
+        ]
+        for e in edges {
+            guard !pts.isEmpty else { break }
+            var next: [AtlasScene.Pt] = []
+            for i in 0..<pts.count {
+                let a = pts[(i + pts.count - 1) % pts.count], b = pts[i]
+                switch (e.inside(a), e.inside(b)) {
+                case (true, true): next.append(b)
+                case (true, false): next.append(e.cut(a, b))
+                case (false, true): next += [e.cut(a, b), b]
+                case (false, false): break
+                }
+            }
+            pts = next
+        }
+        return pts
+    }
+
+    // MARK: routes for the watch
+
+    /// The watch asks for a route: `D mode lat0 lon0 from_x from_y to_x to_y` (mode 0 drive, 2 walk; from i16.min:
+    /// where the phone is).
+    public struct RouteAsk: Equatable, Sendable {
+        public var walk: Bool
+        public var origin: (lat: Double, lon: Double)
+        public var from: (Double, Double)?
+        public var to: (Double, Double)
+        public static func == (a: Self, b: Self) -> Bool {
+            a.walk == b.walk && a.origin == b.origin && a.from.map { [$0.0, $0.1] } == b.from.map { [$0.0, $0.1] }
+                && a.to == b.to
+        }
+    }
+
+    public static func parseAsk(_ m: Data) -> RouteAsk? {
+        let b = [UInt8](m)
+        guard b.count == 18, b[0] == UInt8(ascii: "D") else { return nil }
+        func i32(_ i: Int) -> Int32 { Int32(bitPattern: UInt32(b[i]) | UInt32(b[i + 1]) << 8 | UInt32(b[i + 2]) << 16 | UInt32(b[i + 3]) << 24) }
+        func i16(_ i: Int) -> Int16 { Int16(bitPattern: UInt16(b[i]) | UInt16(b[i + 1]) << 8) }
+        let fx = i16(10), fy = i16(12)
+        return RouteAsk(walk: b[1] == 2, origin: (Double(i32(2)) / 1e7, Double(i32(6)) / 1e7),
+                        from: fx == .min ? nil : (Double(fx), Double(fy)), to: (Double(i16(14)), Double(i16(16))))
+    }
+
+    public static let routeMax = 1500
+    static let perMessage = 30
+
+    /// A route (frame metres) as `G n metres secs` then `g seq points…`: simplified until it fits the watch.
+    public static func route(_ pts: [AtlasScene.Pt], metres: Double, secs: Double) -> [Data] {
+        var tol = 2.0, p = AtlasScene.simplify(pts, tol)
+        while p.count > routeMax { tol *= 1.5; p = AtlasScene.simplify(pts, tol) }
+        var head = Data("G".utf8)
+        head.le(UInt16(p.count)); head.le(UInt32(max(0, metres))); head.le(UInt32(max(0, secs)))
+        var out = [head]
+        for (k, i) in stride(from: 0, to: p.count, by: perMessage).enumerated() {
+            var d = Data([UInt8(ascii: "g"), UInt8(k)])
+            for q in p[i..<min(i + perMessage, p.count)] {
+                d.le(AtlasScene.i16(q.0)); d.le(AtlasScene.i16(q.1))
+            }
+            out.append(d)
+        }
+        return out
+    }
+
+    public static func routeFailed(_ why: String) -> Data { Data("E".utf8) + AtlasScene.text(why, 40) }
+}
+
+extension VectorPack {
+    /// `P done total`: the watch shows it while saving (and drops the old map on the first).
+    public static func progressMessage(done: Int, total: Int) -> Data {
+        var d = Data("P".utf8); d.le(UInt16(min(done, 65535))); d.le(UInt16(min(total, 65535))); return d
+    }
+}

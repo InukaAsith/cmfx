@@ -735,24 +735,26 @@ actor VectorTiles {
     }
 
     /// The tiles' features, fetched (a few at once) where not cached.
-    func features(_ tiles: [(x: Int, y: Int)]) async throws -> [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])] {
+    /// `z`: the tiles' zoom; `keep` false (Offline Maps' many tiles): neither read nor kept, on disk or here.
+    func features(_ tiles: [(x: Int, y: Int)], z: Int = AtlasScene.zoom, keep: Bool = true)
+        async throws -> [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])] {
         let t = try await urlTemplate()
         var out: [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])] = []
         try await withThrowingTaskGroup(of: ((x: Int, y: Int), [AtlasScene.Feature]).self) { g in
             for tile in tiles {
-                let key = "\(AtlasScene.zoom)-\(tile.x)-\(tile.y)"
-                if let f = decoded[key] {
+                let key = "\(z)-\(tile.x)-\(tile.y)"
+                if keep, let f = decoded[key] {
                     out.append((tile, f))
                     order.removeAll { $0 == key }
                     order.append(key)
                     continue
                 }
                 let file = dir.appendingPathComponent(key + ".pbf")
-                let url = URL(string: t.replacingOccurrences(of: "{z}", with: String(AtlasScene.zoom))
+                let url = URL(string: t.replacingOccurrences(of: "{z}", with: String(z))
                     .replacingOccurrences(of: "{x}", with: String(tile.x)).replacingOccurrences(of: "{y}", with: String(tile.y)))!
                 g.addTask {
                     let data: Data
-                    if let d = try? Data(contentsOf: file) {
+                    if keep, let d = try? Data(contentsOf: file) {
                         data = d
                     } else {
                         var req = URLRequest(url: url)
@@ -760,13 +762,16 @@ actor VectorTiles {
                         req.setValue("CMFX (watch maps)", forHTTPHeaderField: "User-Agent")
                         let (d, resp) = try await URLSession.shared.data(for: req)
                         guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-                        try? d.write(to: file)
+                        if keep { try? d.write(to: file) }
                         data = d
                     }
                     return (tile, AtlasScene.decode(data))
                 }
             }
-            for try await (tile, f) in g { out.append((tile, f)); remember("\(AtlasScene.zoom)-\(tile.x)-\(tile.y)", f) }
+            for try await (tile, f) in g {
+                out.append((tile, f))
+                if keep { remember("\(z)-\(tile.x)-\(tile.y)", f) }
+            }
         }
         return out
     }

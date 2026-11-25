@@ -73,8 +73,8 @@ public enum AtlasScene {
     }
 
     /// The zoom-14 tiles that cover the square of half side `r` round `centre` (frame metres of `o`).
-    public static func tiles(round centre: (Double, Double), r: Double, origin o: LatLon) -> [(x: Int, y: Int)] {
-        let a = tile(latLon(centre.0 - r, centre.1 - r, o)), b = tile(latLon(centre.0 + r, centre.1 + r, o))
+    public static func tiles(round centre: (Double, Double), r: Double, origin o: LatLon, z: Int = zoom) -> [(x: Int, y: Int)] {
+        let a = tile(latLon(centre.0 - r, centre.1 - r, o), z: z), b = tile(latLon(centre.0 + r, centre.1 + r, o), z: z)
         var out: [(x: Int, y: Int)] = []
         for x in a.x...max(a.x, b.x) { for y in min(a.y, b.y)...max(a.y, b.y) { out.append((x, y)) } }
         return out
@@ -311,9 +311,10 @@ public enum AtlasScene {
     }
 
     /// What of `feats` (tile `t`) lies round `centre` (frame metres of `o`), half side `r`.
-    static func items(_ feats: [(tile: (x: Int, y: Int), f: Feature)], origin o: LatLon, centre: Pt, r: Double) -> [Item] {
+    static func items(_ feats: [(tile: (x: Int, y: Int), f: Feature)], origin o: LatLon, centre: Pt, r: Double,
+                      z: Int = zoom) -> [Item] {
         let lo = (centre.0 - r, centre.1 - r), hi = (centre.0 + r, centre.1 + r)
-        let n = Double(1 << zoom)
+        let n = Double(1 << z)
         var out: [Item] = []
         for (t, f) in feats {
             let ext = Double(f.extent)
@@ -381,7 +382,8 @@ public enum AtlasScene {
     }
 
     /// The scene's bytes, most important first, as much as fits `cap`; `full`: something was left out.
-    static func build(_ items: [Item], extra: [Item] = [], cap: Int = cap) -> (data: Data, full: Bool) {
+    /// `tol`: simplification × this (a coarse level of Offline Maps' pack keeps fewer points).
+    static func build(_ items: [Item], extra: [Item] = [], cap: Int = cap, tol scale: Double = 1) -> (data: Data, full: Bool) {
         let isPOI = { (c: Int) in c == poi || c >= food }
         let tiers: [[Item]] = [
             extra,
@@ -403,12 +405,12 @@ public enum AtlasScene {
                 var rec = Data(), new: [String] = []
                 switch it.kind {
                 case .area:
-                    var tol = 3.0, ring = simplify(it.pts, tol)
+                    var tol = 3.0 * scale, ring = simplify(it.pts, tol)
                     while ring.count > maxRing { tol *= 1.6; ring = simplify(it.pts, tol) }
                     guard ring.count >= 3 else { continue }
                     rec.append(area | UInt8(it.cls)); rec.le(UInt16(ring.count)); rec += encode(ring)
                 case .line, .carrier:
-                    let pts = simplify(it.pts, it.kind == .carrier ? 6 : it.cls >= minor ? 1.5 : 2.5)
+                    let pts = simplify(it.pts, (it.kind == .carrier ? 6 : it.cls >= minor ? 1.5 : 2.5) * scale)
                     var i = 0
                     while i < pts.count - 1 {
                         let piece = Array(pts[i..<min(i + 255, pts.count)])

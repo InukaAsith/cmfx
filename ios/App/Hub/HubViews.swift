@@ -39,7 +39,7 @@ struct HubTab: View {
                         hub.spotify.signedIn && hub.youtube.signedIn ? "Spotify's songs, played from YouTube"
                             : "Sign in to Spotify and YouTube", SpotifyPlayerService.app)
                     row(GeminiPage(), "sparkles", .blue, "Gemini", Secrets.geminiKey.isEmpty ? "Add API key" : "Ready", GeminiService.app)
-                    row(MapsPage(), "map.fill", .orange, "Offline Maps", "Save a region to the watch", MapsService.app)
+                    row(MapsPage(), "map.fill", .orange, "Offline Maps", "A map the watch draws, with GPS", MapsService.app)
                     row(AtlasPage(), "map", TDColor.accent, "Maps",
                         hub.atlas.nav.active ? "Navigating" : "Search, routes and turns on the watch", AtlasService.app)
                     row(NavPage(), "location.north.line.fill", TDColor.accent, "Navigation",
@@ -296,44 +296,42 @@ struct MapsPage: View {
             }
             .glassCard()
             ZStack {
-                Map(position: $camera)
-                    .onMapCameraChange(frequency: .onEnd) { centre = $0.region.center }
-                Circle().strokeBorder(TDColor.accent, lineWidth: 2).frame(width: 150, height: 150).allowsHitTesting(false)
-                Circle().fill(TDColor.accent).frame(width: 8, height: 8)
+                Map(position: $camera) {
+                    // what is saved: the whole area, and the streets round the centre
+                    MapCircle(center: centre, radius: m.radiusKm * 1000)
+                        .foregroundStyle(TDColor.accent.opacity(0.08)).stroke(TDColor.accent, lineWidth: 2)
+                    MapCircle(center: centre, radius: min(m.detailKm, m.radiusKm) * 1000)
+                        .foregroundStyle(TDColor.accent.opacity(0.12)).stroke(TDColor.accent.opacity(0.7), lineWidth: 1)
+                }
+                .onMapCameraChange(frequency: .continuous) { centre = $0.region.center }
+                Circle().fill(TDColor.accent).frame(width: 8, height: 8).allowsHitTesting(false)
             }
             .frame(height: 320)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             if let picked { Text(picked).font(.footnote).foregroundStyle(TDColor.muted).padding(.horizontal, 6) }
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Radius")
-                    Slider(value: $m.radiusKm, in: 0.5...5, step: 0.5)
-                    Text(String(format: "%.1f km", m.radiusKm)).monospacedDigit().frame(width: 60, alignment: .trailing)
+                    Text("Area")
+                    Slider(value: $m.radiusKm, in: 1...VectorPack.maxRadiusKm, step: 1)
+                    Text("\(Int(m.radiusKm)) km").monospacedDigit().frame(width: 60, alignment: .trailing)
                 }
-                // how many zoom levels the watch gets, out from street level
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Zoom levels")
-                    Picker("Zoom levels", selection: $m.levels) {
-                        ForEach(1...5, id: \.self) { Text("\($0)").tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    Text(["Streets only", "Streets and the blocks round them", "Out to the neighbourhood",
-                          "Out to the district", "Out to the whole city"][m.levels - 1])
-                        .font(.footnote).foregroundStyle(TDColor.muted)
+                HStack {
+                    Text("Streets")
+                    Slider(value: $m.detailKm, in: 1...VectorPack.maxDetailKm, step: 0.5)
+                    Text(String(format: "%.1f km", min(m.detailKm, m.radiusKm))).monospacedDigit().frame(width: 60, alignment: .trailing)
                 }
-                let tiles = m.tileCount(centre)
-                Text(tiles > 400 ? "\(tiles) tiles: too many (400 at most). Make the radius smaller or pick fewer zoom levels."
-                     : "\(tiles) tiles. Open Offline Maps on the watch, then save.")
-                    .font(.footnote).foregroundStyle(tiles > 400 ? TDColor.accent : TDColor.muted)
+                Text("Main roads, water and towns reach \(Int(m.radiusKm)) km round the centre; streets and paths \(String(format: "%.1f", min(m.detailKm, m.radiusKm))) km. The watch draws the map itself, so it stays sharp at every zoom. \(m.cellCount) parts (empty ones are skipped). Open Offline Maps on the watch, then save.")
+                    .font(.footnote).foregroundStyle(TDColor.muted)
                 if let p = m.progress {
                     if let s = m.status { Working(text: s) }
                     ProgressView(value: Double(p.done), total: Double(max(p.total, 1)))
                     Button("Stop", role: .destructive) { m.cancel() }.secondaryButton()
                 } else {
-                    Button("Save to watch") { m.build(at: centre) }.primaryButton().disabled(tiles > 400)
+                    Button("Save to watch") { m.build(at: centre) }.primaryButton()
                     Status(text: m.status)
                 }
-            }
+                Text("On the watch: the GPS is on while Offline Maps is open. Mark drops a pin where you are, Track records your path, Back leads you along it to the start, all with no phone. Hold the map or tap a pin for Walk or Drive route: the phone finds it once, then the watch follows it alone. Map data © OpenStreetMap contributors, OpenFreeMap.")
+                    .font(.footnote).foregroundStyle(TDColor.muted)
             .glassCard()
         }
     }
@@ -350,7 +348,8 @@ struct MapsPage: View {
 
     private func show(_ p: Place) {
         let c = CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon)
-        withAnimation { camera = .region(MKCoordinateRegion(center: c, latitudinalMeters: 4000, longitudinalMeters: 4000)) }
+        let span = m.radiusKm * 2400
+        withAnimation { camera = .region(MKCoordinateRegion(center: c, latitudinalMeters: span, longitudinalMeters: span)) }
         centre = c
         picked = p.detail.isEmpty ? p.name : "\(p.name), \(p.detail)"
         results = []
