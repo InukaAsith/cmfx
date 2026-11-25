@@ -359,6 +359,23 @@ public enum BrowserProto {
     /// The watch goes to page view by itself: a page with no text, a video.
     public static let toPage = Data([UInt8(ascii: "G")])
 
+    /// After a page's `J`: `y scroll:u16 more` where the view starts on it and what else there is (1 more below,
+    /// 2 above, 4 no drawn view for this site: its mode button goes picture → text).
+    public static func pageInfo(scroll: Int = 0, more: UInt8) -> Data {
+        var d = Data([UInt8(ascii: "y")])
+        d.le(UInt16(clamping: max(scroll, 0)))
+        d.append(more)
+        return d
+    }
+
+    /// The sites the watch draws by default (their own look, laid out here): Google, YouTube, Wikipedia, Fandom.
+    /// Every other site comes as a picture of the page.
+    public static func known(_ u: URL?) -> Bool {
+        let h = (u?.host ?? "").lowercased()
+        return h.contains("google.") || h.hasSuffix("youtube.com") || h.hasSuffix("youtu.be")
+            || h.hasSuffix("wikipedia.org") || h.hasSuffix("fandom.com")
+    }
+
     /// A video page (YouTube, Instagram): opened in page view and played, its frames to the watch.
     public static func isVideo(_ u: URL) -> Bool {
         let h = (u.host ?? "").lowercased(), p = u.path.lowercased()
@@ -438,8 +455,10 @@ public enum BrowserProto {
     }
 
     public enum Ask: Equatable {
-        case ready, go(String), recent(Int), link(Int), back, view(page: Bool), tap(x: Int, y: Int), scroll(Int),
-             type(String), leave, toggle, seek(Int)
+        /// `view`: 0 text, 1 page view (drawn for the sites the watch knows, else a picture), 2 a picture of the page;
+        /// `remove`: a recent page held on the start screen (`D idx`)
+        case ready, go(String), recent(Int), link(Int), back, view(mode: Int), tap(x: Int, y: Int), scroll(Int),
+             type(String), leave, toggle, seek(Int), remove(Int)
     }
 
     public static func parse(_ m: Data) -> Ask? {
@@ -451,7 +470,8 @@ public enum BrowserProto {
         case ("O", 2): return .recent(Int(b[1]))
         case ("L", 2): return .link(Int(b[1]))
         case ("B", 1): return .back
-        case ("V", 2): return .view(page: b[1] == 1)
+        case ("V", 2): return .view(mode: Int(min(b[1], 2)))
+        case ("D", 2): return .remove(Int(b[1]))
         case ("T", 5): return .tap(x: Int(UInt16(b[1]) | UInt16(b[2]) << 8), y: Int(UInt16(b[3]) | UInt16(b[4]) << 8))
         case ("S", 3): return .scroll(Int(Int16(bitPattern: UInt16(b[1]) | UInt16(b[2]) << 8)))
         case ("W", 1...): return .type(String(decoding: b.dropFirst(), as: UTF8.self))

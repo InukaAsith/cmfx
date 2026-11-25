@@ -25,7 +25,12 @@ import WireKit
     /// reader view's pages before this one (back)
     private var history: [URL] = []
     private var links: [URL] = []
-    private var pageView = false
+    /// The watch's view: 0 text, 1 page view (drawn for the sites it knows, else a picture), 2 a picture of the page.
+    private var mode = 0
+    private var pageView: Bool {
+        get { mode != 0 }
+        set { mode = newValue ? 1 : 0 }
+    }
     private var gen = 0
     /// page view's last picture and the video frames: a newer ask drops an older one
     private var picGen = 0
@@ -55,7 +60,10 @@ import WireKit
         case .ready:
             history = []
             pageView = false
-            Task { await sendRecent() }
+            Task {
+                await sendRecent()
+                await primeLooks()
+            }
         case .go(let typed):
             // page view by default (the watch's reader button asks for text)
             history = []
@@ -72,9 +80,9 @@ import WireKit
             Task { await open(links[i], push: true) }
         case .back:
             Task { await back() }
-        case .view(let page):
-            pageView = page
-            if page {
+        case .view(let m):
+            mode = m
+            if m != 0 {
                 Task { await showPage() }
             } else {
                 stopMedia()
@@ -95,6 +103,12 @@ import WireKit
             Task { _ = await js(BrowserProto.toggleScript) }
         case .seek(let dt):
             Task { _ = await js(BrowserProto.seekScript(dt)) }
+        case .remove(let i):
+            // held on the watch's start screen: off the list (the watch took it off its own already)
+            var r = recent
+            guard r.indices.contains(i) else { return }
+            r.remove(at: i)
+            UserDefaults.standard.set(r.map { [$0.title, $0.url.absoluteString] }, forKey: Self.recentKey)
         }
     }
 
@@ -116,10 +130,22 @@ import WireKit
     private var made = false
 
     /// A script's answer as text ("1" for true), nil for none (WebKit's async call traps on an empty answer).
+    /// The page's answer to a script; nil after 6 s (iOS may hold a backgrounded web view's scripts while the
+    /// phone is locked: then the page view falls back rather than waiting for ever).
     private func js(_ s: String) async -> String? {
-        await withCheckedContinuation { (c: CheckedContinuation<String?, Never>) in
+        final class Once: @unchecked Sendable { var done = false }
+        let once = Once()
+        return await withCheckedContinuation { (c: CheckedContinuation<String?, Never>) in
             web.evaluateJavaScript(s) { r, _ in
+                guard !once.done else { return }
+                once.done = true
                 c.resume(returning: r.map { "\($0)" })
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(6))
+                guard !once.done else { return }
+                once.done = true
+                c.resume(returning: nil)
             }
         }
     }
@@ -430,7 +456,8 @@ import WireKit
         let h = max(1, Int((Double(w) * rect.height / rect.width).rounded()))
         for way in capturing.map({ [$0] }) ?? Capture.allCases {
             guard let rgb = await shot(rect, width: w, height: h, way) else { continue }
-            if capturing != nil || !Self.blank(rgb) {
+            // never a blank one, even after a way worked once (locked, asleep: iOS stops drawing the page)
+            if !Self.blank(rgb) {
                 if capturing == nil {
                     capturing = way
                     captureNote = "Pictures: \(way)"
@@ -439,6 +466,8 @@ import WireKit
             }
         }
         captureNote = "Pictures: every way came back blank"
+        // the next page tries every way again (the phone may be awake by then)
+        capturing = nil
         return nil
     }
 
@@ -486,9 +515,12 @@ import WireKit
         return true
     }
 
-    /// Page view (the watch's v5): the whole page laid out tall (12 screens at most), its images in, one picture of
-    /// it sent as a long picture (the watch shows its first screen as soon as it came, the rest while it is read);
-    /// then, while a video plays, its frames.
+    /// Page view: the whole page laid out tall (12 screens at most), its images in, sent once (the watch shows its
+    /// first screen as soon as it came, the rest while it is read). Google, YouTube, Wikipedia and Fandom are drawn on
+    /// the watch from their layout (sharp text in the watch's font, their look); every other site, and the mode
+    /// button's picture view, as a picture of the page. When iOS won't draw the page (the phone locked or asleep: a
+    /// snapshot comes back blank) nothing black goes out: the page is drawn from its layout, its images fetched from
+    /// their addresses and the site's own look (logos, icons) from what was kept the last time it could be drawn.
     private func snapshot() async {
         picGen += 1
         let g = picGen
@@ -508,17 +540,46 @@ import WireKit
         for _ in 0..<15 where (Int(await js(BrowserProto.imagesPending(tall)) ?? "0") ?? 0) > 0 {
             try? await Task.sleep(for: .milliseconds(100))
         }
+        let url = web.url ?? current
+        let known = BrowserProto.known(url)
+        let side = Double(Self.side)
+        let layout = await js(Layout.script(width: side, height: tall))
         let rows = (await js(BrowserProto.pageBoxes)).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [[Double]] } ?? []
+        if let t = await js("document.title"), let url, url.scheme?.hasPrefix("http") == true {
+            remember(t.isEmpty ? (url.host ?? "Page") : t, url)
+        }
         let w = Self.picture
         let got = await capture(CGRect(x: 0, y: 0, width: Self.side, height: tall), width: w)
         web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
         guard g == picGen else { return }
-        guard let got else {
-            await send([BrowserProto.note("Couldn't show the page: open CMFX on the phone")])
+        let h = got?.height ?? max(1, Int((Double(w) * tall / side).rounded()))
+        let rgb: [UInt8]
+        var drawn = known && mode == 1
+        if let got {
+            rgb = got.rgb
+            // the site's look kept for when the phone can't draw it
+            if known, let layout, let host = url?.host {
+                SiteLooks.save(host: host, json: layout, rgb: rgb, width: w, height: h, scale: Double(w) / side)
+            }
+        } else if let layout {
+            captureNote = "Phone locked: drawn from the page's layout"
+            rgb = await compose(layout, url: url, width: w, height: h)
+            drawn = true
+        } else {
+            // the phone won't run the page now (locked): its text, fetched without the browser
+            captureNote = "Phone locked: the page's text instead"
+            mode = 0
+            if let u = url ?? current { await open(u, push: false) }
             return
         }
+        guard g == picGen else { return }
+        let locked = got == nil
         let (msgs, came) = await Task.detached(priority: .userInitiated) {
-            Rle.longPicture(rgb: got.rgb, width: w, height: got.height, scale: 2)
+            if drawn, let layout,
+               let m = Layout.messages(json: layout, rgb: rgb, pw: w, ph: h, cssWidth: side, cssHeight: tall, always: locked) {
+                return m
+            }
+            return Rle.longPicture(rgb: rgb, width: w, height: h, scale: 2)
         }.value
         guard g == picGen else { return }
         let k = 466 / Self.side
@@ -526,12 +587,92 @@ import WireKit
             guard r.count == 5, Int(r[1] * k) < came else { return nil }
             return (Int(r[0] * k), Int(r[1] * k), Int(r[2] * k), Int(r[3] * k), UInt8(r[4]))
         }
-        await send(msgs + BrowserProto.boxes(boxes))
+        // a site the watch doesn't draw: its mode button goes picture → text
+        await send(msgs + [BrowserProto.pageInfo(more: known ? 0 : 4)] + BrowserProto.boxes(boxes))
         if let u = web.url { await send([BrowserProto.label(u)]) }
         if await playing() {
             await drained()
             if g == picGen { await video(g) }
         }
+    }
+
+    /// The known sites' looks kept before they are needed: while the watch is on its start screen and the phone
+    /// awake, each site not kept yet is opened here once and its logos and icons cut out (SiteLooks).
+    private func primeLooks() async {
+        guard UIApplication.shared.applicationState == .active else { return }
+        let have = Set(SiteLooks.sites())
+        let homes = ["https://www.google.com/search?q=weather", "https://m.youtube.com/",
+                     "https://en.wikipedia.org/wiki/Main_Page", "https://www.fandom.com/"]
+        let g = gen
+        for h in homes {
+            guard let u = URL(string: h), let site = u.host, !have.contains(SiteLooks.key(site)) else { continue }
+            guard g == gen, !pageView, UIApplication.shared.applicationState == .active else { return }
+            host()
+            committed = false
+            web.load(URLRequest(url: u))
+            await waitLoad()
+            try? await Task.sleep(for: .seconds(1))
+            guard g == gen, !pageView else { return }
+            let side = Double(Self.side)
+            web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side * 3)
+            let layout = await js(Layout.script(width: side, height: side * 3))
+            let w = Self.picture
+            let got = await capture(CGRect(x: 0, y: 0, width: Self.side, height: Self.side * 3), width: w)
+            web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
+            if let layout, let got {
+                SiteLooks.save(host: site, json: layout, rgb: got.rgb, width: w, height: got.height, scale: Double(w) / side)
+            }
+        }
+    }
+
+    /// The page's picture made here when iOS won't draw it: its own colour, the site's kept look where its images
+    /// were, then its images fetched from their addresses (4 s at most), `w` × `h` RGB.
+    private func compose(_ json: String, url: URL?, width w: Int, height h: Int) async -> [UInt8] {
+        let k = Double(w) / Double(Self.side)
+        let (boxes, sources) = Layout.images(json: json)
+        let kept = url?.host.map { SiteLooks.load(host: $0, boxes: boxes, scale: k) } ?? []
+        let wanted = Array(sources.filter { $0.w >= 8 && $0.h >= 8 && $0.y * k < Double(h) }.prefix(40))
+        var fetched: [Int: CGImage] = [:]
+        await withTaskGroup(of: (Int, CGImage?).self) { group in
+            for (i, s) in wanted.enumerated() {
+                guard let u = URL(string: s.url) else { continue }
+                group.addTask {
+                    var req = URLRequest(url: u)
+                    req.timeoutInterval = 4
+                    req.setValue(BrowserService.agent, forHTTPHeaderField: "User-Agent")
+                    guard let (d, _) = try? await URLSession.shared.data(for: req) else { return (i, nil) }
+                    return (i, UIImage(data: d)?.cgImage)
+                }
+            }
+            for await (i, img) in group { if let img { fetched[i] = img } }
+        }
+        let (r, g, b) = Layout.background(json: json)
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1
+        fmt.opaque = true
+        let out = UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: fmt).image { ctx in
+            UIColor(red: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            for look in kept {
+                if let cg = SiteLooks.image(look.rgb, width: look.pw, height: look.ph) {
+                    UIImage(cgImage: cg).draw(in: look.rect)
+                }
+            }
+            for (i, s) in wanted.enumerated() {
+                guard let img = fetched[i] else { continue }
+                let rect = CGRect(x: s.x * k, y: s.y * k, width: s.w * k, height: s.h * k)
+                // filled as the page's object-fit: cover does (the most common for pictures)
+                let iw = Double(img.width), ih = Double(img.height)
+                let f = max(rect.width / max(iw, 1), rect.height / max(ih, 1))
+                let dw = iw * f, dh = ih * f
+                ctx.cgContext.saveGState()
+                ctx.cgContext.clip(to: rect)
+                UIImage(cgImage: img).draw(in: CGRect(x: rect.midX - dw / 2, y: rect.midY - dh / 2, width: dw, height: dh))
+                ctx.cgContext.restoreGState()
+            }
+        }
+        guard let cg = out.cgImage else { return [UInt8](repeating: 255, count: w * h * 3) }
+        return Self.rgb(cg, width: w, height: h)
     }
 
     /// The next part of the page (`dir` 1 down, -1 up).

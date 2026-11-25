@@ -16,7 +16,9 @@ public enum Layout {
               const c = col(getComputedStyle(e).backgroundColor); if (c && c[3] > 0.5) { bgs.set(e, c); return c; } }
             return [255, 255, 255, 1]; };
           const box = r => [r.left, r.top + scrollY, r.width, r.height];
-          const out = { bg: under(document.body), boxes: [], frames: [], texts: [], imgs: [], canvas: 0, img: 0, video: 0, chars: 0 };
+          const out = { bg: under(document.body), boxes: [], frames: [], texts: [], imgs: [], srcs: [], canvas: 0, img: 0, video: 0, chars: 0 };
+          // where an image comes from: fetched by the phone when it can't draw the page (locked)
+          const src = (r, u) => { if (u && !u.startsWith('blob:')) out.srcs.push([...box(r), u]); };
           // what a box's overflow cuts off (a collapsed "more" block, a carousel's hidden cards) is not on the page:
           // the window each element is seen through, from its clipping ancestors
           const clips = new Map();
@@ -48,14 +50,16 @@ public enum Layout {
                 const pl = parseFloat(st.paddingLeft) || 0;
                 out.texts.push([r.left + pl, r.top + scrollY, Math.max(10, r.width - pl), r.height, c[0], c[1], c[2], 0, v.slice(0, 80)]); out.chars += v.length; }
             }
-            if (tag == 'img' || tag == 'svg' || tag == 'picture') { if (tag != 'picture') { out.img += area; out.imgs.push(box(r)); } continue; }
+            if (tag == 'img' || tag == 'svg' || tag == 'picture') { if (tag != 'picture') { out.img += area; out.imgs.push(box(r));
+                if (tag == 'img') src(r, e.currentSrc || e.src); } continue; }
             // an icon drawn by a mask (its colour in a shape): a picture, never a solid box
             const mask = st.webkitMaskImage || st.maskImage || 'none';
             if (mask != 'none') { if (r.width <= 64 && r.height <= 64) { out.img += area; out.imgs.push(box(r)); } continue; }
             // a background picture: only where no text is on it (a heading's arrow, a button's icon would bring a
             // picture of the page's own text under the watch's)
             const bi = st.backgroundImage;
-            if (bi && bi.includes('url(') && r.width * r.height > 64 && !(e.innerText || '').trim()) { out.img += area; out.imgs.push(box(r)); }
+            if (bi && bi.includes('url(') && r.width * r.height > 64 && !(e.innerText || '').trim()) { out.img += area; out.imgs.push(box(r));
+              const m = /url\\(["']?([^"')]+)/.exec(bi); if (m) src(r, new URL(m[1], location.href).href); }
             const c = col(st.backgroundColor);
             if (c && c[3] > 0.5) { const p = under(e.parentElement);
               if (Math.abs(c[0] - p[0]) + Math.abs(c[1] - p[1]) + Math.abs(c[2] - p[2]) > 6)
@@ -107,7 +111,23 @@ public enum Layout {
         let frames: [[Double]]
         let texts: [[Value]]
         let imgs: [[Double]]
+        var srcs: [[Value]]? = nil
         let canvas: Double, img: Double, video: Double, chars: Int
+    }
+
+    /// The page's image places (CSS px: x, y, w, h) and, where it has one, the address each comes from.
+    public static func images(json: String) -> (boxes: [[Double]], sources: [(x: Double, y: Double, w: Double, h: Double, url: String)]) {
+        guard let r = try? JSONDecoder().decode(Read.self, from: Data(json.utf8)) else { return ([], []) }
+        let s = (r.srcs ?? []).compactMap { v -> (x: Double, y: Double, w: Double, h: Double, url: String)? in
+            v.count == 5 ? (v[0].n, v[1].n, v[2].n, v[3].n, v[4].s) : nil
+        }
+        return (r.imgs.filter { $0.count == 4 }, s)
+    }
+
+    /// The page's own colour (what is under everything), RGB.
+    public static func background(json: String) -> (UInt8, UInt8, UInt8) {
+        guard let r = try? JSONDecoder().decode(Read.self, from: Data(json.utf8)), r.bg.count >= 3 else { return (255, 255, 255) }
+        return (UInt8(clamping: Int(r.bg[0])), UInt8(clamping: Int(r.bg[1])), UInt8(clamping: Int(r.bg[2])))
     }
 
     enum Value: Decodable {
