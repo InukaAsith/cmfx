@@ -149,9 +149,11 @@ public enum Layout {
 
     /// The page drawn: `J h`, per slab of the page (one watch screen) its boxes, its images (cut out of `rgb`, the
     /// page's picture `pw` px wide), its text, as `o`/`p` ops and `I`/`D`/`E` bands; `j`. Nil: a fancy page (send
-    /// its picture). `cssWidth` / `cssHeight` the page as laid out; `cap` what the watch keeps.
+    /// its picture). `cssWidth` / `cssHeight` the page as laid out; `cap` what the watch keeps. `logo`: the site's
+    /// logo built into the watch app (BrowserProto.logo): the image at the head of the page is drawn by the watch
+    /// (`g x y w h id`, its own copy in the box) instead of cut out of the picture.
     public static func messages(json: String, rgb: [UInt8], pw: Int, ph: Int, cssWidth: Double, cssHeight: Double,
-                                cap: Int = 55 * 1024, imageCap: Int = 22 * 1024, always: Bool = false)
+                                cap: Int = 49 * 1024, imageCap: Int = 22 * 1024, always: Bool = false, logo: UInt8? = nil)
         -> (messages: [Data], height: Int)? {
         // `always`: drawn even when fancy (a site the watch is told to draw)
         guard let r = try? JSONDecoder().decode(Read.self, from: Data(json.utf8)),
@@ -227,6 +229,14 @@ public enum Layout {
             images.append((y, y + h, x, y, w, h))
         }
         images.sort { $0.top < $1.top }
+        // the site's logo: the first image of some size at the head of the page
+        if let logo, let i = images.firstIndex(where: { $0.top < 280 && $0.w >= 24 && $0.h >= 16 }) {
+            let im = images.remove(at: i)
+            var d = Data([UInt8(ascii: "g")])
+            d.le(Int16(clamping: im.x)); d.le(UInt16(clamping: im.y)); d.le(UInt16(clamping: im.w)); d.le(UInt16(clamping: im.h))
+            d.append(logo)
+            under.append(Op(top: im.y, bottom: im.y + im.h, bytes: d))
+        }
 
         let slab = 466
         var out: [Data] = []

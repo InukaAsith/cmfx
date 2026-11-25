@@ -23,7 +23,7 @@ import Foundation
 
     /// Watch px a picture pixel (3: 155 px across, under half the bytes of 2), screens a part (two: it comes quickly,
     /// the next on scrolling), bytes the watch keeps.
-    static let scale = 3, steps = 2, cap = 55 * 1024
+    static let scale = 3, steps = 2, cap = 49 * 1024
 
     public init(side: Double, js: @escaping (String) async -> String?,
                 shot: @escaping (CGRect, Int) async -> (rgb: [UInt8], height: Int)?) {

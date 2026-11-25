@@ -92,7 +92,7 @@ extension Rle {
     /// of `band` rows top down, each with its own 16 colours (`I` with its page place as y0 / `D`… / `E`), as many as
     /// fit `cap` bytes on the watch, then `j`. → the messages and the height that went, panel px.
     public static func longPicture(rgb: [UInt8], width: Int, height: Int, scale: UInt8 = 2, band: Int = 32,
-                                   cap: Int = 55 * 1024, colours: Int = 16) -> (messages: [Data], height: Int) {
+                                   cap: Int = 49 * 1024, colours: Int = 16) -> (messages: [Data], height: Int) {
         var parts: [Data] = []
         var used = 0, rows = 0
         while rows < height, rows / band < 96 {

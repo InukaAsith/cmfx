@@ -60,10 +60,7 @@ import WireKit
         case .ready:
             history = []
             pageView = false
-            Task {
-                await sendRecent()
-                await primeLooks()
-            }
+            Task { await sendRecent() }
         case .go(let typed):
             // page view by default (the watch's reader button asks for text)
             history = []
@@ -112,13 +109,26 @@ import WireKit
         }
     }
 
-    /// Another watch app talks, or the Browser closed: the page's sound and pictures stop.
+    /// Another watch app talks, or the Browser closed: the page's sound and pictures stop, and what the browser
+    /// cached on disk while it ran is deleted (its cookies stay: sites signed in to stay signed in).
     func otherApp() {
         picGen += 1
         outbox = []
         stopMedia()
         pageView = false
+        guard made else { return }
+        let caches: Set<String> = [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache, WKWebsiteDataTypeFetchCache,
+                                   WKWebsiteDataTypeOfflineWebApplicationCache]
+        WKWebsiteDataStore.default().removeData(ofTypes: caches, modifiedSince: .distantPast) {}
     }
+
+    /// Images fetched for a page drawn while the phone is locked: memory only, nothing on disk.
+    nonisolated static let fetcher: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.urlCache = nil
+        c.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: c)
+    }()
 
     private func stopMedia() {
         picGen += 1
@@ -520,7 +530,7 @@ import WireKit
     /// the watch from their layout (sharp text in the watch's font, their look); every other site, and the mode
     /// button's picture view, as a picture of the page. When iOS won't draw the page (the phone locked or asleep: a
     /// snapshot comes back blank) nothing black goes out: the page is drawn from its layout, its images fetched from
-    /// their addresses and the site's own look (logos, icons) from what was kept the last time it could be drawn.
+    /// their addresses; the known sites' logos are the watch app's own copies (nothing is kept on the phone).
     private func snapshot() async {
         picGen += 1
         let g = picGen
@@ -557,10 +567,6 @@ import WireKit
         var drawn = known && mode == 1
         if let got {
             rgb = got.rgb
-            // the site's look kept for when the phone can't draw it
-            if known, let layout, let host = url?.host {
-                SiteLooks.save(host: host, json: layout, rgb: rgb, width: w, height: h, scale: Double(w) / side)
-            }
         } else if let layout {
             captureNote = "Phone locked: drawn from the page's layout"
             rgb = await compose(layout, url: url, width: w, height: h)
@@ -574,9 +580,11 @@ import WireKit
         }
         guard g == picGen else { return }
         let locked = got == nil
+        // the site's logo: the watch's own copy (built into the app), sharp and never black
+        let logo = drawn ? BrowserProto.logo(url) : nil
         let (msgs, came) = await Task.detached(priority: .userInitiated) {
             if drawn, let layout,
-               let m = Layout.messages(json: layout, rgb: rgb, pw: w, ph: h, cssWidth: side, cssHeight: tall, always: locked) {
+               let m = Layout.messages(json: layout, rgb: rgb, pw: w, ph: h, cssWidth: side, cssHeight: tall, always: locked, logo: logo) {
                 return m
             }
             return Rle.longPicture(rgb: rgb, width: w, height: h, scale: 2)
@@ -596,41 +604,11 @@ import WireKit
         }
     }
 
-    /// The known sites' looks kept before they are needed: while the watch is on its start screen and the phone
-    /// awake, each site not kept yet is opened here once and its logos and icons cut out (SiteLooks).
-    private func primeLooks() async {
-        guard UIApplication.shared.applicationState == .active else { return }
-        let have = Set(SiteLooks.sites())
-        let homes = ["https://www.google.com/search?q=weather", "https://m.youtube.com/",
-                     "https://en.wikipedia.org/wiki/Main_Page", "https://www.fandom.com/"]
-        let g = gen
-        for h in homes {
-            guard let u = URL(string: h), let site = u.host, !have.contains(SiteLooks.key(site)) else { continue }
-            guard g == gen, !pageView, UIApplication.shared.applicationState == .active else { return }
-            host()
-            committed = false
-            web.load(URLRequest(url: u))
-            await waitLoad()
-            try? await Task.sleep(for: .seconds(1))
-            guard g == gen, !pageView else { return }
-            let side = Double(Self.side)
-            web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side * 3)
-            let layout = await js(Layout.script(width: side, height: side * 3))
-            let w = Self.picture
-            let got = await capture(CGRect(x: 0, y: 0, width: Self.side, height: Self.side * 3), width: w)
-            web.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
-            if let layout, let got {
-                SiteLooks.save(host: site, json: layout, rgb: got.rgb, width: w, height: got.height, scale: Double(w) / side)
-            }
-        }
-    }
-
-    /// The page's picture made here when iOS won't draw it: its own colour, the site's kept look where its images
-    /// were, then its images fetched from their addresses (4 s at most), `w` × `h` RGB.
+    /// The page's picture made here when iOS won't draw it: its own colour, then its images fetched from their
+    /// addresses (4 s at most, in memory only: no cache on disk), `w` × `h` RGB.
     private func compose(_ json: String, url: URL?, width w: Int, height h: Int) async -> [UInt8] {
         let k = Double(w) / Double(Self.side)
-        let (boxes, sources) = Layout.images(json: json)
-        let kept = url?.host.map { SiteLooks.load(host: $0, boxes: boxes, scale: k) } ?? []
+        let (_, sources) = Layout.images(json: json)
         let wanted = Array(sources.filter { $0.w >= 8 && $0.h >= 8 && $0.y * k < Double(h) }.prefix(40))
         var fetched: [Int: CGImage] = [:]
         await withTaskGroup(of: (Int, CGImage?).self) { group in
@@ -640,7 +618,7 @@ import WireKit
                     var req = URLRequest(url: u)
                     req.timeoutInterval = 4
                     req.setValue(BrowserService.agent, forHTTPHeaderField: "User-Agent")
-                    guard let (d, _) = try? await URLSession.shared.data(for: req) else { return (i, nil) }
+                    guard let (d, _) = try? await BrowserService.fetcher.data(for: req) else { return (i, nil) }
                     return (i, UIImage(data: d)?.cgImage)
                 }
             }
@@ -653,11 +631,6 @@ import WireKit
         let out = UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: fmt).image { ctx in
             UIColor(red: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: 1).setFill()
             ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
-            for look in kept {
-                if let cg = SiteLooks.image(look.rgb, width: look.pw, height: look.ph) {
-                    UIImage(cgImage: cg).draw(in: look.rect)
-                }
-            }
             for (i, s) in wanted.enumerated() {
                 guard let img = fetched[i] else { continue }
                 let rect = CGRect(x: s.x * k, y: s.y * k, width: s.w * k, height: s.h * k)

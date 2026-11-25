@@ -368,6 +368,16 @@ public enum BrowserProto {
         return d
     }
 
+    /// The site's logo built into the watch's Browser (its ids): 0 Google, 1 YouTube, 2 Wikipedia, 3 Fandom.
+    public static func logo(_ u: URL?) -> UInt8? {
+        let h = (u?.host ?? "").lowercased()
+        if h.contains("google.") { return 0 }
+        if h.hasSuffix("youtube.com") || h.hasSuffix("youtu.be") { return 1 }
+        if h.hasSuffix("wikipedia.org") { return 2 }
+        if h.hasSuffix("fandom.com") { return 3 }
+        return nil
+    }
+
     /// The sites the watch draws by default (their own look, laid out here): Google, YouTube, Wikipedia, Fandom.
     /// Every other site comes as a picture of the page.
     public static func known(_ u: URL?) -> Bool {
