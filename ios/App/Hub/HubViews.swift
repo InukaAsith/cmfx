@@ -269,6 +269,7 @@ struct MapsPage: View {
     @State private var results: [Place] = []
     @State private var searching = false
     @State private var picked: String?
+    @State private var confirmClean = false
 
     var body: some View {
         PageScroll(title: "Offline Maps") {
@@ -328,7 +329,13 @@ struct MapsPage: View {
                     Button("Stop", role: .destructive) { m.cancel() }.secondaryButton()
                 } else {
                     Button("Save to watch") { m.build(at: centre) }.primaryButton()
-                    Status(text: m.status)
+                    Button("Clean storage on the watch", role: .destructive) { confirmClean = true }
+                        .secondaryButton().disabled(m.cleaning)
+                        .confirmationDialog("Delete everything Offline Maps keeps on the watch: the map, leftovers of older versions and the pins?",
+                                            isPresented: $confirmClean, titleVisibility: .visible) {
+                            Button("Clean storage", role: .destructive) { m.cleanWatch() }
+                        }
+                    if m.cleaning, let s = m.status { Working(text: s) } else { Status(text: m.status) }
                 }
                 Text("On the watch: the GPS is on while Offline Maps is open. Mark drops a pin where you are, Track records your path, Back leads you along it to the start, all with no phone. Hold the map or tap a pin for Walk or Drive route: the phone finds it once, then the watch follows it alone. Map data © OpenStreetMap contributors, OpenFreeMap.")
                     .font(.footnote).foregroundStyle(TDColor.muted)

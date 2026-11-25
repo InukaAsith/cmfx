@@ -17,6 +17,7 @@ import UIKit
     /// Streets and paths round the centre.
     var detailKm = 3.0
     private(set) var progress: (done: Int, total: Int)?
+    private(set) var cleaning = false
     var status: String?
     private var acks: [CheckedContinuation<Data, Never>] = []
     private var job: Task<Void, Never>?
@@ -26,6 +27,12 @@ import UIKit
         switch m.first {
         case UInt8(ascii: "a"), UInt8(ascii: "k"), UInt8(ascii: "w"):
             if !acks.isEmpty { acks.removeFirst().resume(returning: m) }
+        case UInt8(ascii: "x") where m.count == 4:
+            // the watch cleaned its storage: files deleted, 0 all, 1 some it couldn't see, 2 only the map
+            let n = Int(m[1]) | Int(m[2]) << 8
+            status = ["Watch storage clean: \(n) files deleted", "\(n) files deleted; some were out of the watch's view: clean again",
+                      "Only the map deleted (the watch's loader needs updating to clean everything)"][min(Int(m[3]), 2)]
+            cleaning = false
         case UInt8(ascii: "D"):
             if let ask = VectorPack.parseAsk(m) { Task { await route(ask) } }
         default: break
@@ -40,6 +47,20 @@ import UIKit
     func build(at c: CLLocationCoordinate2D) {
         job?.cancel()
         job = Task { await run(c) }
+    }
+
+    /// Everything Offline Maps keeps on the watch goes: the map, older versions' leftovers, the pins.
+    func cleanWatch() {
+        job?.cancel()
+        progress = nil
+        cleaning = true
+        status = "Cleaning the watch's storage…"
+        Task {
+            do { try await Hub.shared.send(Self.app, Data("X".utf8)) } catch {
+                cleaning = false
+                status = error.localizedDescription
+            }
+        }
     }
 
     func cancel() {
