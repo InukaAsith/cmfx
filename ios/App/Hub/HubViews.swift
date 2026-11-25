@@ -339,6 +339,7 @@ struct MapsPage: View {
                 }
                 Text("On the watch: the GPS is on while Offline Maps is open. Mark drops a pin where you are, Track records your path, Back leads you along it to the start, all with no phone. Hold the map or tap a pin for Walk or Drive route: the phone finds it once, then the watch follows it alone. Map data © OpenStreetMap contributors, OpenFreeMap.")
                     .font(.footnote).foregroundStyle(TDColor.muted)
+            }
             .glassCard()
         }
     }
