@@ -97,11 +97,17 @@ import WireKit
             nav.resync()
         case .watchFix(let lat, let lon, let alt, let sats):
             nav.watch(lat: lat, lon: lon, alt: alt, sats: sats)
-            // the watch's ◎ steady red: it is in use (said every few fixes, the watch waits 6 s)
+            // the watch's ◎: in use, with the phone's own fix too (orange) or not (red); said every few fixes, the
+            // watch waits 6 s
             if -watchSaid.timeIntervalSinceNow >= 3 {
                 watchSaid = .now
-                Task { try? await Hub.shared.send(Self.app, AtlasProto.usingWatchGPS) }
+                let phone = nav.phoneHasFix()
+                Task { try? await Hub.shared.send(Self.app, AtlasProto.usingWatchGPS(phone: phone)) }
             }
+        case .watchLooking:
+            // the watch looks for satellites: ◎ blinks orange with the phone's own fix, red without
+            let phone = nav.phoneHasFix()
+            Task { try? await Hub.shared.send(Self.app, AtlasProto.usingWatchGPS(phone: phone)) }
         case .watchGPSOff:
             nav.watchOff()
         case .stop:

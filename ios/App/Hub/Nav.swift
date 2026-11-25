@@ -524,6 +524,20 @@ import UIKit
     }
 
     private var fixWaiters: [CheckedContinuation<CLLocation?, Never>] = []
+    private var phoneAsked: Date = .distantPast
+
+    /// The phone has a fix of its own from the last minute (the watch's GPS in use: Maps' ◎ orange, both). Asks
+    /// for one when it is older than 30 s, at most every 30 s: one fix, not the GPS kept on.
+    func phoneHasFix() -> Bool {
+        let age = manager.location.map { -$0.timestamp.timeIntervalSinceNow } ?? .infinity
+        let ok = age < 60 && (manager.location?.horizontalAccuracy ?? .infinity) < 100
+        if age >= 30, -phoneAsked.timeIntervalSinceNow >= 30,
+           [.authorizedWhenInUse, .authorizedAlways].contains(manager.authorizationStatus) {
+            phoneAsked = .now
+            manager.requestLocation()
+        }
+        return ok
+    }
     private var authWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// Where the phone is now: asks for location access the first time, then one fix (10 s at most).

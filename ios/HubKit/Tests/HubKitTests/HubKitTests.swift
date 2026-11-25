@@ -34,7 +34,9 @@ import HubKit
     guard case .watchFix(let lat, let lon, let alt, let sats) = AtlasProto.parse(m) else { Issue.record("no fix"); return }
     #expect(abs(lat - 6.9271) < 1e-7 && abs(lon - 79.8612) < 1e-7 && alt == 10 && sats == 8)
     #expect(AtlasProto.parse(Data("y".utf8)) == .watchGPSOff)
-    #expect(AtlasProto.usingWatchGPS == Data("y".utf8))
+    #expect(AtlasProto.parse(Data("Y".utf8)) == .watchLooking)
+    #expect(AtlasProto.usingWatchGPS(phone: true) == Data([0x79, 1]))
+    #expect(AtlasProto.usingWatchGPS(phone: false) == Data([0x79, 0]))
 }
 
 @Test func offlineMapsPack() {

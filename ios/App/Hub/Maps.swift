@@ -22,6 +22,7 @@ import UIKit
     private var acks: [CheckedContinuation<Data, Never>] = []
     private var job: Task<Void, Never>?
     private let tiles = VectorTiles()
+    private let here = PhoneFix()
 
     func receive(_ m: Data) {
         switch m.first {
@@ -35,6 +36,11 @@ import UIKit
             cleaning = false
         case UInt8(ascii: "D"):
             if let ask = VectorPack.parseAsk(m) { Task { await route(ask) } }
+        case UInt8(ascii: "l"):
+            // the watch asks where the phone is (every 2 s while Offline Maps is open): it uses it while its own
+            // GPS has no fix
+            let r = here.ask()
+            Task { try? await Hub.shared.send(Self.app, r) }
         default: break
         }
     }
@@ -156,4 +162,54 @@ import UIKit
             try? await Hub.shared.send(Self.app, VectorPack.routeFailed("No route: needs the internet"))
         }
     }
+}
+
+/// The phone's location for Offline Maps: on while the watch asks (`l`), off 8 s after it stops (the app closed,
+/// out of reach). The answer is `L lat_e7:i32 lon_e7:i32 acc_m:u16`, or a bare `L` with no fix.
+@MainActor final class PhoneFix: NSObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    private var on = false
+    private var askedAt: Date = .distantPast
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.distanceFilter = 3
+    }
+
+    func ask() -> Data {
+        askedAt = .now
+        if !on {
+            if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }
+            on = true
+            manager.allowsBackgroundLocationUpdates = true
+            manager.showsBackgroundLocationIndicator = true
+            manager.startUpdatingLocation()
+            Task { await idle() }
+        }
+        var m = Data([UInt8(ascii: "L")])
+        guard let l = manager.location, -l.timestamp.timeIntervalSinceNow < 10, l.horizontalAccuracy >= 0,
+              l.horizontalAccuracy < 100 else { return m }
+        for v in [Int32((l.coordinate.latitude * 1e7).rounded()), Int32((l.coordinate.longitude * 1e7).rounded())] {
+            withUnsafeBytes(of: v.littleEndian) { m.append(contentsOf: $0) }
+        }
+        withUnsafeBytes(of: UInt16(l.horizontalAccuracy.rounded()).littleEndian) { m.append(contentsOf: $0) }
+        return m
+    }
+
+    /// Off once the watch stops asking.
+    private func idle() async {
+        while on {
+            try? await Task.sleep(for: .seconds(4))
+            if -askedAt.timeIntervalSinceNow >= 8 {
+                on = false
+                manager.stopUpdatingLocation()
+                manager.allowsBackgroundLocationUpdates = false
+            }
+        }
+    }
+
+    nonisolated func locationManager(_ m: CLLocationManager, didUpdateLocations locs: [CLLocation]) {}
+    nonisolated func locationManager(_ m: CLLocationManager, didFailWithError error: Error) {}
 }
