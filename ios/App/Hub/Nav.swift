@@ -45,7 +45,7 @@ import UIKit
         if let p = watchFix {
             let d = here.distance(from: p), dt = -p.timestamp.timeIntervalSinceNow
             if dt > 0, dt < 10 { speed = d / dt }
-            // moving: the course from the last fix (standing still the compass keeps the heading)
+            // moving: the course from the last fix (standing still the last one stays)
             if d >= 3 { course = Self.bearing(p.coordinate, c) } else if p.course >= 0, speed >= 0 { course = p.course }
         }
         // the receiver's accuracy isn't given: a few satellites, a wider guess
@@ -252,7 +252,6 @@ import UIKit
         manager.allowsBackgroundLocationUpdates = true
         manager.showsBackgroundLocationIndicator = true
         manager.startUpdatingLocation()
-        manager.startUpdatingHeading()
         lastS = nil
         progress = []
         offCount = 0
@@ -617,7 +616,6 @@ import UIKit
         ticker = nil
         active = false
         manager.stopUpdatingLocation()
-        manager.stopUpdatingHeading()
         manager.allowsBackgroundLocationUpdates = false
     }
 
@@ -768,7 +766,6 @@ import UIKit
         let secs = timeLeft(left: left, s: s)
         let eta = Calendar.current.dateComponents([.hour, .minute], from: .now + secs)
         let heading = heading(for: loc)
-        lastP = p
         try? await Hub.shared.send(target, [
             NavProto.position(x: p.0, y: p.1, heading: heading),
             NavProto.step(idx: idx, kind: st.kind, dir: st.dir, distM: Int(st.at - s), etaMin: Int(secs / 60),
@@ -777,36 +774,8 @@ import UIKit
         if idx != lastIdx { lastIdx = idx }
     }
 
-    /// Where the map on the watch points: the way we move when we really move, else the iPhone's compass (standing,
-    /// walking slowly: the course is noise or none), so the heading-up map turns as the phone turns.
-    private func heading(for loc: CLLocation) -> Double {
-        if loc.course >= 0, loc.speed > 2 { return loc.course }
-        return compass ?? max(loc.course, 0)
-    }
-
-    /// The iPhone's compass heading (true north when known), and the last position sent.
-    private var compass: Double?
-    private var lastP: (Double, Double)?
-    private var headingSentAt: Date = .distantPast
-    private var headingSent: Double?
-
-    nonisolated func locationManager(_ m: CLLocationManager, didUpdateHeading h: CLHeading) {
-        let deg = h.trueHeading >= 0 ? h.trueHeading : h.magneticHeading
-        guard h.headingAccuracy >= 0 else { return }
-        Task { @MainActor in self.turned(deg) }
-    }
-
-    /// The compass moved: the position again with the new heading (not the turn: that comes with the fixes), at most
-    /// 4 times a second and only on a turn of 6° or more, and only while the GPS course isn't in charge.
-    private func turned(_ deg: Double) {
-        compass = deg
-        guard active, !rerouting, let p = lastP, let loc = phoneOrWatch, !(loc.course >= 0 && loc.speed > 2) else { return }
-        let moved = headingSent.map { abs((deg - $0 + 540).truncatingRemainder(dividingBy: 360) - 180) } ?? 360
-        guard moved >= 6, -headingSentAt.timeIntervalSinceNow >= 0.25 else { return }
-        headingSentAt = .now
-        headingSent = deg
-        Task { try? await Hub.shared.send(target, NavProto.position(x: p.0, y: p.1, heading: deg)) }
-    }
+    /// Where the map on the watch points: the way we move (no phone compass: in a pocket it points anywhere).
+    private func heading(for loc: CLLocation) -> Double { max(loc.course, 0) }
 
     /// The watch heard nothing for a while (`N`): the route and where we are again, or, with no route on any more,
     /// Navigation back to its start.
