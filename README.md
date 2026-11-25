@@ -1,7 +1,11 @@
 # CMFX
 
-An iPhone companion for the **CMF Watch Pro 2** with the patched app-loader firmware
-([cmf-watch-sdk](https://github.com/InukaAsith)): it runs next to Nothing X, which keeps its connection and health sync.
+An iPhone companion for the **CMF Watch Pro 2** with the patched app-loader firmware: it runs next to Nothing X, which
+keeps its connection and health sync.
+
+The watch apps, the app loader and the protocols come from the modified SDK fork,
+**[InukaAsith/cmf-watch-sdk](https://github.com/InukaAsith/cmf-watch-sdk)** (branch `main`; its releases hold the
+watch apps this app bundles and the loader), based on [fmctools/cmf-watch-sdk](https://github.com/fmctools/cmf-watch-sdk).
 
 - **Faces, Apps, Firmware, phone services**: everything from FMC Companion (watch-face catalogue, app store and
   installs, loader and firmware updates, calendar, reminders, weather, notifications for watch apps).
@@ -74,7 +78,7 @@ The watch needs the app-loader firmware once. **Watch › Firmware & App Loader*
 
 - **From fmc.tools**: **Check for updates**, then **Install** (or **Update**). It is about 57 MB.
 - **From a file**: **Install firmware from a file…** and pick an OTA image for the CMF Watch Pro 2 (the patched
-  firmware from fmc.tools, or one built with cmf-watch-sdk's `make fw-ota`). CMFX checks it before anything goes out.
+  firmware from fmc.tools, or one built with [cmf-watch-sdk](https://github.com/InukaAsith/cmf-watch-sdk)'s `make fw-ota`). CMFX checks it before anything goes out.
 - **Reinstall**: the same image again, for a watch that misbehaves after an update.
 
 Before you start: charge the watch, keep the phone next to it, and **close Nothing X** (swipe it away). Keep CMFX

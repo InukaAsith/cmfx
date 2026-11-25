@@ -14,10 +14,11 @@ else
     auth=()
     [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
     rel=$(curl -fsSL ${auth[@]+"${auth[@]}"} "https://api.github.com/repos/$repo/releases?per_page=50")
-    # newest first: the first release (drafts and pre-releases aside) carrying apps.json; every asset of it
+    # the newest (by when it was published: the API's own order isn't by date) release, drafts and pre-releases
+    # aside, carrying apps.json; every asset of it
     python3 -c '
 import json, sys
-for r in json.load(sys.stdin):
+for r in sorted(json.load(sys.stdin), key=lambda r: r.get("published_at") or "", reverse=True):
     if r["draft"] or r["prerelease"]: continue
     names = [a["name"] for a in r["assets"]]
     if "apps.json" not in names: continue
