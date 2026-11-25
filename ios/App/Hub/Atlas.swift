@@ -91,6 +91,8 @@ import WireKit
                 try? await Hub.shared.send(Self.app, AtlasProto.navigating)
                 await nav.begin()
             }
+        case .resync:
+            nav.resync()
         case .stop:
             nav.stop()
         case .again(let id):

@@ -375,6 +375,8 @@ struct AppsView: View {
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
             }
+            // the apps made for CMFX, in the IPA itself: no store needed
+            if !editMode.isEditing { BundledAppsSection() }
             if loading {
                 Section {
                     ForEach(0..<6, id: \.self) { _ in
@@ -494,7 +496,10 @@ struct AppView: View {
 
     var body: some View {
         let app = WatchApp.all(watch.listedLoader, perms).first { $0.name == name } ?? WatchApp(name: name, header: nil, slot: nil)
-        let caps = perms.caps(name)
+        // asked ones first; an app on the watch also offers the phone's own services ahead of its first ask (the
+        // spec's pre-filled grants), so Calendar or Reminders apps can be allowed before they need it
+        let asked = perms.caps(name)
+        let caps = app.slot == nil ? asked : asked + Permissions.offered.filter { !asked.contains($0) }
         let listing = StoreApps.shared.listing(name)
         List {
             if store, let listing { storeSections(app, listing) } else { settingsSections(app, caps, listing) }
@@ -801,6 +806,134 @@ struct HeadersView: View {
         .onChange(of: rows) {
             Permissions.shared.setHeaders(package, host, rows.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
                 .map { HTTPHeader(name: $0.name, value: $0.value) })
+        }
+    }
+}
+
+/// The watch apps that came with this build of CMFX: CI puts the newest cmf-watch-sdk apps release in the app
+/// (ios/fetch-apps.sh), App/WatchApps/<crate>.wp2app with apps.json listing them. Installed from the Apps page
+/// without fmc.tools.
+@MainActor @Observable final class BundledApps {
+    static let shared = BundledApps()
+    struct App: Identifiable {
+        var id: String { name }
+        let name: String
+        let package: Data
+        let header: PackageHeader
+    }
+    let all: [App]
+    /// name → 0…1 while installing
+    private(set) var progress: [String: Double] = [:]
+    private(set) var installingAll = false
+    var error: String?
+
+    private init() {
+        struct Entry: Decodable { var file: String; var name: String }
+        let dir = Bundle.main.resourceURL
+        let list = Bundle.main.url(forResource: "apps", withExtension: "json")
+            .flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode([Entry].self, from: $0) } ?? []
+        all = list.compactMap { e in
+            guard let url = dir?.appending(path: e.file), let pkg = try? Data(contentsOf: url), let h = parseHeader(pkg) else { return nil }
+            return App(name: h.name, package: pkg, header: h)
+        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    enum State { case missing, older, current }
+
+    func state(_ app: App, _ loader: LoaderState?) -> State {
+        guard let on = loader?.apps.values.first(where: { $0.name == app.name }) else { return .missing }
+        return on.version < app.header.version ? .older : .current
+    }
+
+    func install(_ app: App, _ watch: WatchModel) async {
+        guard progress[app.name] == nil else { return }
+        progress[app.name] = 0
+        defer { progress[app.name] = nil }
+        do {
+            try await FirmwareModel.install(app.package) { p in Task { @MainActor in self.progress[app.name] = p } }
+            DevLog.shared.log("\(app.name) installed (bundled v\(app.header.version))")
+        } catch InstallError.busy {
+            error = String(localized: "\(app.name) or the Apps menu is open on the watch. Go back to the watch face, then try again.")
+        } catch InstallError.noFreeSlot(let slots) {
+            error = String(localized: "All \(slots) app slots on the watch are taken. Delete an app first.")
+        } catch {
+            self.error = String(localized: "Couldn't install \(app.name): \(error.localizedDescription)")
+        }
+    }
+
+    /// Every bundled app the watch doesn't have, or has older, one after the other; stops at the first error.
+    func installAll(_ watch: WatchModel) async {
+        guard !installingAll else { return }
+        installingAll = true
+        defer { installingAll = false }
+        for app in all where state(app, watch.loader) != .current {
+            await install(app, watch)
+            if error != nil { break }
+        }
+        await watch.check()
+    }
+}
+
+/// The Apps page's section of the apps bundled with CMFX: Install, Update or Installed each, and Install all.
+struct BundledAppsSection: View {
+    @Environment(WatchModel.self) private var watch
+    private var bundled = BundledApps.shared
+
+    var body: some View {
+        if !bundled.all.isEmpty {
+            let loader = watch.listedLoader
+            let todo = bundled.all.filter { bundled.state($0, loader) != .current }.count
+            Section {
+                ForEach(bundled.all) { app in
+                    HStack(spacing: 12) {
+                        AppIcon(name: app.name, side: 29)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(app.name)
+                            Text("Version \(versionText(app.header.version))").font(.footnote).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if let p = bundled.progress[app.name] {
+                            ProgressView(value: p).frame(width: 72)
+                        } else {
+                            switch bundled.state(app, loader) {
+                            case .current:
+                                Text("Installed").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                            case let s:
+                                Button { Task { await bundled.install(app, watch); await watch.check() } } label: {
+                                    Text(s == .missing ? "Install" : "Update").fontWeight(.bold)
+                                }
+                                .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small)
+                                .disabled(loader?.loader == nil || bundled.installingAll)
+                            }
+                        }
+                    }
+                }
+                if todo > 1 {
+                    Button {
+                        Task { await bundled.installAll(watch) }
+                    } label: {
+                        HStack {
+                            Text(bundled.installingAll ? "Installing…" : "Install all (\(todo))")
+                            Spacer()
+                            if bundled.installingAll { ProgressView() }
+                        }
+                    }
+                    .disabled(loader?.loader == nil || bundled.installingAll)
+                }
+            } header: {
+                Text("Bundled with CMFX")
+            } footer: {
+                if loader == nil {
+                    Text("Connect on the Watch tab to install them.")
+                } else if loader?.loader == nil {
+                    Text("Install the App Loader first: Watch tab › Firmware & App Loader.")
+                } else {
+                    Text("The watch apps made for CMFX, in this build. The watch should be on its watch face while they install; each takes up to a minute.")
+                }
+            }
+            .alert("Couldn't install", isPresented: Binding { bundled.error != nil } set: { if !$0 { bundled.error = nil } }) {
+                Button("OK") {}
+            } message: { Text(bundled.error ?? "") }
         }
     }
 }

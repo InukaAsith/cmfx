@@ -181,7 +181,7 @@ public enum NavProto {
     /// What the watch asked for: its state again (`R`), places for words (`Q text`), a route to one of the places
     /// last sent (`S idx walking`), the route stopped (`C`, the watch's ✕), the streets round a route frame point
     /// for its map view (`M id x:i16 y:i16`; they come as Maps' scene `id`: AtlasProto.scene).
-    public enum Ask: Equatable { case ready, search(String), start(idx: Int, walking: Bool), cancel, map(id: UInt8, x: Int, y: Int) }
+    public enum Ask: Equatable { case ready, search(String), start(idx: Int, walking: Bool), cancel, map(id: UInt8, x: Int, y: Int), resync }
 
     public static func parse(_ m: Data) -> Ask? {
         let b = [UInt8](m)
@@ -190,6 +190,8 @@ public enum NavProto {
         case (UInt8(ascii: "Q"), 2...): return .search(String(decoding: b.dropFirst(), as: UTF8.self))
         case (UInt8(ascii: "S"), 3): return .start(idx: Int(b[1]), walking: b[2] == 1)
         case (UInt8(ascii: "C"), 1): return .cancel
+        // `N`: the watch heard no turn or position for a while: everything again
+        case (UInt8(ascii: "N"), 1): return .resync
         case (UInt8(ascii: "M"), 6):
             return .map(id: b[1], x: Int(Int16(bitPattern: UInt16(b[2]) | UInt16(b[3]) << 8)),
                         y: Int(Int16(bitPattern: UInt16(b[4]) | UInt16(b[5]) << 8)))
@@ -220,5 +222,35 @@ public enum NavProto {
         }
         if farD <= tol { return [a, b] }
         return Array(dp(Array(p[...far]), tol).dropLast()) + dp(Array(p[far...]), tol)
+    }
+}
+
+/// The watch's Compass app (cmf-watch-sdk sdk/examples/compass/src/model.rs): the iPhone's heading, as the watch has
+/// no magnetometer.
+public enum CompassProto {
+    public static let trueNorth: UInt8 = 1, calibrate: UInt8 = 2
+
+    /// `H` heading in tenths of a degree (0..3599), accuracy in degrees (255 unknown), flags.
+    public static func heading(_ degrees: Double, accuracy: Double?, trueNorth: Bool, calibrate: Bool) -> Data {
+        var m = Data("H".utf8)
+        let t = Int((degrees * 10).rounded())
+        m.le(UInt16(((t % 3600) + 3600) % 3600))
+        m.append(accuracy.map { $0 < 0 ? 255 : UInt8(clamping: Int($0.rounded())) } ?? 255)
+        m.append((trueNorth ? Self.trueNorth : 0) | (calibrate ? Self.calibrate : 0))
+        return m
+    }
+
+    /// `N text`: why no heading comes.
+    public static func note(_ t: String) -> Data { Data("N".utf8) + utf8(t, 60) }
+
+    /// `R`: start, and again every few seconds while open; `Z`: closed.
+    public enum Ask: Equatable { case ready, closed }
+
+    public static func parse(_ m: Data) -> Ask? {
+        switch m.first {
+        case UInt8(ascii: "R"): .ready
+        case UInt8(ascii: "Z"): .closed
+        default: nil
+        }
     }
 }

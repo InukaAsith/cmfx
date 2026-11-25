@@ -7,6 +7,8 @@ cd "$(dirname "$0")"
 [ -d WABridge/WABridge.xcframework ] || bash WABridge/build.sh
 # the App Loader the Firmware page installs: the newest cmf-watch-sdk release of it
 bash fetch-loader.sh
+# the watch apps the Apps page installs: the newest cmf-watch-sdk release of them
+bash fetch-apps.sh
 xcodegen generate --quiet
 rm -rf build dist
 xcodebuild -project CMFX.xcodeproj -scheme CMFX -configuration Release -sdk iphoneos \

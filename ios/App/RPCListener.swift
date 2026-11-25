@@ -39,6 +39,9 @@ actor KLock {
     private var link: BLELink?
     /// slot → package name, from INFO
     private var apps: [Int: String] = [:]
+    /// When `apps` was read: an app installed by another tool (fmc.tools, wp2apps) into a slot that held another
+    /// would otherwise ask and be granted under the old app's name, so a request reads it again once it is old.
+    private var appsAt: Date = .distantPast
     /// The stub's release, from the same read: PUSH needs 7.
     private var stub: UInt32 = 1
     /// The open session, and when the listening loop last went round: `wake()` tells a stuck loop from a quiet one.
@@ -118,6 +121,7 @@ actor KLock {
     func update(_ state: LoaderState?) {
         guard let state else { return }
         apps = state.apps.mapValues(\.name)
+        appsAt = .now
         stub = state.stub.version
         Hub.shared.setApps(apps)
         if task == nil { start() }
@@ -138,6 +142,7 @@ actor KLock {
                 return .stock
             }
             apps = state.apps.mapValues(\.name)
+            appsAt = .now
             stub = state.stub.version
             // the watch is back (a restart, a reconnect): the Watch tab and Firmware page read it again
             WatchModel.shared.linkCameBack()
@@ -234,8 +239,11 @@ actor KLock {
         // the ~10 s a BLE wake gives, kept until the reply is out
         let bg = UIApplication.shared.beginBackgroundTask(withName: "rpc")
         defer { UIApplication.shared.endBackgroundTask(bg) }
-        if apps[slot] == nil, let state = try? await KLock.shared.run({ try await readLoader(session) }) {
+        if apps[slot] == nil || -appsAt.timeIntervalSinceNow > 60,
+           let state = try? await KLock.shared.run({ try await readLoader(session) }) {
             apps = state.apps.mapValues(\.name)
+            appsAt = .now
+            Hub.shared.setApps(apps)
         }
         // empty: a part of http.request before its last
         guard let out = await answer(message, package: apps[slot], host: PhoneServices.shared), !out.isEmpty else { return }

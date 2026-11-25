@@ -145,7 +145,7 @@ public enum AtlasProto {
     /// What the watch asked for.
     public enum Ask: Equatable {
         /// home: the map round where we are (`round` nil: a new frame may start there) or round a frame point
-        case ready, home(id: UInt8, round: (x: Int, y: Int)?), ways(idx: Int)
+        case ready, home(id: UInt8, round: (x: Int, y: Int)?), ways(idx: Int), resync
         /// search, category, area: the map round the answer comes as scene `id`, in a new frame
         case search(id: UInt8, String), category(id: UInt8, Int), area(id: UInt8, String)
         /// a place on the map (a pin tapped, or dropped: no name), frame metres; what is known of result idx
@@ -161,7 +161,7 @@ public enum AtlasProto {
 
         public static func == (a: Ask, b: Ask) -> Bool {
             switch (a, b) {
-            case (.ready, .ready), (.start, .start), (.stop, .stop), (.clear, .clear): return true
+            case (.ready, .ready), (.start, .start), (.stop, .stop), (.clear, .clear), (.resync, .resync): return true
             case let (.home(i, r), .home(j, s)): return i == j && r?.x == s?.x && r?.y == s?.y
             case let (.search(i, p), .search(j, q)), let (.area(i, p), .area(j, q)): return i == j && p == q
             case let (.category(i, p), .category(j, q)): return i == j && p == q
@@ -201,6 +201,8 @@ public enum AtlasProto {
         case ("D", 5): return .directions(mode: Int(b[1]), idx: Int(b[2]), id: b[3], alt: Int(b[4]))
         case ("S", 1): return .start
         case ("X", 1): return .stop
+        // navigating, nothing heard for a while: the route and where we are again
+        case ("N", 1): return .resync
         case ("g", 2): return .again(id: b[1])
         default: return nil
         }

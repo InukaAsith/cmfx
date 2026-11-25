@@ -6,3 +6,4 @@ ios/*.xcodeproj/
 *.ipa
 ios/WABridge/WABridge.xcframework/
 ios/App/Loader/
+ios/App/WatchApps/

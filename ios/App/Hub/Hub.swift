@@ -30,6 +30,7 @@ import WireKit
     let spotifyPlayer = SpotifyPlayerService()
     let atlas = AtlasService()
     let browser = BrowserService()
+    let compass = CompassService()
 
     /// slot → app name, from the loader (RPCListener).
     private(set) var apps: [Int: String] = [:]
@@ -44,7 +45,7 @@ import WireKit
         [SpotifyService.app: spotify, GeminiService.app: gemini, MapsService.app: maps, NavService.app: nav,
          PhotosService.app: photos, MailService.app: mail, NotesService.app: notes, WhatsAppService.app: whatsapp,
          YouTubeMusicService.app: youtube, SpotifyPlayerService.app: spotifyPlayer,
-         AtlasService.app: atlas, BrowserService.app: browser]
+         AtlasService.app: atlas, BrowserService.app: browser, CompassService.app: compass]
     }
 
     func attach(_ s: KSession?, apps: [Int: String]) {
@@ -76,6 +77,7 @@ import WireKit
         if name != YouTubeMusicService.app { youtube.otherApp() }
         if name != SpotifyPlayerService.app { spotifyPlayer.otherApp() }
         if name != BrowserService.app { browser.otherApp() }
+        if name != CompassService.app { compass.otherApp() }
         let bg = UIApplication.shared.beginBackgroundTask(withName: "hub")
         service.receive(m)
         Task { try? await Task.sleep(for: .seconds(8)); UIApplication.shared.endBackgroundTask(bg) }

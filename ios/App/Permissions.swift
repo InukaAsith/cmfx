@@ -79,6 +79,10 @@ import WireKit
                                                                     trigger: nil))
     }
 
+    /// The caps any app on the watch may be given before it asks (docs/miniapp-rpc.md: a grant ahead only pre-fills
+    /// the answer; `http:<host>` needs the host, so only an ask brings it).
+    static let offered = ["calendar", "reminders", "location", "weather", "notify"]
+
     /// Allow also asks for the OS permission the cap needs.
     func set(_ package: String, _ cap: String, _ allowed: Bool) {
         store.grants[package, default: [:]][cap] = allowed

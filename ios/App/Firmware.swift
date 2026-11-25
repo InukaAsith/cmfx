@@ -106,9 +106,10 @@ enum BundledLoader {
 
     /// The store's patched firmware over the stock OTA. The image is checked before connecting and the watch's
     /// model before the stock session opens (ota-image.ts checkOtaTarget): nothing goes out for a refused one.
-    func flashFirmware() async {
-        guard let file = check?.firmware?.file, flash == nil else { return }
-        flash = Flash(step: "Downloading the firmware…")
+    /// `local`: a firmware image the user picked in Files (Install from a file) instead of the store's.
+    func flashFirmware(local: URL? = nil) async {
+        guard flash == nil, let file = local ?? check?.firmware?.file else { return }
+        flash = Flash(step: local == nil ? "Downloading the firmware…" : "Reading the firmware…")
         flashed = false
         error = nil
         UIApplication.shared.isIdleTimerDisabled = true
@@ -117,7 +118,14 @@ enum BundledLoader {
             UIApplication.shared.isIdleTimerDisabled = false
         }
         do {
-            let (image, _) = try await URLSession.shared.data(from: file)
+            let image: Data
+            if let local {
+                let ok = local.startAccessingSecurityScopedResource()
+                defer { if ok { local.stopAccessingSecurityScopedResource() } }
+                image = try Data(contentsOf: local)
+            } else {
+                (image, _) = try await URLSession.shared.data(from: file)
+            }
             // 57 MB of CRCs: off the main actor
             let info = try await Task.detached { try inspectOtaImage(image) }.value
             flash?.step = "Connecting to the watch…"
@@ -131,7 +139,7 @@ enum BundledLoader {
                     }
                 }
             }
-            DevLog.shared.log("Firmware sent: \(check?.firmware?.version ?? "?")")
+            DevLog.shared.log("Firmware sent: \(local?.lastPathComponent ?? check?.firmware?.version ?? "?")")
             Analytics.track("firmware_installed")
             flashed = true
         } catch {
@@ -196,6 +204,9 @@ struct FirmwareView: View {
     @Environment(Account.self) private var account
     private var model = FirmwareModel.shared
     @State private var confirmFlash = false
+    @State private var picking = false
+    /// a firmware file picked in Files, waiting for the Close Nothing X confirmation
+    @State private var picked: URL?
 
     var body: some View {
         let state = watch.loader
@@ -257,8 +268,13 @@ struct FirmwareView: View {
                                 Button(state == nil ? "Install" : "Update") { confirmFlash = true }
                                     .buttonStyle(.borderedProminent)
                                     .disabled(model.progress != nil)
+                            } else if connected {
+                                // up to date: the same image again (a watch that misbehaves after an update)
+                                Button("Reinstall") { confirmFlash = true }
+                                    .buttonStyle(.bordered)
+                                    .disabled(model.progress != nil)
                             } else {
-                                Text(state == nil ? "" : "Up to date").foregroundStyle(.secondary)
+                                Text("")
                             }
                         } label: {
                             VStack(alignment: .leading, spacing: 1) {
@@ -282,8 +298,14 @@ struct FirmwareView: View {
                     }
                 }
                 .disabled(model.checking)
+                Button {
+                    picking = true
+                } label: {
+                    Label("Install firmware from a file…", systemImage: "doc.badge.arrow.up")
+                }
+                .disabled(model.flash != nil || model.progress != nil)
             } header: {
-                Text("fmc.tools")
+                Text("Firmware")
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     if let f = model.flash {
@@ -295,6 +317,9 @@ struct FirmwareView: View {
                     } else if model.firmwareUpdate(state) || (state == nil && connected) {
                         Text("The firmware is about 57 MB. Before installing: charge the watch, keep the phone next to it, and close Nothing X.")
                     }
+                    if model.flash == nil {
+                        Text("From a file: a full OTA image for the CMF Watch Pro 2 (the patched firmware from fmc.tools, or one you built with cmf-watch-sdk `make fw-ota`). It is checked before anything is sent.")
+                    }
                     if let error = model.error { Text(error).foregroundStyle(.red) }
                 }
             }
@@ -303,15 +328,26 @@ struct FirmwareView: View {
         .alert("Close Nothing X first", isPresented: $confirmFlash) {
             // not tied to this screen: the wait goes on if the user leaves it
             Button("Install") {
+                let local = picked
+                picked = nil
                 Task {
-                    let target = UInt32(model.check?.firmware?.stub ?? 0)
-                    await model.flashFirmware()
+                    // a picked file's stub is not known before it lands: any patched answer counts
+                    let target = local == nil ? UInt32(model.check?.firmware?.stub ?? 0) : 0
+                    await model.flashFirmware(local: local)
+                    // its restart takes minutes: not read as landed while the watch still answers from before
+                    if model.flashed, local != nil { try? await Task.sleep(for: .seconds(90)) }
                     if model.flashed, await watch.awaitRestart(stub: target) { model.landed() }
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) { picked = nil }
         } message: {
             Text("The watch talks to one app at a time. Close Nothing X (swipe it away in the app switcher), then install.\n\nThe watch should be charged and the phone next to it. Keep this screen open until the update is sent; the watch then installs it and restarts.\n\nAfterwards Nothing X may not see the watch. Then forget the watch in Bluetooth settings and add it again in Nothing X.")
+        }
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.data]) { result in
+            if case .success(let url) = result {
+                picked = url
+                confirmFlash = true
+            }
         }
         .task { if model.check == nil { await model.refresh(account) } }
     }

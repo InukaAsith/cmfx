@@ -45,6 +45,8 @@ struct HubTab: View {
                     row(NavPage(), "location.north.line.fill", TDColor.accent, "Navigation",
                         hub.nav.active ? "Navigating" : "Turn by turn on the watch", NavService.app)
                     row(PhotosPage(), "photo.fill", .purple, "Photos", "Your gallery on the watch", PhotosService.app)
+                    row(CompassPage(), "safari.fill", .red, "Compass",
+                        hub.compass.running ? "Sending the heading" : "The iPhone's heading on the watch", CompassService.app)
                     row(BrowserPage(), "globe", .blue, "Browser", "The web on the watch; sign in to sites here", BrowserService.app)
                     row(MailPage(), "envelope.fill", .red, "Mail", mailDetail, MailService.app)
                     row(NotesPage(), "note.text", .yellow, "Notes", "Your notes and reminders", NotesService.app)
@@ -644,6 +646,22 @@ struct NavPage: View {
             defer { searching = false }
             results = await Place.search(q)
             if results.isEmpty { n.status = "Nothing found for “\(q)”" } else { n.status = nil }
+        }
+    }
+}
+
+struct CompassPage: View {
+    @State private var c = Hub.shared.compass
+    var body: some View {
+        PageScroll(title: "Compass") {
+            VStack(alignment: .leading, spacing: 14) {
+                CardHeader(symbol: "safari", color: .red, title: "Heading on the watch",
+                           detail: c.running ? c.heading.map { "\(Int($0.rounded()) % 360)°" } ?? "Starting…" : "Open Compass on the watch")
+                Text("The watch has no compass of its own, so Compass shows where this iPhone points. Hold the iPhone flat and in line with your arm, or keep it in a front pocket facing ahead. It runs only while Compass is open on the watch. With location allowed, it shows true north; without it, magnetic north.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Status(text: c.status)
+            }
+            .glassCard()
         }
     }
 }
