@@ -162,6 +162,8 @@ private struct WAMsg: Decodable {
                     if self.open != Self.newChat { await self.sendList() }
                     if let id = self.open, id != Self.info, let jid = self.ids.key(id) {
                         await self.out(self.opened(id, jid))
+                        // its picture and last seen again too (fresh now that WhatsApp is online)
+                        await self.who(id, jid)
                         await Self.go { WabridgeMarkRead(jid) }
                         Task.detached { WabridgeWatch(jid) }
                     }
