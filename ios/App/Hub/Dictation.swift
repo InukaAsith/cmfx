@@ -61,11 +61,9 @@ import UIKit
                 try? await Task.sleep(for: .milliseconds(40))
             }
         }
-        // an answer even if the recognizer never gives one
-        Task {
-            try? await Task.sleep(for: .seconds(40))
-            if self.gen == g, !self.finished { self.finish() }
-        }
+        // an answer even if the recognizer never gives one (a recording runs as long as the watch records: it is
+        // watched from its end)
+        if !rec { watchdog(40) }
         switch SFSpeechRecognizer.authorizationStatus() {
         case .authorized: break
         case .notDetermined:
@@ -112,12 +110,23 @@ import UIKit
         ended = true
         if request == nil { return finish() }
         request?.endAudio()
+        if record { watchdog(10) }
+    }
+
+    /// Finishes this one after `secs` if the recognizer hasn't by then.
+    private func watchdog(_ secs: Int) {
+        let g = gen
+        Task {
+            try? await Task.sleep(for: .seconds(secs))
+            if self.gen == g, !self.finished { self.finish() }
+        }
     }
 
     private func result(_ g: Int, _ text: String?, final: Bool, failed: Bool) {
         guard g == gen, !finished else { return }
         if let text, !text.isEmpty { heard = text }
-        if final || (failed && ended) { return finish() }
+        // a recording goes on till the watch ends it, even if the recognizer is done early
+        if (final && (!record || ended)) || (failed && ended) { return finish() }
         if failed {
             // the recognizer stopped early (silence, no network): what it has is shown, the end finishes it
             return
