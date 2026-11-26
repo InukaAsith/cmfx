@@ -132,7 +132,7 @@ struct Note: Codable, Identifiable, Equatable {
             await sendList(quick: true)
         case .open(let id): await show(id)
         case .tap(let idx): await tap(idx)
-        case .credit, .stop, .react, .replyTo: break
+        case .credit, .stop, .react, .replyTo, .delete: break
         case .filter(let t):
             tab = min(max(t, 0), 2)
             await sendList()
