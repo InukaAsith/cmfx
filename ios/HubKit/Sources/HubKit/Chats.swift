@@ -194,9 +194,23 @@ public enum ChatsProto {
     /// Voice notes play at 8 kHz: speech, and what the link carries with room to spare.
     public static let voiceRate = 8000
 
-    /// `X idx emoji…`: the reaction on message idx (empty: none).
+    /// `X idx emoji…`: the reaction on message idx (empty: none), as the watch's emoji font has it.
     public static func reaction(_ idx: Int, _ emoji: String) -> Data {
-        Data([UInt8(ascii: "X"), UInt8(idx & 0xFF)]) + Data(emoji.utf8.prefix(8))
+        Data([UInt8(ascii: "X"), UInt8(idx & 0xFF)]) + Data(toWatch(emoji).utf8.prefix(8))
+    }
+
+    /// WhatsApp's reactions the watch's font lacks, and its stand-ins: ❤ 💗, 😮 😱, 😢 😭.
+    static let standIns: [(wa: String, watch: String)] = [("❤️", "💗"), ("😮", "😱"), ("😢", "😭")]
+
+    /// A reaction for the watch: the stand-in, else the emoji with no variation selector.
+    public static func toWatch(_ e: String) -> String {
+        let bare = e.replacingOccurrences(of: "\u{FE0F}", with: "")
+        return standIns.first { $0.wa.replacingOccurrences(of: "\u{FE0F}", with: "") == bare }?.watch ?? bare
+    }
+
+    /// A reaction from the watch, as WhatsApp's.
+    public static func fromWatch(_ e: String) -> String {
+        standIns.first { $0.watch == e }?.wa ?? e
     }
 
     /// `O`: a voice note starts (the watch drops what it held).

@@ -353,7 +353,9 @@ enum Checks {
             eq("voice ask", "\(ChatsProto.parse(Data([70, 3, 0, 9]))!)", "credit(next: 3, room: 9)")
             eq("react ask", "\(ChatsProto.parse(Data([107, 2]) + Data("👍".utf8))!)", "react(2, \"👍\")")
             eq("reply ask", "\(ChatsProto.parse(Data([121, 255]))!) \(ChatsProto.parse(Data([121, 4]))!)", "replyTo(nil) replyTo(Optional(4))")
-            eq("reaction", hex(ChatsProto.reaction(1, "❤")), "5801e29da4")
+            eq("reaction", hex(ChatsProto.reaction(1, "👍")), "5801f09f918d")
+            eq("stand-ins", ChatsProto.toWatch("❤️") + ChatsProto.toWatch("❤") + ChatsProto.fromWatch("💗") + ChatsProto.fromWatch("😂"),
+               "💗💗❤️😂")
             let face = ChatsProto.face(7, rgba: [UInt8](repeating: 255, count: 12 * 12 * 4))
             eq("face", "\(face.count) \(face[2].count) \(hex(face[2].prefix(5)))", "3 99 670702ffff")
         }

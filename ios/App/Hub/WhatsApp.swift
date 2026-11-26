@@ -454,12 +454,12 @@ private struct WAMsg: Decodable {
             guard let id = open, let jid = ids.key(id), idx < shown.count, let mid = shown[idx].id else { return }
             let err = await Self.go { () -> String? in
                 var e: NSError?
-                WabridgeReact(jid, mid, emoji, &e)
+                WabridgeReact(jid, mid, ChatsProto.fromWatch(emoji), &e)
                 return e?.localizedDescription
             }
             guard open == id else { return }
             if let err { return await out([ChatsProto.reaction(idx, shown[idx].react ?? ""), ChatsProto.append("Not sent: \(err)")]) }
-            shown[idx].react = emoji
+            shown[idx].react = ChatsProto.fromWatch(emoji)
             await out([ChatsProto.reaction(idx, emoji)])
         }
     }
@@ -547,6 +547,7 @@ private struct WAMsg: Decodable {
     private func show(_ id: UInt8) async {
         open = id
         shown = []
+        replyID = nil
         if id == Self.newChat, linked { return await sendPicker() }
         guard id != Self.info, let jid = ids.key(id) else {
             let text = linked ? "Your chats show here once WhatsApp is reachable." :
