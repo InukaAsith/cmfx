@@ -39,6 +39,7 @@ struct HubTab: View {
                     row(SpotifyPlayerPage(), "music.note.list", .green, "Spotify player",
                         hub.spotify.signedIn && hub.youtube.signedIn ? "Spotify's songs, played from YouTube"
                             : "Sign in to Spotify and YouTube", SpotifyPlayerService.app)
+                    row(RecorderPage(), "waveform.circle.fill", .red, "Recorder", "Recordings kept on this iPhone", RecorderService.app)
                     row(GeminiPage(), "sparkles", .blue, "Gemini", Secrets.geminiKey.isEmpty ? "Add API key" : "Ready", GeminiService.app)
                     row(MapsPage(), "map.fill", .orange, "Offline Maps", "A map the watch draws, with GPS", MapsService.app)
                     row(AtlasPage(), "map", TDColor.accent, "Maps",

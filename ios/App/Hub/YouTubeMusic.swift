@@ -19,7 +19,7 @@ import WireKit
     private(set) var playing: String?
 
     private var results: [YTSong] = []
-    private var queue: [YTSong] = []
+    var queue: [YTSong] = []
     private var index = 0
     /// the queue index of the watch's Up next row 0
     private var upFrom = 0
@@ -28,7 +28,8 @@ import WireKit
         .flatMap { try? JSONDecoder().decode([YTSong].self, from: $0) } ?? []
     private static var historyKey: String { "music-history-\(app)" }
 
-    private func played(_ song: YTSong) {
+    /// Kept for the watch's History (RecorderService: nothing to keep).
+    func played(_ song: YTSong) {
         history = Array(([song] + history.filter { $0.id != song.id }).prefix(24))
         UserDefaults.standard.set(try? JSONEncoder().encode(history), forKey: Self.historyKey)
     }
@@ -177,7 +178,7 @@ import WireKit
     func library() async throws -> [(id: String, name: String, sub: String)] { try await YTMusic.mixes() }
     func songs(of id: String) async throws -> [YTSong] { try await YTMusic.playlist(id) }
     /// The history the watch was last shown (a pick from it plays that song).
-    private var historyShown: [YTSong] = []
+    var historyShown: [YTSong] = []
     /// The account's history (YouTube Music's, signed in); nil: the watch's own (Spotify player: always).
     func accountHistory() async throws -> [YTSong]? { try await YTMusic.history() }
 
@@ -187,8 +188,14 @@ import WireKit
     /// The song on YouTube (a result of `find` that is not one yet: SpotifyPlayerService).
     func resolve(_ song: YTSong) async throws -> YTSong { song }
 
-    /// Up next: the song's radio after it.
-    private func radio(after song: YTSong) {
+    /// A song as the watch's tuned samples from `from` s (RecorderService: a recording on this iPhone).
+    func samples(_ song: YTSong, from: Int, level: Bool, smooth: Bool,
+                 progress: @Sendable (Int) async -> Void) async throws -> [Int16] {
+        try await YTMusic.samples(song.id, from: from, level: level, smooth: smooth, progress: progress)
+    }
+
+    /// Up next: the song's radio after it (RecorderService: the recordings after it).
+    func radio(after song: YTSong) {
         Task {
             guard let yt = try? await resolve(song), let r = try? await YTMusic.radio(yt.id),
                   queue.first == song else { return }
@@ -228,7 +235,7 @@ import WireKit
                 guard !Task.isCancelled, stream?.gen == gen else { return }
                 var told = -100
                 let (enhance, smooth) = (SoundOptions.enhance, SoundOptions.smooth)
-                let samples = try await YTMusic.samples(song.id, from: from, level: enhance, smooth: smooth) { @MainActor [weak self] pct in
+                let samples = try await self.samples(song, from: from, level: enhance, smooth: smooth) { @MainActor [weak self] pct in
                     // the watch's yellow circle while it waits for the first song; every 4 % at most
                     guard let self, pct - told >= 4 || pct >= 100, self.stream?.gen == gen else { return }
                     told = pct

@@ -28,6 +28,7 @@ import WireKit
     let whatsapp = WhatsAppService()
     let youtube = YouTubeMusicService()
     let spotifyPlayer = SpotifyPlayerService()
+    let recorder = RecorderService()
     let atlas = AtlasService()
     let browser = BrowserService()
 
@@ -43,7 +44,7 @@ import WireKit
     private var services: [String: WatchService] {
         [SpotifyService.app: spotify, GeminiService.app: gemini, MapsService.app: maps, NavService.app: nav,
          PhotosService.app: photos, MailService.app: mail, NotesService.app: notes, WhatsAppService.app: whatsapp,
-         YouTubeMusicService.app: youtube, SpotifyPlayerService.app: spotifyPlayer,
+         YouTubeMusicService.app: youtube, SpotifyPlayerService.app: spotifyPlayer, RecorderService.app: recorder,
          AtlasService.app: atlas, BrowserService.app: browser]
     }
 
@@ -73,7 +74,7 @@ import WireKit
         lastApp = name
         lastHeard = .now
         // YouTube Music's credit comes 10 times a second while it plays: straight through
-        if name == YouTubeMusicService.app || name == SpotifyPlayerService.app, m.first == UInt8(ascii: "F") {
+        if name == YouTubeMusicService.app || name == SpotifyPlayerService.app || name == RecorderService.app, m.first == UInt8(ascii: "F") {
             return service.receive(m)
         }
         // the watch runs one app at a time: WhatsApp goes offline when another talks
@@ -85,6 +86,7 @@ import WireKit
         // and music stops when its app is closed: YouTube Music, Spotify
         if name != YouTubeMusicService.app { youtube.otherApp() }
         if name != SpotifyPlayerService.app { spotifyPlayer.otherApp() }
+        if name != RecorderService.app { recorder.otherApp() }
         if name != BrowserService.app { browser.otherApp() }
         let bg = UIApplication.shared.beginBackgroundTask(withName: "hub")
         service.receive(m)
