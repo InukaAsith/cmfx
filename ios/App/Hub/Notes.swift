@@ -4,7 +4,9 @@ import HubKit
 
 // The watch's Notes app (the chats app in notes mode, cmf-watch-sdk sdk/examples/notes; hosts/inboxhost.py is the
 // reference): CMFX's own notes (a JSON file in Application Support; no iCloud, a sideloaded app has no
-// entitlement for it) and Apple Reminders (EventKit). Row 0 starts a note (what is typed first is its title);
+// entitlement for it) and Apple Reminders (EventKit). The watch's buttons: + starts a note (what is typed first is
+// its title), the ticked box a to-do list (a new Reminders list, its title typed first; what follows its to-dos),
+// the clock a reminder (into the default list; a time said in it, "at 5pm", "tomorrow 9am", sets its alert);
 // each note is a row, shown as a page of lines; each reminder list is a row whose reminders tick with a tap.
 // Typing adds a line or a reminder; the watch shows nothing typed until the phone sends it back (`A`).
 
@@ -64,8 +66,8 @@ struct Note: Codable, Identifiable, Equatable {
 @MainActor @Observable final class NotesService: WatchService {
     static let app = "Notes"
     static let quick = ["• Delete note", "• Clear done", "Buy", "Call", "Remember to"]
-    /// Row 0: + New note.
-    static let new: UInt8 = 1
+    /// The watch's buttons: + New note, a new to-do list, a reminder.
+    static let new: UInt8 = 1, newList: UInt8 = 2, newReminder: UInt8 = 3
     /// Recently completed reminders shown under a list's open ones.
     static let done = 3
 
@@ -75,7 +77,7 @@ struct Note: Codable, Identifiable, Equatable {
     var allowed: Bool { access == .fullAccess }
 
     private var events = EKEventStore()
-    private var ids = ChatsProto.Ids(first: 2)
+    private var ids = ChatsProto.Ids(first: 4)
     /// The open chat, and the reminders it shows by message idx.
     private var open: UInt8?
     private var shown: [EKReminder] = []
@@ -132,10 +134,12 @@ struct Note: Codable, Identifiable, Equatable {
         }
     }
 
-    private enum Item { case new, list(EKCalendar), note(Note) }
+    private enum Item { case new, newList, reminder, list(EKCalendar), note(Note) }
 
     private func item(_ id: UInt8) -> Item? {
         if id == Self.new { return .new }
+        if id == Self.newList { return .newList }
+        if id == Self.newReminder { return .reminder }
         guard let key = ids.key(id) else { return nil }
         if key.hasPrefix("list:") {
             return events.calendar(withIdentifier: String(key.dropFirst(5))).map(Item.list)
@@ -148,9 +152,13 @@ struct Note: Codable, Identifiable, Equatable {
     }
 
     private func sendList(quick: Bool = false) async {
-        var new = ChatsProto.Row(id: Self.new, name: "New note", preview: "Write one on the watch")
-        new.isNew = true // the watch's + button
-        var rows = [new]
+        // the watch's buttons, in this order: +, the ticked box, the clock
+        var rows: [ChatsProto.Row] = []
+        for (id, name) in [(Self.new, "New note"), (Self.newList, "New to-do list"), (Self.newReminder, "Reminder")] {
+            var r = ChatsProto.Row(id: id, name: name, preview: "")
+            r.isNew = true
+            rows.append(r)
+        }
         for n in store.notes {
             rows.append(.init(id: ids.id("note:" + n.id.uuidString), name: n.title.isEmpty ? "Untitled" : n.title,
                               preview: n.lines.first { !$0.isEmpty } ?? "No text yet"))
@@ -169,6 +177,12 @@ struct Note: Codable, Identifiable, Equatable {
         shown = []
         switch item(id) {
         case .new: await out([ChatsProto.open(id, title: "New note")])
+        case .newList:
+            await out([ChatsProto.open(id, title: "New to-do list"),
+                       ChatsProto.message(0, allowed ? "Type its name, then the to-dos" : "Allow Reminders in CMFX on the iPhone")])
+        case .reminder:
+            await out([ChatsProto.open(id, title: "Reminder"),
+                       ChatsProto.message(0, allowed ? "What, and when: \"Call mum at 5pm\"" : "Allow Reminders in CMFX on the iPhone")])
         case .note(let n):
             await out(ChatsProto.chat(id, title: n.title, n.lines.flatMap { ChatsProto.page($0) }.map { (false, ChatsProto.plain, $0) }))
         case .list(let cal):
@@ -212,6 +226,41 @@ struct Note: Codable, Identifiable, Equatable {
             open = nid
             shown = []
             await out([ChatsProto.open(nid, title: n.title)])
+        case .newList:
+            guard action == nil, allowed else { return }
+            // a Reminders list of its own: the to-dos typed next go in it
+            let cal = EKCalendar(for: .reminder, eventStore: events)
+            cal.title = text
+            cal.source = events.defaultCalendarForNewReminders()?.source
+                ?? events.sources.first { $0.sourceType == .local || $0.sourceType == .calDAV }
+            do {
+                try events.saveCalendar(cal, commit: true)
+            } catch {
+                status = error.localizedDescription
+                return await out([ChatsProto.append("Not made: \(error.localizedDescription)")])
+            }
+            let lid = ids.id("list:" + cal.calendarIdentifier)
+            open = lid
+            shown = []
+            await out([ChatsProto.open(lid, title: cal.title)])
+        case .reminder:
+            guard action == nil, allowed else { return }
+            let r = EKReminder(eventStore: events)
+            let (what, when) = Self.when(text)
+            r.title = what
+            r.calendar = events.defaultCalendarForNewReminders()
+            if let when {
+                r.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: when)
+                r.addAlarm(EKAlarm(absoluteDate: when))
+            }
+            do {
+                try events.save(r, commit: true)
+            } catch {
+                status = error.localizedDescription
+                return await out([ChatsProto.append("Not added: \(error.localizedDescription)")])
+            }
+            let at = when.map { " · " + $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) } ?? ""
+            await out([ChatsProto.append(kind: ChatsProto.todo, what + at)])
         case .note(var n):
             switch action {
             case "Delete note":
@@ -256,6 +305,20 @@ struct Note: Codable, Identifiable, Equatable {
         case nil: return
         }
         await sendList()
+    }
+
+    /// A reminder's words and the time said in them: "Call mum at 5pm" → ("Call mum", today 17:00); a time
+    /// already past today is tomorrow's.
+    static func when(_ text: String, now: Date = .now) -> (String, Date?) {
+        guard let d = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue),
+              let m = d.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)), var date = m.date,
+              let r = Range(m.range, in: text) else { return (text, nil) }
+        if date < now, date.timeIntervalSince(now) > -86400 {
+            date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date
+        }
+        var what = text.replacingCharacters(in: r, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        for tail in [" at", " on", " by"] where what.lowercased().hasSuffix(tail) { what = String(what.dropLast(tail.count)) }
+        return (what.isEmpty ? text : what, date)
     }
 
     // MARK: phone
