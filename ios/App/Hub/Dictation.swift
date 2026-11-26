@@ -12,6 +12,8 @@ import UIKit
 
     private var app: String?
     private var record = false
+    /// A WhatsApp voice note: the samples kept here (no file, no words), sent when it ends.
+    private var note: [Float]?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var file: AVAudioFile?
@@ -52,7 +54,8 @@ import UIKit
         heard = ""; sent = ""; samples = 0
         ended = false; finished = false
         bg = UIApplication.shared.beginBackgroundTask(withName: "dictation")
-        if rec { openFile() }
+        note = rec && name == WhatsAppService.app ? [] : nil
+        if rec, note == nil { openFile() }
         // the watch sends its messages after a frame from the phone: ask often while it talks
         let g = gen
         Task {
@@ -64,6 +67,8 @@ import UIKit
         // an answer even if the recognizer never gives one (a recording runs as long as the watch records: it is
         // watched from its end)
         if !rec { watchdog(40) }
+        // a voice note needs no words
+        if note != nil { return }
         switch SFSpeechRecognizer.authorizationStatus() {
         case .authorized: break
         case .notDetermined:
@@ -102,6 +107,7 @@ import UIKit
         for (i, v) in pcm.enumerated() { ch[i] = Float(v) / 32768 }
         request?.append(buf)
         if let file { try? file.write(from: buf) }
+        if note != nil { note! += UnsafeBufferPointer(start: ch, count: pcm.count) }
         samples += pcm.count
     }
 
@@ -142,7 +148,14 @@ import UIKit
     private func finish() {
         guard !finished, app != nil else { return }
         finished = true
-        if record {
+        if let samples = note, let app {
+            // the watch hears how it went once it is sent
+            note = nil
+            Task {
+                let said = await Hub.shared.whatsapp.sendVoice(samples, rate: VoiceProto.rate)
+                try? await Hub.shared.send(app, VoiceProto.text(.final, said))
+            }
+        } else if record {
             let secs = samples / Int(VoiceProto.rate)
             let name = saveFile()
             send(VoiceProto.text(.final, name.map { "Saved \($0) (\(secs / 60):\(String(format: "%02d", secs % 60)))" }

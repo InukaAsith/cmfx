@@ -324,6 +324,35 @@ enum Checks {
             eq("chats sync", hex(ChatsProto.sync(140)), "5964")
         }
         do {
+            // a voice note: 2 s at 8 kHz → Ogg Opus → back, about as long
+            let tone = (0..<16000).map { Float(0.3 * sin(Double($0) * 2 * .pi * 440 / 8000)) }
+            let ogg = try OggOpus.encode(tone, rate: 8000)
+            eq("ogg starts", String(decoding: ogg.prefix(4), as: UTF8.self), "OggS")
+            eq("ogg crc", String(OggOpus.crc32(Data("OggS".utf8)), radix: 16), "5fb0a94f")
+            let back = try OggOpus.decode(ogg, rate: 8000)
+            eq("ogg length", String(abs(back.count - 16000) < 400), "true")
+            let peak = back.dropFirst(2000).prefix(8000).map { abs($0) }.max() ?? 0
+            eq("ogg loud", String(peak > 0.2 && peak < 0.45), "true")
+            if let p = ProcessInfo.processInfo.environment["OGG_OUT"] { try ogg.write(to: URL(fileURLWithPath: p)) }
+        } catch {
+            eq("ogg", "\(error)", "no error")
+        }
+        do {
+            // a voice note's stream: as far as the credit goes, then the end; a lost block again
+            let blocks = ChatsProto.voiceBlocks([Int16](repeating: 100, count: 244 * 5))
+            eq("voice blocks", "\(blocks.count) \(blocks[1].prefix(3).map { String($0) })", "5 [\"66\", \"1\", \"0\"]")
+            var v = ChatsProto.VoiceStream(blocks)
+            v.setCredit(next: 0, room: 2)
+            eq("voice first", "\(v.take().count)", "2")
+            v.setCredit(next: 1, room: 2)
+            eq("voice more", "\(v.take().count)", "1")
+            for _ in 0..<4 { v.setCredit(next: 1, room: 2) }
+            eq("voice again", "\(v.take().first?.prefix(2).map { String($0) } ?? [])", "[\"66\", \"1\"]")
+            v.setCredit(next: 5, room: 8)
+            eq("voice end", "\(v.take().map { String(decoding: $0.prefix(1), as: UTF8.self) })", "[\"E\"]")
+            eq("voice ask", "\(ChatsProto.parse(Data([70, 3, 0, 9]))!)", "credit(next: 3, room: 9)")
+        }
+        do {
             eq("chats seen", hex(ChatsProto.seen("last seen 16:42")), hex(Data("Wlast seen 16:42".utf8)))
             var cal = Calendar(identifier: .gregorian)
             cal.timeZone = TimeZone(identifier: "UTC")!

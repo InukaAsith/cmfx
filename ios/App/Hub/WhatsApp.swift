@@ -432,7 +432,20 @@ private struct WAMsg: Decodable {
         case .send(let id, let text): await send(id, text)
         case .tap(let idx):
             // beside the queue: a download can take a while, messages go on meanwhile
-            Task { await self.picture(idx) }
+            if idx < shown.count, shown[idx].kind == Int(ChatsProto.voice) {
+                Task { await self.playVoice(idx) }
+            } else {
+                Task { await self.picture(idx) }
+            }
+        case .credit(let next, let room):
+            guard var v = voice else { return }
+            v.setCredit(next: next, room: room)
+            let batch = v.take()
+            voice = v
+            if !batch.isEmpty { await out(batch) }
+        case .stop:
+            voice = nil
+        case .filter: break
         }
     }
 
@@ -501,6 +514,8 @@ private struct WAMsg: Decodable {
 
     /// The open chat's messages as the watch has them (its idx is the place in here).
     private var shown: [WAMsg] = []
+    /// The voice note playing on the watch.
+    private var voice: ChatsProto.VoiceStream?
 
     /// `H` and the last messages, with our messages' states; `shown` follows.
     private func opened(_ id: UInt8, _ jid: String) -> [Data] {
@@ -635,6 +650,57 @@ private struct WAMsg: Decodable {
             ctx.draw(crop, in: CGRect(x: 0, y: 0, width: side, height: side))
         }
         return px
+    }
+
+    /// A tap on a voice note: downloaded, decoded (Ogg Opus), shaped for the speaker, and streamed to the watch at
+    /// its credit's pace. Anything wrong: an empty one (`O E`), the watch stops.
+    private func playVoice(_ idx: Int) async {
+        voice = nil
+        let nothing = [ChatsProto.voiceOpen, ChatsProto.voiceEnd]
+        guard let id = open, let jid = ids.key(id), idx < shown.count, let mid = shown[idx].id else { return }
+        idleTask?.cancel()
+        defer { if live { touch() } }
+        guard await online() else { return await out(nothing) }
+        let data = await Self.go { () -> Data? in
+            var e: NSError?
+            let d = WabridgeMedia(jid, mid, &e)
+            return e == nil ? d : nil
+        }
+        guard open == id, let data else { return await out(nothing) }
+        let blocks = await Task.detached(priority: .userInitiated) { () -> [Data]? in
+            guard let f = try? OggOpus.decode(data, rate: Double(ChatsProto.voiceRate)), !f.isEmpty else { return nil }
+            let pcm = f.map { Int16(max(-1, min(1, $0)) * 32767) }
+            return ChatsProto.voiceBlocks(SpeakerTune.forSpeaker(pcm, rate: ChatsProto.voiceRate, level: true))
+        }.value
+        guard open == id, let blocks else { return await out(nothing) }
+        var v = ChatsProto.VoiceStream(blocks)
+        // until the watch's first credit: a few to start with
+        v.setCredit(next: 0, room: 8)
+        let first = v.take()
+        voice = v
+        await out([ChatsProto.voiceOpen] + first)
+    }
+
+    /// A voice note recorded on the watch (Dictation's record mode, WhatsApp open): Ogg Opus to the open chat.
+    /// What the watch says when it is done.
+    func sendVoice(_ samples: [Float], rate: Double) async -> String {
+        guard let id = open, let jid = ids.key(id) else { return "No chat open" }
+        let secs = Int((Double(samples.count) / rate).rounded())
+        guard secs >= 1 else { return "Too short" }
+        idleTask?.cancel()
+        defer { if live { touch() } }
+        guard await online() else { return "Not sent: WhatsApp is offline" }
+        guard let ogg = try? await Task.detached(priority: .userInitiated, operation: { try OggOpus.encode(samples, rate: rate) }).value
+        else { return "Not sent: could not encode it" }
+        let err = await Self.go { () -> String? in
+            var e: NSError?
+            WabridgeSendVoice(jid, ogg, Int64(secs), &e)
+            return e?.localizedDescription
+        }
+        if let err { return "Not sent: \(err)" }
+        // the chat again, with the note in it (a tap plays it back)
+        if open == id { await out(opened(id, jid)) }
+        return "Sent"
     }
 
     /// A tap on a sticker or photo: its picture, downloaded from WhatsApp, into the bubble.

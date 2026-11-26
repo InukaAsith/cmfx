@@ -1,17 +1,25 @@
 package wabridge
 
 import (
+	"fmt"
 	"strings"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
 )
 
-// Message kinds on the watch (the chats app): text, sticker, photo. Everything else is text with a label.
+// Message kinds on the watch (the chats app): text, sticker, photo, voice (its text the length, "0:12"; the watch
+// plays it). Everything else is text with a label. (3 and 4 are Notes' to-dos.)
 const (
 	kindText    = 0
 	kindSticker = 1
 	kindPhoto   = 2
+	kindVoice   = 5
 )
+
+// length: seconds as "m:ss".
+func length(s uint32) string {
+	return fmt.Sprintf("%d:%02d", s/60, s%60)
+}
 
 func kindName(k int) string {
 	switch k {
@@ -19,6 +27,8 @@ func kindName(k int) string {
 		return "Sticker"
 	case kindPhoto:
 		return "Photo"
+	case kindVoice:
+		return "Voice message"
 	}
 	return ""
 }
@@ -85,10 +95,8 @@ func content(m *waE2E.Message) (kind int, text string, ok bool) {
 	case m.PtvMessage != nil:
 		return kindText, "[Video message]", true
 	case m.AudioMessage != nil:
-		if m.GetAudioMessage().GetPTT() {
-			return kindText, "[Voice message]", true
-		}
-		return kindText, "[Audio]", true
+		// voice notes and audio files alike: the watch plays them
+		return kindVoice, length(m.GetAudioMessage().GetSeconds()), true
 	case m.DocumentMessage != nil:
 		d := m.GetDocumentMessage()
 		name := d.GetFileName()

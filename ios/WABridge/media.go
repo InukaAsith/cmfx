@@ -34,7 +34,7 @@ func Media(jid, id string) ([]byte, error) {
 	m := unwrap(&whole)
 	file, preview := mediaOf(m)
 	if file == nil {
-		return nil, errors.New("not a sticker or photo")
+		return nil, errors.New("not a sticker, photo or voice message")
 	}
 	ctx, cancel := timeout(90 * time.Second)
 	defer cancel()
@@ -45,7 +45,7 @@ func Media(jid, id string) ([]byte, error) {
 			b, err = c.Download(ctx, file)
 		}
 	}
-	if err == nil && !isPicture(b) {
+	if err == nil && m.GetAudioMessage() == nil && !isPicture(b) {
 		// a Lottie sticker (a zip of an animation)
 		err = errors.New("an animation, not a picture")
 	}
@@ -67,6 +67,8 @@ func mediaOf(m *waE2E.Message) (whatsmeow.DownloadableMessage, []byte) {
 		return m.GetImageMessage(), m.GetImageMessage().GetJPEGThumbnail()
 	case imageDoc(m) != nil:
 		return imageDoc(m), imageDoc(m).GetJPEGThumbnail()
+	case m.GetAudioMessage() != nil:
+		return m.GetAudioMessage(), nil
 	}
 	return nil, nil
 }
@@ -157,4 +159,42 @@ func again(ctx context.Context, c *whatsmeow.Client, jid, id string, fromMe bool
 	case <-wait.Done():
 		return false
 	}
+}
+
+// SendVoice sends a voice note (Ogg Opus, as WhatsApp's own) to jid and keeps it (the watch can play it back).
+func SendVoice(jid string, ogg []byte, seconds int64) error {
+	c := client()
+	if c == nil {
+		return errNotOpen
+	}
+	to, err := types.ParseJID(jid)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := timeout(90 * time.Second)
+	defer cancel()
+	up, err := c.Upload(ctx, ogg, whatsmeow.MediaAudio)
+	if err != nil {
+		return err
+	}
+	whole := &waE2E.Message{AudioMessage: &waE2E.AudioMessage{
+		URL:           proto.String(up.URL),
+		DirectPath:    proto.String(up.DirectPath),
+		MediaKey:      up.MediaKey,
+		Mimetype:      proto.String("audio/ogg; codecs=opus"),
+		FileEncSHA256: up.FileEncSHA256,
+		FileSHA256:    up.FileSHA256,
+		FileLength:    proto.Uint64(up.FileLength),
+		Seconds:       proto.Uint32(uint32(seconds)),
+		PTT:           proto.Bool(true),
+	}}
+	resp, err := c.SendMessage(ctx, to, whole)
+	if err != nil {
+		return err
+	}
+	m := msg{jid: jid, id: resp.ID, fromMe: true, kind: kindVoice, text: length(uint32(seconds)), ts: resp.Timestamp,
+		group: to.Server == types.GroupServer}
+	m.media, _ = proto.Marshal(whole)
+	own.add(m, true)
+	return nil
 }

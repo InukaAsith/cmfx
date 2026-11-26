@@ -62,7 +62,7 @@ import UIKit
             answering?.cancel()
             asking = text
             answering = Task { await answer(text); self.answering = nil; self.asking = nil }
-        case .tap: break
+        case .tap, .credit, .stop, .filter: break
         }
     }
 

@@ -175,9 +175,63 @@ public enum ChatsProto {
         return cur.isEmpty ? out : out + [cur]
     }
 
-    /// What the watch asked for.
+    /// What the watch asked for. (A tap on a voice note asks for it to play; `credit` paces it, `stop` ends it.)
     public enum Ask: Equatable, Sendable {
-        case ready, open(UInt8), send(UInt8, String), tap(Int)
+        case ready, open(UInt8), send(UInt8, String), tap(Int), credit(next: Int, room: Int), stop
+        /// Notes: the tab chosen (0 notes, 1 to-do lists, 2 reminders)
+        case filter(Int)
+    }
+
+    /// A voice note's kind (its text the length, "0:12").
+    public static let voice: UInt8 = 5
+    /// Voice notes play at 8 kHz: speech, and what the link carries with room to spare.
+    public static let voiceRate = 8000
+
+    /// `O`: a voice note starts (the watch drops what it held).
+    public static let voiceOpen = Data("O".utf8)
+    /// `E`: its last block went.
+    public static let voiceEnd = Data("E".utf8)
+
+    /// A voice note's samples (8 kHz) as `B seq:u16 block` messages (IMA ADPCM, 244 samples each).
+    public static func voiceBlocks(_ samples: [Int16]) -> [Data] {
+        SpeakerProto.blocks(samples, pad: false).map { Data([UInt8(ascii: "B")]) + $0.dropFirst() }
+    }
+
+    /// A voice note on its way: the blocks the watch's credit (`F next room`) lets go, each once; one the watch
+    /// still wants after a while (lost) goes again.
+    public struct VoiceStream: Sendable {
+        public let blocks: [Data]
+        var sent = 0
+        var credit = (next: 0, room: 0)
+        var stalled = 0
+        public private(set) var ended = false
+
+        public init(_ blocks: [Data]) { self.blocks = blocks }
+
+        /// The watch's credit (next is 16 bits, unwrapped near the last one).
+        public mutating func setCredit(next: Int, room: Int) {
+            var n = credit.next & ~0xFFFF | next
+            if n < credit.next - 0x8000 { n += 0x10000 }
+            // the same next again while blocks are out: one was lost, from there again after a few
+            if n == credit.next, sent > n { stalled += 1 } else { stalled = 0 }
+            if stalled >= 4 { sent = n; stalled = 0 }
+            credit = (n, room)
+        }
+
+        /// What may go now; `E` once all went.
+        public mutating func take() -> [Data] {
+            var out: [Data] = []
+            sent = max(sent, credit.next)
+            while sent < blocks.count, sent < credit.next + credit.room {
+                out.append(blocks[sent])
+                sent += 1
+            }
+            if sent == blocks.count, !ended {
+                ended = true
+                out.append(ChatsProto.voiceEnd)
+            }
+            return out
+        }
     }
 
     public static func parse(_ m: Data) -> Ask? {
@@ -186,6 +240,9 @@ public enum ChatsProto {
         case (UInt8(ascii: "R"), 1): return .ready
         case (UInt8(ascii: "o"), 2): return .open(b[1])
         case (UInt8(ascii: "t"), 2): return .tap(Int(b[1]))
+        case (UInt8(ascii: "F"), 4): return .credit(next: Int(b[1]) | Int(b[2]) << 8, room: Int(b[3]))
+        case (UInt8(ascii: "x"), 1): return .stop
+        case (UInt8(ascii: "f"), 2): return .filter(Int(b[1]))
         case (UInt8(ascii: "s"), 3...):
             let t = String(decoding: b.dropFirst(2), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             return t.isEmpty ? nil : .send(b[1], t)

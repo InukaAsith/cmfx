@@ -127,20 +127,32 @@ struct Note: Codable, Identifiable, Equatable {
 
     private func handle(_ ask: ChatsProto.Ask) async {
         switch ask {
-        case .ready: await sendList(quick: true)
+        case .ready:
+            tab = 0
+            await sendList(quick: true)
         case .open(let id): await show(id)
         case .tap(let idx): await tap(idx)
+        case .credit, .stop: break
+        case .filter(let t):
+            tab = min(max(t, 0), 2)
+            await sendList()
         case .send(let id, let text): await send(id, text)
         }
     }
 
-    private enum Item { case new, newList, reminder, list(EKCalendar), note(Note) }
+    private enum Item { case new, newList, reminder, list(EKCalendar), note(Note), rem(EKReminder) }
+
+    /// The watch's tab: 0 notes, 1 to-do lists, 2 reminders (each with its own + ).
+    private var tab = 0
 
     private func item(_ id: UInt8) -> Item? {
         if id == Self.new { return .new }
         if id == Self.newList { return .newList }
         if id == Self.newReminder { return .reminder }
         guard let key = ids.key(id) else { return nil }
+        if key.hasPrefix("rem:") {
+            return (events.calendarItem(withIdentifier: String(key.dropFirst(4))) as? EKReminder).map(Item.rem)
+        }
         if key.hasPrefix("list:") {
             return events.calendar(withIdentifier: String(key.dropFirst(5))).map(Item.list)
         }
@@ -152,21 +164,33 @@ struct Note: Codable, Identifiable, Equatable {
     }
 
     private func sendList(quick: Bool = false) async {
-        // the watch's buttons, in this order: +, the ticked box, the clock
-        var rows: [ChatsProto.Row] = []
-        for (id, name) in [(Self.new, "New note"), (Self.newList, "New to-do list"), (Self.newReminder, "Reminder")] {
-            var r = ChatsProto.Row(id: id, name: name, preview: "")
-            r.isNew = true
-            rows.append(r)
-        }
-        for n in store.notes {
-            rows.append(.init(id: ids.id("note:" + n.id.uuidString), name: n.title.isEmpty ? "Untitled" : n.title,
-                              preview: n.lines.first { !$0.isEmpty } ?? "No text yet"))
-        }
-        let todo = allowed ? await fetch(events.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)) : []
-        for cal in lists {
-            let n = todo.filter { $0.calendar?.calendarIdentifier == cal.calendarIdentifier }.count
-            rows.append(.init(id: ids.id("list:" + cal.calendarIdentifier), name: cal.title, preview: "\(n) to do"))
+        // the tab's own +, then its rows: notes, to-do lists, or reminders by when they are due
+        let (newID, newName) = [(Self.new, "New note"), (Self.newList, "New to-do list"), (Self.newReminder, "Reminder")][tab]
+        var new = ChatsProto.Row(id: newID, name: newName, preview: "")
+        new.isNew = true
+        var rows = [new]
+        let todo = allowed && tab > 0
+            ? await fetch(events.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)) : []
+        switch tab {
+        case 0:
+            for n in store.notes {
+                rows.append(.init(id: ids.id("note:" + n.id.uuidString), name: n.title.isEmpty ? "Untitled" : n.title,
+                                  preview: n.lines.first { !$0.isEmpty } ?? "No text yet"))
+            }
+        case 1:
+            for cal in lists {
+                let n = todo.filter { $0.calendar?.calendarIdentifier == cal.calendarIdentifier }.count
+                rows.append(.init(id: ids.id("list:" + cal.calendarIdentifier), name: cal.title, preview: "\(n) to do"))
+            }
+        default:
+            let due = todo.compactMap { r in Self.due(r).map { (r, $0) } }.sorted { $0.1 < $1.1 }
+            for (r, d) in due.prefix(ChatsProto.maxRows - 1) {
+                rows.append(.init(id: ids.id("rem:" + r.calendarItemIdentifier), unread: d < .now, name: r.title ?? "Reminder",
+                                  preview: Self.dueText(d) + " · " + (r.calendar?.title ?? "")))
+            }
+            if due.isEmpty, !allowed {
+                rows.append(.init(id: Self.newReminder, name: "Reminders", preview: "Allow them in CMFX on the iPhone"))
+            }
         }
         await out(ChatsProto.list(rows) + (quick ? ChatsProto.quick(Self.quick) : []))
     }
@@ -194,15 +218,38 @@ struct Note: Codable, Identifiable, Equatable {
             shown = Array(todo.prefix(ChatsProto.maxMsgs))
             shown += done.prefix(min(Self.done, ChatsProto.maxMsgs - shown.count))
             await out(ChatsProto.chat(id, title: cal.title, shown.map { (false, kind($0), $0.title ?? "") }))
+        case .rem(let r):
+            // the reminder to tick, and when
+            shown = [r]
+            let at = Self.due(r).map { "Due " + Self.dueText($0) } ?? "No time"
+            await out(ChatsProto.chat(id, title: r.title ?? "Reminder",
+                                      [(false, kind(r), r.title ?? ""), (false, ChatsProto.plain, at + " · " + (r.calendar?.title ?? ""))]))
         case nil: await out([ChatsProto.open(id, title: "Gone")])
         }
+    }
+
+    /// When a reminder is due (its components may come without a calendar).
+    static func due(_ r: EKReminder) -> Date? { r.dueDateComponents.flatMap { Calendar.current.date(from: $0) } }
+
+    /// "Today 17:00", "Tomorrow 9:00", "Fri 15:00", "3 Dec 10:00".
+    static func dueText(_ d: Date, now: Date = .now) -> String {
+        let cal = Calendar.current
+        let time = d.formatted(date: .omitted, time: .shortened)
+        if cal.isDate(d, inSameDayAs: now) { return "Today " + time }
+        if let t = cal.date(byAdding: .day, value: 1, to: now), cal.isDate(d, inSameDayAs: t) { return "Tomorrow " + time }
+        if d > now, d.timeIntervalSince(now) < 6 * 86400 { return d.formatted(.dateTime.weekday(.abbreviated)) + " " + time }
+        return d.formatted(.dateTime.day().month(.abbreviated)) + " " + time
     }
 
     private func kind(_ r: EKReminder) -> UInt8 { r.isCompleted ? ChatsProto.done : ChatsProto.todo }
 
     /// A tap on a reminder ticks it (or unticks it); on a note, nothing.
     private func tap(_ idx: Int) async {
-        guard let open, case .list = item(open), idx < shown.count else { return }
+        guard let open, idx < shown.count else { return }
+        switch item(open) {
+        case .list, .rem: break
+        default: return
+        }
         let r = shown[idx]
         r.isCompleted.toggle()
         do {
@@ -302,7 +349,7 @@ struct Note: Codable, Identifiable, Equatable {
                 }
             default: return
             }
-        case nil: return
+        case .rem, nil: return
         }
         await sendList()
     }

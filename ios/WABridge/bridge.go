@@ -512,8 +512,8 @@ func keepMessage(c *whatsmeow.Client, e *events.Message, live bool) (msg, bool) 
 	}
 	m := msg{jid: jid, id: e.Info.ID, fromMe: e.Info.IsFromMe, kind: kind, text: text, ts: e.Info.Timestamp,
 		group: chat.Server == types.GroupServer}
-	if kind == kindSticker || kind == kindPhoto {
-		// kept to download the picture if the watch asks
+	if kind == kindSticker || kind == kindPhoto || kind == kindVoice {
+		// kept to download the picture (the voice note) if the watch asks
 		m.media, _ = proto.Marshal(e.Message)
 	}
 	if m.group && !m.fromMe {

@@ -116,7 +116,7 @@ enum MailKind: String, CaseIterable, Identifiable {
                 watch()
             case .open(let id): try await open(id)
             case .send(let id, let text): try await send(id, text)
-            case .tap: break
+            case .tap, .credit, .stop, .filter: break
             }
         } catch {
             status = error.localizedDescription
