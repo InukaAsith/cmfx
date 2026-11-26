@@ -506,7 +506,8 @@ import WireKit
         for _ in 0..<100 where !committed && g == gen {
             try? await Task.sleep(for: .milliseconds(100))
         }
-        for _ in 0..<60 where g == gen, await js("document.readyState") == "loading" {
+        for _ in 0..<60 where g == gen {
+            guard await js("document.readyState") == "loading" else { break }
             try? await Task.sleep(for: .milliseconds(100))
         }
         // (the pictures' capture waits for what is in view: images, fonts)

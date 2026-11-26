@@ -140,6 +140,7 @@ public enum VectorPack {
     /// 20 a street; frame metres.
     public struct Named: Equatable, Sendable {
         public var kind: Int, x: Int, y: Int, name: String
+        public init(kind: Int, x: Int, y: Int, name: String) { (self.kind, self.x, self.y, self.name) = (kind, x, y, name) }
     }
     public static let street = 20
     public static let namesMax = 3000
