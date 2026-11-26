@@ -227,6 +227,16 @@ struct PermissionsCard: View {
                 }
                 .controlSize(.mini)
                 .padding(.leading, 42)
+                if Permissions.shared.grants(name)[cap] == true {
+                    // titles are hidden ("busy") unless the app may show text
+                    Toggle(isOn: Binding(get: { Permissions.shared.showText(name) },
+                                         set: { Permissions.shared.setShowText(name, $0) })) {
+                        Text(cap == "calendar" ? "Show event names (else \u{201C}busy\u{201D})" : "Show reminder names")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .controlSize(.mini)
+                    .padding(.leading, 70)
+                }
             }
             Text("Store apps say \u{201C}Enable in FMC Companion\u{201D}: CMFX answers for it. Allow them here, then open the app on the watch again.")
                 .font(.caption2).foregroundStyle(.secondary).padding(.leading, 42)
