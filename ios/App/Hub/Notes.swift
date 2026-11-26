@@ -148,7 +148,9 @@ struct Note: Codable, Identifiable, Equatable {
     }
 
     private func sendList(quick: Bool = false) async {
-        var rows = [ChatsProto.Row(id: Self.new, name: "New note", preview: "Write one on the watch")]
+        var new = ChatsProto.Row(id: Self.new, name: "New note", preview: "Write one on the watch")
+        new.isNew = true // the watch's + button
+        var rows = [new]
         for n in store.notes {
             rows.append(.init(id: ids.id("note:" + n.id.uuidString), name: n.title.isEmpty ? "Untitled" : n.title,
                               preview: n.lines.first { !$0.isEmpty } ?? "No text yet"))

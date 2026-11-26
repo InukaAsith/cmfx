@@ -41,6 +41,7 @@ private final class WAEvents: NSObject, WabridgeListenerProtocol {
 }
 
 private struct WAChat: Decodable { let jid: String, name: String, unread: Int, preview: String }
+private struct WAContact: Decodable { let jid: String, name: String }
 private struct WAMsg: Decodable {
     let id: String?, fromMe: Bool, state: Int?, kind: Int, text: String, who: String?
 }
@@ -52,6 +53,8 @@ private struct WAMsg: Decodable {
     static let idle: Duration = .seconds(60)
     /// The row shown while not linked.
     static let info: UInt8 = 1
+    /// The new-chat row: the watch's + button, whom to write to.
+    static let newChat: UInt8 = 0
 
     /// Linked, as last seen (kept so the Hub row needs no bridge).
     private(set) var linked = UserDefaults.standard.bool(forKey: "wa.linked")
@@ -143,6 +146,9 @@ private struct WAMsg: Decodable {
     /// From Go.
     fileprivate func changed(_ s: String) {
         switch s {
+        case "connected":
+            // the watch's sync bar: online, the offline messages coming
+            if live { enqueue { await self.out([ChatsProto.sync(55)]) } }
         case "synced":
             let w = syncWaiters
             syncWaiters.removeAll()
@@ -150,7 +156,9 @@ private struct WAMsg: Decodable {
             // the watch already shows what the phone had: now the fresh list, and the open chat read
             if live {
                 enqueue {
-                    await self.sendList()
+                    await self.out([ChatsProto.sync(100)])
+                    // (not over the picker: it goes on choosing)
+                    if self.open != Self.newChat { await self.sendList() }
                     if let id = self.open, id != Self.info, let jid = self.ids.key(id) {
                         await self.out(self.opened(id, jid))
                         await Self.go { WabridgeMarkRead(jid) }
@@ -184,6 +192,7 @@ private struct WAMsg: Decodable {
     /// Starts connecting (once) without waiting.
     private func startConnect() {
         guard connecting == nil, openBridge(), linked, WabridgeState() != "synced" else { return }
+        if live { enqueue { await self.out([ChatsProto.sync(15)]) } }
         connecting = Task {
             let ok = await self.connectNow()
             self.connecting = nil
@@ -441,6 +450,9 @@ private struct WAMsg: Decodable {
         if !linked {
             rows = [.init(id: Self.info, name: "WhatsApp", preview: "Link it in CMFX on the iPhone")]
         } else {
+            var new = ChatsProto.Row(id: Self.newChat, name: "New chat", preview: "Choose a contact")
+            new.isNew = true
+            rows.append(new)
             // the saved chats show at once; while WhatsApp catches up, the top row says so
             if WabridgeState() != "synced", connecting != nil {
                 var row = ChatsProto.Row(id: Self.info, name: "Syncing...", preview: "Saved chats below")
@@ -451,15 +463,33 @@ private struct WAMsg: Decodable {
                 names[c.jid] = c.name
                 rows.append(.init(id: ids.id(c.jid), unreadCount: c.unread, name: c.name, preview: c.preview))
             }
-            if rows.isEmpty || rows.allSatisfy({ $0.id == Self.info }) {
+            if rows.allSatisfy({ $0.id == Self.info || $0.id == Self.newChat }) {
                 let syncing = WabridgeState() != "synced" && connecting != nil
                 var row = ChatsProto.Row(id: Self.info, name: syncing ? "Syncing..." : "WhatsApp",
                                          preview: syncing ? "Getting your chats" : connection == "disconnected" ? "Offline" : "No chats yet")
                 row.status = syncing
-                rows = [row]
+                rows = [rows[0], row]
             }
         }
-        await out(ChatsProto.list(rows) + (quick ? ChatsProto.quick(Self.quick) : []))
+        // (a picker the watch shows ends with the usual list)
+        await out([ChatsProto.picker("")] + ChatsProto.list(rows) + (quick ? ChatsProto.quick(Self.quick) : []))
+    }
+
+    /// The + button: the address book's people not already in the list, by name (12 at most: the watch's rows).
+    private func sendPicker() async {
+        let inList = Set(chats().map(\.jid))
+        let all = opened ? (try? JSONDecoder().decode([WAContact].self, from: Data(WabridgeContacts().utf8))) ?? [] : []
+        let people = all.filter { !inList.contains($0.jid) }.prefix(ChatsProto.maxRows)
+        guard !people.isEmpty else {
+            return await out([ChatsProto.open(Self.newChat, title: "New chat"),
+                              ChatsProto.message(0, "No contacts yet: WhatsApp shares them once it has synced.")])
+        }
+        var rows: [ChatsProto.Row] = []
+        for p in people {
+            names[p.jid] = p.name
+            rows.append(.init(id: ids.id(p.jid), name: p.name, preview: "+" + p.jid.prefix { $0 != "@" }))
+        }
+        await out([ChatsProto.picker("New chat")] + ChatsProto.list(rows))
     }
 
     /// The watch shows a group's sender before the text.
@@ -484,6 +514,7 @@ private struct WAMsg: Decodable {
     private func show(_ id: UInt8) async {
         open = id
         shown = []
+        if id == Self.newChat, linked { return await sendPicker() }
         guard id != Self.info, let jid = ids.key(id) else {
             let text = linked ? "Your chats show here once WhatsApp is reachable." :
                 "Open CMFX on the iPhone › Hub › WhatsApp, and link it with a pairing code."

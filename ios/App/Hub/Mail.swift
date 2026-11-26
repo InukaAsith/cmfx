@@ -32,7 +32,7 @@ struct MailMessage {
     func setRead(_ id: String, _ read: Bool) async throws
     /// Out of the inbox.
     func archive(_ id: String) async throws
-    /// A reply in the row's thread, to `to`.
+    /// A reply in the row's thread, to `to` (an empty id and messageID: a new email).
     func reply(_ id: String, to: String, subject: String, messageID: String, references: String, text: String) async throws
     /// Forget what is cached or connected (an account changed).
     func reset()
@@ -73,7 +73,9 @@ enum MailKind: String, CaseIterable, Identifiable {
         let to: String, subject: String, messageID: String, references: String
     }
 
-    private var ids = ChatsProto.Ids()
+    /// The new-mail row: the watch's + button; its picker's rows are keyed "to:<address>".
+    static let newMail: UInt8 = 1
+    private var ids = ChatsProto.Ids(first: 2)
     private var listed: [MailEntry] = []
     private var opened: Opened?
     private var chain: Task<Void, Never>?
@@ -84,7 +86,7 @@ enum MailKind: String, CaseIterable, Identifiable {
         poller?.cancel()
         listed = []
         opened = nil
-        ids = ChatsProto.Ids()
+        ids = ChatsProto.Ids(first: 2)
         status = nil
         gmail.reset()
         imap.reset()
@@ -133,13 +135,39 @@ enum MailKind: String, CaseIterable, Identifiable {
     }
 
     private func sendList(quick: Bool = false) async throws {
-        let rows = listed.map { ChatsProto.Row(id: ids.id($0.id), unread: $0.unread, name: MailText.name($0.from),
-                                               preview: $0.subject.isEmpty ? "(no subject)" : $0.subject) }
-        try await Hub.shared.send(Self.app, ChatsProto.list(rows) + (quick ? ChatsProto.quick(Self.quick) : []))
+        var new = ChatsProto.Row(id: Self.newMail, name: "New mail", preview: "Write one")
+        new.isNew = true
+        let rows = [new] + listed.map { ChatsProto.Row(id: ids.id($0.id), unread: $0.unread, name: MailText.name($0.from),
+                                                       preview: $0.subject.isEmpty ? "(no subject)" : $0.subject) }
+        // (a picker the watch shows ends with the usual list)
+        try await Hub.shared.send(Self.app, [ChatsProto.picker("")] + ChatsProto.list(rows) + (quick ? ChatsProto.quick(Self.quick) : []))
+    }
+
+    /// The + button: whom to write to, the people in the inbox (not our own address), as a picker.
+    private func sendPicker() async throws {
+        var seen = Set<String>()
+        var rows: [ChatsProto.Row] = []
+        for e in listed {
+            let a = MailText.address(e.from).lowercased()
+            guard !a.isEmpty, a != backend.address?.lowercased(), seen.insert(a).inserted else { continue }
+            rows.append(.init(id: ids.id("to:" + e.from), name: MailText.name(e.from), preview: a))
+        }
+        guard !rows.isEmpty else {
+            return try await Hub.shared.send(Self.app, ChatsProto.chat(Self.newMail, title: "New mail", [(false, 0, "No one to write to yet: the people who email you show here.")]))
+        }
+        try await Hub.shared.send(Self.app, [ChatsProto.picker("New mail")] + ChatsProto.list(rows))
     }
 
     private func open(_ id: UInt8) async throws {
+        if id == Self.newMail { return try await sendPicker() }
         guard let key = ids.key(id) else { return }
+        if key.hasPrefix("to:") {
+            // a new email to them: empty till the first words, which are its subject too
+            let to = String(key.dropFirst(3))
+            let o = Opened(id: id, key: key, title: "To " + MailText.name(to), msgs: [], to: to, subject: "", messageID: "", references: "")
+            opened = o
+            return try await Hub.shared.send(Self.app, ChatsProto.chat(id, title: o.title, []))
+        }
         let o = try await load(id, key)
         opened = o
         try await Hub.shared.send(Self.app, ChatsProto.chat(id, title: o.title, o.msgs))
@@ -162,6 +190,18 @@ enum MailKind: String, CaseIterable, Identifiable {
 
     private func send(_ id: UInt8, _ text: String) async throws {
         guard let key = ids.key(id) else { return }
+        if key.hasPrefix("to:") {
+            guard ChatsProto.action(text) == nil else { return }
+            let to = String(key.dropFirst(3))
+            do {
+                try await backend.reply("", to: to, subject: Self.subject(text), messageID: "", references: "", text: text)
+                try await refresh()
+                try await sendList()
+            } catch {
+                try await Hub.shared.send(Self.app, [ChatsProto.append("Not sent: \(error.localizedDescription)")])
+            }
+            return
+        }
         var o: Opened
         if let x = opened, x.id == id { o = x } else { o = try await load(id, key) }
         if let action = ChatsProto.action(text) {
@@ -192,6 +232,14 @@ enum MailKind: String, CaseIterable, Identifiable {
             try await Hub.shared.send(Self.app, ChatsProto.chat(id, title: o.title, o.msgs)
                 + [ChatsProto.append("Not sent: \(error.localizedDescription)")])
         }
+    }
+
+    /// A new email's subject: its first words, at most 40 characters, cut at a word.
+    static func subject(_ text: String) -> String {
+        let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
+        guard line.count > 40 else { return line }
+        let cut = line.prefix(40)
+        return String(cut.lastIndex(of: " ").map { cut[..<$0] } ?? cut) + "..."
     }
 
     /// Checks the inbox every minute while Mail is the app the watch last talked from (a send that fails, or

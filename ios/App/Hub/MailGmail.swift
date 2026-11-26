@@ -70,7 +70,9 @@ import UIKit
 
     func reply(_ thread: String, to: String, subject: String, messageID: String, references: String, text: String) async throws {
         let raw = MailText.reply(to: to, subject: subject, messageID: messageID, references: references, text: text)
-        try await call("POST", "/messages/send", body: ["raw": raw.base64url, "threadId": thread])
+        // a new email (no thread): a thread of its own
+        let body: [String: String] = thread.isEmpty ? ["raw": raw.base64url] : ["raw": raw.base64url, "threadId": thread]
+        try await call("POST", "/messages/send", body: body)
     }
 
     // MARK: Gmail

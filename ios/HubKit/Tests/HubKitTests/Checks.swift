@@ -316,6 +316,14 @@ enum Checks {
         eq("emoji message", hex(ChatsProto.message(0, "ok 👍🏽")), "4d000000" + hex(Data("ok 👍".utf8)))
         eq("chats online", hex(ChatsProto.online(true)), "5001")
         do {
+            var r = ChatsProto.Row(id: 7, name: "New chat", preview: "")
+            r.isNew = true
+            eq("chats new row", hex(ChatsProto.list([r])[1].prefix(4)), "430007fe")
+            eq("chats many unread", hex(ChatsProto.list([.init(id: 2, unreadCount: 300, name: "a", preview: "")])[1].prefix(4)), "43000263")
+            eq("chats picker", hex(ChatsProto.picker("New chat")), hex(Data("KNew chat".utf8)))
+            eq("chats sync", hex(ChatsProto.sync(140)), "5964")
+        }
+        do {
             eq("chats seen", hex(ChatsProto.seen("last seen 16:42")), hex(Data("Wlast seen 16:42".utf8)))
             var cal = Calendar(identifier: .gregorian)
             cal.timeZone = TimeZone(identifier: "UTC")!

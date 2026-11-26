@@ -86,7 +86,9 @@ import UIKit
     private func send(_ msgs: [Data]) { Task { try? await Hub.shared.send(Self.app, msgs) } }
 
     private func list() -> [Data] {
-        var rows = [ChatsProto.Row(id: Self.newChat, name: "New chat", preview: "Ask anything")]
+        var new = ChatsProto.Row(id: Self.newChat, name: "New chat", preview: "Ask anything")
+        new.isNew = true // the watch's + button
+        var rows = [new]
         for c in convos {
             rows.append(.init(id: c.id, name: c.turns.first { $0.user }?.text ?? "Chat",
                               preview: c.turns.last { !$0.user }?.text ?? ""))

@@ -681,3 +681,32 @@ func Avatar(jid string) ([]byte, error) {
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, 256<<10))
 }
+
+// Contacts: the address book WhatsApp shares with linked devices, as JSON [{jid, name}] sorted by name (saved
+// names only: those the phone knows by a name you gave them), for the watch's new-chat picker.
+func Contacts() string {
+	c := client()
+	if c == nil {
+		return "[]"
+	}
+	ctx, cancel := timeout(10 * time.Second)
+	defer cancel()
+	all, err := c.Store.Contacts.GetAllContacts(ctx)
+	if err != nil {
+		return "[]"
+	}
+	type contact struct {
+		JID  string `json:"jid"`
+		Name string `json:"name"`
+	}
+	out := []contact{}
+	for j, info := range all {
+		if j.Server != types.DefaultUserServer || info.FullName == "" {
+			continue
+		}
+		out = append(out, contact{j.String(), info.FullName})
+	}
+	sort.Slice(out, func(a, b int) bool { return strings.ToLower(out[a].Name) < strings.ToLower(out[b].Name) })
+	b, _ := json.Marshal(out)
+	return string(b)
+}

@@ -13,8 +13,10 @@ public enum ChatsProto {
         public var id: UInt8, unread: Bool, name: String, preview: String
         /// How many are unread (the watch shows the number; 0: `unread` alone, as 1).
         public var count: Int = 0
-        /// A status line ("Syncing..."): red on the watch, not a chat.
+        /// A status line ("Syncing..."): red on the watch, not a chat ("Syncing..." is its filling bar).
         public var status = false
+        /// The new-chat row (New chat, New note, New mail): the watch's + button, not a card.
+        public var isNew = false
         public init(id: UInt8, unread: Bool = false, name: String, preview: String) {
             self.id = id; self.unread = unread; self.name = name; self.preview = preview
         }
@@ -22,7 +24,7 @@ public enum ChatsProto {
             self.init(id: id, unread: unreadCount > 0, name: name, preview: preview)
             count = unreadCount
         }
-        var unreadByte: UInt8 { status ? 255 : count > 0 ? UInt8(min(count, 254)) : (unread ? 1 : 0) }
+        var unreadByte: UInt8 { status ? 255 : isNew ? 254 : count > 0 ? UInt8(min(count, 99)) : (unread ? 1 : 0) }
     }
 
     /// `L n`, then `C idx id unread nlen name… plen preview…` per row (12 at most).
@@ -34,6 +36,12 @@ public enum ChatsProto {
         }
         return out
     }
+
+    /// `K title`: the list that follows is a picker (whom to write to) under `title`; empty: the usual list.
+    public static func picker(_ title: String) -> Data { Data([UInt8(ascii: "K")]) + utf8(title, 24) }
+
+    /// `Y pct`: how far the sync is (the watch's bar while the "Syncing..." row is there).
+    public static func sync(_ pct: Int) -> Data { Data([UInt8(ascii: "Y"), UInt8(max(0, min(100, pct)))]) }
 
     /// `H id title…`: a chat opened, its messages follow and replace.
     public static func open(_ id: UInt8, title: String) -> Data { Data([UInt8(ascii: "H"), id]) + utf8(title, 24, emoji: true) }
@@ -293,7 +301,8 @@ public enum MailText {
     public static func reply(to: String, subject: String, messageID: String, references: String, text: String,
                              from: String? = nil, date: Date? = nil, id: String? = nil) -> Data {
         let toH = mailbox(to)
-        let subj = subject.lowercased().hasPrefix("re:") ? subject : "Re: " + subject
+        // a new email (no messageID) keeps its subject as it is
+        let subj = messageID.isEmpty || subject.lowercased().hasPrefix("re:") ? subject : "Re: " + subject
         var h: [String] = []
         if let from { h.append("From: \(mailbox(from))") }
         h += ["To: \(toH)", "Subject: \(word(subj))"]
