@@ -24,8 +24,8 @@ import UIKit
     private let tiles = VectorTiles()
     private let here = PhoneFix()
     /// The routes last found for the watch (it picks one), and the search for them.
-    private var found: [(pts: [AtlasScene.Pt], metres: Double, secs: Double)] = []
-    private var routeJob: Task<Void, Never>?
+    private var found: [Int: [Found]] = [:]
+    private var routeJobs: [Int: Task<Void, Never>] = [:]
 
     func receive(_ m: Data) {
         switch m.first {
@@ -39,15 +39,15 @@ import UIKit
             cleaning = false
         case UInt8(ascii: "D"):
             if let ask = VectorPack.parseAsk(m) {
-                routeJob?.cancel()
-                routeJob = Task { await route(ask) }
+                routeJobs[ask.mode]?.cancel()
+                routeJobs[ask.mode] = Task { await route(ask) }
             }
-        case UInt8(ascii: "p") where m.count == 2:
-            // the route picked of those `O` listed
-            let k = Int(m[m.startIndex + 1])
-            guard found.indices.contains(k) else { return }
-            let r = found[k]
-            Task { try? await Hub.shared.send(Self.app, VectorPack.route(r.pts, metres: r.metres, secs: r.secs)) }
+        case UInt8(ascii: "p") where m.count == 3:
+            // the route picked (mode, k) of those `O` listed: its turns, then its points
+            let (mode, k) = (Int(m[m.startIndex + 1]), Int(m[m.startIndex + 2]))
+            guard let r = found[mode], r.indices.contains(k) else { return }
+            let w = r[k]
+            Task { try? await Hub.shared.send(Self.app, VectorPack.turns(w.turns) + VectorPack.route(w.pts, metres: w.metres, secs: w.secs)) }
         case UInt8(ascii: "l"):
             // the watch asks where the phone is (every 2 s while Offline Maps is open): it uses it while its own
             // GPS has no fix
@@ -152,10 +152,12 @@ import UIKit
         _ = await ack()
     }
 
-    /// Routes the watch asked for (car, bike, walk): up to three, OpenStreetMap's (FOSSGIS OSRM), else Apple's; their
-    /// times go to the watch, which picks one (`p`), followed then with no phone.
+    /// Routes the watch asked for, one mode each ask (car, bike, walk): up to three, OpenStreetMap's (FOSSGIS OSRM)
+    /// with their turns, else Apple's. Their times go to the watch (`O`, `o`); the one it picks (`p`) goes with its
+    /// turns, and the watch then navigates by itself (Offline Maps trip.rs).
     private func route(_ ask: VectorPack.RouteAsk) async {
         let o: AtlasScene.LatLon = ask.origin
+        let mode = ask.mode
         let src: CLLocationCoordinate2D
         if let f = ask.from {
             let p = AtlasScene.latLon(f.0, f.1, o)
@@ -163,29 +165,31 @@ import UIKit
         } else if let here = CLLocationManager().location?.coordinate {
             src = here
         } else {
-            try? await Hub.shared.send(Self.app, VectorPack.routeFailed("No GPS fix yet"))
+            try? await Hub.shared.send(Self.app, VectorPack.ways(mode: mode, []))
             return
         }
         let t = AtlasScene.latLon(ask.to.0, ask.to.1, o)
         let dst = CLLocationCoordinate2D(latitude: t.lat, longitude: t.lon)
-        var ways = await osrm(src, dst, profile: ["car", "bike", "foot"][ask.mode])
-        if ways.isEmpty { ways = await apple(src, dst, walk: ask.mode != 0) }
+        var ways = await osrm(src, dst, profile: ["car", "bike", "foot"][mode])
+        if ways.isEmpty { ways = await apple(src, dst, walk: mode != 0) }
         guard !Task.isCancelled else { return }
-        found = ways.prefix(3).map { w in
-            (w.coords.map { AtlasScene.xy(($0.latitude, $0.longitude), o) }, w.metres, w.secs)
+        let xy = { (c: CLLocationCoordinate2D) in AtlasScene.xy((c.latitude, c.longitude), o) }
+        found[mode] = ways.prefix(3).map { w in
+            Found(pts: w.coords.map(xy), metres: w.metres, secs: w.secs,
+                  turns: w.turns.map { VectorPack.Turn(kind: $0.kind, dir: $0.dir, at: xy($0.at), street: $0.street) })
         }
-        if found.isEmpty {
-            try? await Hub.shared.send(Self.app, VectorPack.routeFailed("No route: needs the internet"))
-            return
-        }
-        try? await Hub.shared.send(Self.app, VectorPack.ways(found.map { ($0.secs, $0.metres) }))
+        try? await Hub.shared.send(Self.app, VectorPack.ways(mode: mode, (found[mode] ?? []).map { ($0.secs, $0.metres) }))
     }
 
-    private typealias Way = (coords: [CLLocationCoordinate2D], metres: Double, secs: Double)
+    private struct Found {
+        var pts: [AtlasScene.Pt], metres: Double, secs: Double, turns: [VectorPack.Turn]
+    }
+    private typealias Way = (coords: [CLLocationCoordinate2D], metres: Double, secs: Double,
+                             turns: [(kind: Int, dir: Int, at: CLLocationCoordinate2D, street: String)])
 
     private func osrm(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D, profile: String) async -> [Way] {
         let s = String(format: "%.6f,%.6f;%.6f,%.6f", a.longitude, a.latitude, b.longitude, b.latitude)
-        guard let url = URL(string: "https://routing.openstreetmap.de/routed-\(profile)/route/v1/driving/\(s)?alternatives=3&overview=full&geometries=geojson") else { return [] }
+        guard let url = URL(string: "https://routing.openstreetmap.de/routed-\(profile)/route/v1/driving/\(s)?alternatives=3&overview=full&geometries=geojson&steps=true") else { return [] }
         var req = URLRequest(url: url)
         req.timeoutInterval = 12
         guard let (data, _) = try? await URLSession.shared.data(for: req),
@@ -193,11 +197,22 @@ import UIKit
               let routes = j["routes"] as? [[String: Any]] else { return [] }
         return routes.compactMap { r in
             guard let line = (r["geometry"] as? [String: Any])?["coordinates"] as? [[Double]], line.count >= 2 else { return nil }
+            var turns: [(kind: Int, dir: Int, at: CLLocationCoordinate2D, street: String)] = []
+            for leg in r["legs"] as? [[String: Any]] ?? [] {
+                for st in leg["steps"] as? [[String: Any]] ?? [] {
+                    guard let m = st["maneuver"] as? [String: Any], let loc = m["location"] as? [Double], loc.count == 2,
+                          let (kind, dir) = VectorPack.osrmTurn(m["type"] as? String ?? "turn", m["modifier"] as? String)
+                    else { continue }
+                    turns.append((kind, dir, CLLocationCoordinate2D(latitude: loc[1], longitude: loc[0]),
+                                  kind == 2 ? "" : st["name"] as? String ?? ""))
+                }
+            }
             return (line.map { CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) },
-                    r["distance"] as? Double ?? 0, r["duration"] as? Double ?? 0)
+                    r["distance"] as? Double ?? 0, r["duration"] as? Double ?? 0, turns)
         }
     }
 
+    /// Apple's routes: its steps' words give the turns roughly (left or right, the arrival).
     private func apple(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D, walk: Bool) async -> [Way] {
         let req = MKDirections.Request()
         req.source = MKMapItem(placemark: MKPlacemark(coordinate: a))
@@ -207,7 +222,12 @@ import UIKit
         guard let routes = try? await MKDirections(request: req).calculate().routes else { return [] }
         return routes.map { r in
             let n = r.polyline.pointCount, p = r.polyline.points()
-            return ((0..<n).map { p[$0].coordinate }, r.distance, r.expectedTravelTime)
+            let turns = r.steps.dropFirst().compactMap { st -> (kind: Int, dir: Int, at: CLLocationCoordinate2D, street: String)? in
+                guard st.polyline.pointCount > 0 else { return nil }
+                let (kind, dir) = VectorPack.appleTurn(st.instructions, last: st == r.steps.last)
+                return (kind, dir, st.polyline.points()[0].coordinate, "")
+            }
+            return ((0..<n).map { p[$0].coordinate }, r.distance, r.expectedTravelTime, turns)
         }
     }
 }

@@ -297,15 +297,70 @@ public enum VectorPack {
 
     public static func routeFailed(_ why: String) -> Data { Data("E".utf8) + AtlasScene.text(why, 40) }
 
-    /// The routes found: `O n`, then `o k secs:u32 metres:u32` each (the watch picks one with `p k`).
-    public static func ways(_ r: [(secs: Double, metres: Double)]) -> [Data] {
-        var out = [Data([UInt8(ascii: "O"), UInt8(r.count)])]
+    /// The routes found by one mode (0 car, 1 bike, 2 walk): `O mode n` (0: none), then `o mode k secs:u32
+    /// metres:u32` each (the watch picks one with `p mode k`).
+    public static func ways(mode: Int, _ r: [(secs: Double, metres: Double)]) -> [Data] {
+        var out = [Data([UInt8(ascii: "O"), UInt8(mode), UInt8(r.count)])]
         for (k, w) in r.enumerated() {
-            var d = Data([UInt8(ascii: "o"), UInt8(k)])
+            var d = Data([UInt8(ascii: "o"), UInt8(mode), UInt8(k)])
             d.le(UInt32(max(0, w.secs))); d.le(UInt32(max(0, w.metres)))
             out.append(d)
         }
         return out
+    }
+
+    /// A turn of a route, as Navigation's (nav state.rs): kind 0 turn, 1 roundabout, 2 arrive, 3 straight on, 4 fork
+    /// or ramp; dir 0 straight, 1 slight left, 2 left, 3 sharp left, 4 slight right, 5 right, 6 sharp right, 7 U-turn.
+    public struct Turn: Equatable, Sendable {
+        public var kind: Int, dir: Int, at: AtlasScene.Pt, street: String
+        public init(kind: Int, dir: Int, at: AtlasScene.Pt, street: String) {
+            (self.kind, self.dir, self.at, self.street) = (kind, dir, at, street)
+        }
+        public static func == (a: Turn, b: Turn) -> Bool {
+            a.kind == b.kind && a.dir == b.dir && a.at == b.at && a.street == b.street
+        }
+    }
+    public static let turnsMax = 64
+
+    /// The route's turns for the watch: `S n`, then `s k kind dir x:i16 y:i16 street` each (sent before its points).
+    public static func turns(_ t: [Turn]) -> [Data] {
+        let t = Array(t.prefix(turnsMax))
+        var out = [Data([UInt8(ascii: "S"), UInt8(t.count)])]
+        for (k, s) in t.enumerated() {
+            var d = Data([UInt8(ascii: "s"), UInt8(k), UInt8(s.kind), UInt8(s.dir)])
+            d.le(AtlasScene.i16(s.at.0)); d.le(AtlasScene.i16(s.at.1))
+            d += AtlasScene.text(s.street, 32)
+            out.append(d)
+        }
+        return out
+    }
+
+    static let dirs: [String: Int] = ["straight": 0, "slight left": 1, "left": 2, "sharp left": 3, "slight right": 4,
+                                      "right": 5, "sharp right": 6, "uturn": 7]
+
+    /// OSRM's manoeuvre as a turn (kind, dir); nil for the start.
+    public static func osrmTurn(_ type: String, _ modifier: String?) -> (Int, Int)? {
+        let d = dirs[modifier ?? "straight"] ?? 0
+        switch type {
+        case "depart": return nil
+        case "arrive": return (2, 0)
+        case "roundabout", "rotary", "roundabout turn", "exit roundabout", "exit rotary": return (1, d)
+        case "fork", "on ramp", "off ramp", "merge": return (4, d)
+        case "continue", "new name" where d == 0: return (3, 0)
+        default: return (0, d)
+        }
+    }
+
+    /// Apple's step words as a turn, roughly.
+    public static func appleTurn(_ words: String, last: Bool) -> (Int, Int) {
+        let w = words.lowercased()
+        if last || w.contains("arrive") || w.contains("destination") { return (2, 0) }
+        if w.contains("u-turn") { return (0, 7) }
+        if w.contains("roundabout") { return (1, 0) }
+        let slight = w.contains("slight") || w.contains("keep") || w.contains("bear")
+        if w.contains("left") { return slight ? (4, 1) : (0, 2) }
+        if w.contains("right") { return slight ? (4, 4) : (0, 5) }
+        return (3, 0)
     }
 }
 

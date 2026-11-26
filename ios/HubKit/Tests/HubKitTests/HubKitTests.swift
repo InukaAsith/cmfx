@@ -80,9 +80,21 @@ import HubKit
     #expect(VectorPack.parseAsk(m)?.mode == 1)
     m[1] = 7
     #expect(VectorPack.parseAsk(m)?.mode == 2)
-    let w = VectorPack.ways([(600, 4200), (720.4, 3900)])
-    #expect(w[0] == Data([0x4F, 2]))
-    #expect(w[2] == Data([0x6F, 1, 0xD0, 0x02, 0, 0, 0x3C, 0x0F, 0, 0]))
+    let w = VectorPack.ways(mode: 1, [(600, 4200), (720.4, 3900)])
+    #expect(w[0] == Data([0x4F, 1, 2]))
+    #expect(w[2] == Data([0x6F, 1, 1, 0xD0, 0x02, 0, 0, 0x3C, 0x0F, 0, 0]))
+    #expect(VectorPack.ways(mode: 2, []) == [Data([0x4F, 2, 0])])
+    // turns: S n, s k kind dir x y street
+    let t = VectorPack.turns([.init(kind: 0, dir: 5, at: (10, -2), street: "Galle Rd"), .init(kind: 2, dir: 0, at: (300, 4), street: "")])
+    #expect(t[0] == Data([0x53, 2]))
+    #expect(t[1] == Data([0x73, 0, 0, 5, 10, 0, 0xFE, 0xFF]) + Data("Galle Rd".utf8))
+    #expect(t[2] == Data([0x73, 1, 2, 0, 0x2C, 0x01, 4, 0]))
+    #expect(VectorPack.osrmTurn("depart", "right") == nil)
+    #expect(VectorPack.osrmTurn("turn", "slight left")! == (0, 1))
+    #expect(VectorPack.osrmTurn("new name", "straight")! == (3, 0))
+    #expect(VectorPack.osrmTurn("roundabout", "right")! == (1, 5))
+    #expect(VectorPack.appleTurn("Turn right onto Galle Rd", last: false) == (0, 5))
+    #expect(VectorPack.appleTurn("Keep left", last: false) == (4, 1))
     // the same name within 300 m once, places first; kind x y len text
     let f = VectorPack.namesFile([
         .init(kind: 20, x: 10, y: -5, name: "Galle Road"), .init(kind: 20, x: 100, y: 0, name: "galle road"),
