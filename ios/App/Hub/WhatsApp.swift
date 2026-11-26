@@ -490,6 +490,7 @@ private struct WAMsg: Decodable {
             return await out([ChatsProto.open(id, title: "WhatsApp"), ChatsProto.message(0, text)])
         }
         await out(opened(id, jid))
+        await who(id, jid)
         // online: a green dot on the watch while this chat is open (see WabridgeWatch)
         if WabridgeState() != "disconnected" { Task.detached { WabridgeWatch(jid) } }
         if WabridgeState() == "synced" {
@@ -553,10 +554,56 @@ private struct WAMsg: Decodable {
         }
     }
 
-    /// From Go: the open chat's contact came online or went offline.
+    /// From Go: the open chat's contact came online or went offline (then when, if they show it).
     fileprivate func presence(_ jid: String, _ on: Bool) {
         guard live, let id = open, ids.key(id) == jid else { return }
-        enqueue { await self.out([ChatsProto.online(on)]) }
+        enqueue { await self.out([ChatsProto.online(on)] + (on ? [] : self.seenLine(jid))) }
+    }
+
+    // MARK: the open chat's top: its picture and last seen
+
+    /// Pictures fetched this run (12 × 12 RGBA, nil: none), by jid; memory only.
+    private var dps: [String: [UInt8]?] = [:]
+
+    private func seenLine(_ jid: String) -> [Data] {
+        let t = WabridgeLastSeen(jid)
+        return t > 0 ? [ChatsProto.seen(ChatsProto.lastSeen(Date(timeIntervalSince1970: TimeInterval(t))))] : []
+    }
+
+    /// The picture (fetched once, after the messages) and the last-seen line WhatsApp gave.
+    private func who(_ id: UInt8, _ jid: String) async {
+        await out(seenLine(jid))
+        if let known = dps[jid] {
+            if let px = known { await out(ChatsProto.dp(rgba: px)) }
+            return
+        }
+        guard WabridgeState() != "disconnected" else { return }
+        let data = await Self.go { () -> Data? in
+            var e: NSError?
+            let d = WabridgeAvatar(jid, &e)
+            return e == nil ? d : nil
+        }
+        let px = data.flatMap { Self.firstFrame($0) }.map { Self.tiny($0, ChatsProto.dpSide) }
+        dps[jid] = px
+        guard open == id, let px else { return }
+        await out(ChatsProto.dp(rgba: px))
+    }
+
+    /// The picture as side × side RGBA, averaged down (a face still reads at 12 px).
+    private nonisolated static func tiny(_ img: UIImage, _ side: Int) -> [UInt8] {
+        var px = [UInt8](repeating: 0, count: side * side * 4)
+        guard let cg = img.cgImage else { return px }
+        px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: side, height: side, bitsPerComponent: 8,
+                                      bytesPerRow: side * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            ctx.interpolationQuality = .high
+            // the middle square, as WhatsApp crops it
+            let s = min(cg.width, cg.height)
+            let crop = cg.cropping(to: CGRect(x: (cg.width - s) / 2, y: (cg.height - s) / 2, width: s, height: s)) ?? cg
+            ctx.draw(crop, in: CGRect(x: 0, y: 0, width: side, height: side))
+        }
+        return px
     }
 
     /// A tap on a sticker or photo: its picture, downloaded from WhatsApp, into the bubble.

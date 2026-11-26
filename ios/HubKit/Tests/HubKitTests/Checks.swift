@@ -315,6 +315,19 @@ enum Checks {
         eq("emoji for the watch", Emoji.watch("Hi 😂👍🏽 ❤️ 👨‍👩‍👧 🇱🇰 é 1#"), "Hi 😂👍 \u{2764} 👨 \u{1F1F1} é 1#")
         eq("emoji message", hex(ChatsProto.message(0, "ok 👍🏽")), "4d000000" + hex(Data("ok 👍".utf8)))
         eq("chats online", hex(ChatsProto.online(true)), "5001")
+        do {
+            eq("chats seen", hex(ChatsProto.seen("last seen 16:42")), hex(Data("Wlast seen 16:42".utf8)))
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = TimeZone(identifier: "UTC")!
+            let now = Date(timeIntervalSince1970: 1_764_169_200) // 2025-11-26 15:00 UTC
+            eq("seen today", ChatsProto.lastSeen(now - 3600, now: now, calendar: cal), "last seen 14:00")
+            eq("seen yesterday", ChatsProto.lastSeen(now - 86400, now: now, calendar: cal), "last seen yesterday 15:00")
+            eq("seen older", ChatsProto.lastSeen(now - 5 * 86400, now: now, calendar: cal), "last seen 21 Nov")
+            // a red picture: 3 parts of 2 + 96 bytes, F800 LE
+            let parts = ChatsProto.dp(rgba: [UInt8](repeating: 0, count: 0) + Array([[UInt8]](repeating: [255, 0, 0, 255], count: 144).joined()))
+            eq("dp parts", "\(parts.map(\.count))", "[98, 98, 98]")
+            eq("dp px", hex(parts[2].prefix(4)), "470200f8")
+        }
         var st = ChatsProto.Row(id: 1, name: "Syncing...", preview: "")
         st.status = true
         eq("chats status row", String(hex(ChatsProto.list([st])[1]).prefix(8)), "430001ff")

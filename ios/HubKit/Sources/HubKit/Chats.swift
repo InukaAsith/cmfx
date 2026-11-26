@@ -59,6 +59,41 @@ public enum ChatsProto {
     /// `P online`: the open chat's contact is online.
     public static func online(_ on: Bool) -> Data { Data([UInt8(ascii: "P"), on ? 1 : 0]) }
 
+    /// `W text`: the line under the open chat's name ("last seen 16:42").
+    public static func seen(_ s: String) -> Data { Data([UInt8(ascii: "W")]) + utf8(s, 40) }
+
+    /// "last seen 16:42" (today), "last seen yesterday 21:05", "last seen 2 Nov" (older): short, for the watch's top.
+    public static func lastSeen(_ t: Date, now: Date = .now, calendar: Calendar = .current) -> String {
+        let f = DateFormatter()
+        f.calendar = calendar
+        f.timeZone = calendar.timeZone
+        f.locale = Locale(identifier: "en_GB")
+        f.dateFormat = "HH:mm"
+        if calendar.isDate(t, inSameDayAs: now) { return "last seen \(f.string(from: t))" }
+        if let y = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(t, inSameDayAs: y) {
+            return "last seen yesterday \(f.string(from: t))"
+        }
+        f.dateFormat = "d MMM"
+        return "last seen \(f.string(from: t))"
+    }
+
+    /// The side of the open chat's picture on the watch (12 × 12, shown as a disc).
+    public static let dpSide = 12
+
+    /// `G part px…`: the open chat's picture, 12 × 12 RGBA (row-major) → 3 parts of 4 rows, RGB565 LE.
+    public static func dp(rgba: [UInt8]) -> [Data] {
+        let n = dpSide
+        guard rgba.count >= n * n * 4 else { return [] }
+        return (0..<3).map { part in
+            var d = Data([UInt8(ascii: "G"), UInt8(part)])
+            for i in part * 4 * n..<(part + 1) * 4 * n {
+                let c = Rle.rgb565(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2])
+                d.append(UInt8(c & 0xFF)); d.append(UInt8(c >> 8))
+            }
+            return d
+        }
+    }
+
     /// Message idx's picture: `i idx <I header>`, `d idx seq tokens…` (125 bytes each), `e idx`; 16 colours.
     public static func picture(_ idx: Int, rgb: [UInt8], width: Int, height: Int, scale: UInt8 = 1) -> [Data] {
         let (palette, px) = Quantize.medianCut(rgb: rgb, colours: 16)

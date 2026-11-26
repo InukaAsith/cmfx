@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -418,6 +420,11 @@ func handle(c *whatsmeow.Client, evt any) {
 		retried(e)
 	case *events.Presence:
 		chat := chatOf(c, e.From)
+		if !chat.IsEmpty() && e.Unavailable && !e.LastSeen.IsZero() {
+			seenMu.Lock()
+			seen[chat.String()] = e.LastSeen.Unix()
+			seenMu.Unlock()
+		}
 		if l := current(); !chat.IsEmpty() && l != nil {
 			l.OnPresence(chat.String(), !e.Unavailable)
 		}
@@ -630,3 +637,47 @@ func stamp(c *waHistorySync.Conversation) uint64 {
 }
 
 func stampless(c *waHistorySync.Conversation) bool { return stamp(c) == 0 && len(c.GetMessages()) == 0 }
+
+// MARK: who the open chat is
+
+var (
+	seenMu sync.Mutex
+	// when each watched contact was last online (unix seconds), from their presence
+	seen = map[string]int64{}
+)
+
+// LastSeen: when jid was last online (unix seconds), 0 if WhatsApp hasn't said (it tells only while watched, and
+// not for those who hide it).
+func LastSeen(jid string) int64 {
+	seenMu.Lock()
+	defer seenMu.Unlock()
+	return seen[jid]
+}
+
+// Avatar: jid's profile picture, the small preview WhatsApp keeps (a jpeg of ~96 px), nil without one.
+func Avatar(jid string) ([]byte, error) {
+	c := client()
+	j, err := types.ParseJID(jid)
+	if c == nil || err != nil {
+		return nil, errNotOpen
+	}
+	ctx, cancel := timeout(15 * time.Second)
+	defer cancel()
+	info, err := c.GetProfilePictureInfo(ctx, j, &whatsmeow.GetProfilePictureParams{Preview: true})
+	if err != nil || info == nil || info.URL == "" {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, info.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New(resp.Status)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 256<<10))
+}
