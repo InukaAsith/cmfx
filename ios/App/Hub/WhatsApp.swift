@@ -44,6 +44,7 @@ private struct WAChat: Decodable { let jid: String, name: String, unread: Int, p
 private struct WAContact: Decodable { let jid: String, name: String }
 private struct WAMsg: Decodable {
     let id: String?, fromMe: Bool, state: Int?, kind: Int, text: String, who: String?
+    var react: String?
 }
 
 @MainActor @Observable final class WhatsAppService: WatchService {
@@ -427,6 +428,7 @@ private struct WAMsg: Decodable {
         case .ready:
             // at once, from the chats on the phone; fresh ones follow when WhatsApp has synced
             startConnect()
+            facesSent = []
             await sendList(quick: true)
         case .open(let id): await show(id)
         case .send(let id, let text): await send(id, text)
@@ -446,6 +448,19 @@ private struct WAMsg: Decodable {
         case .stop:
             voice = nil
         case .filter: break
+        case .replyTo(let idx):
+            replyID = idx.flatMap { $0 < shown.count ? shown[$0].id : nil }
+        case .react(let idx, let emoji):
+            guard let id = open, let jid = ids.key(id), idx < shown.count, let mid = shown[idx].id else { return }
+            let err = await Self.go { () -> String? in
+                var e: NSError?
+                WabridgeReact(jid, mid, emoji, &e)
+                return e?.localizedDescription
+            }
+            guard open == id else { return }
+            if let err { return await out([ChatsProto.reaction(idx, shown[idx].react ?? ""), ChatsProto.append("Not sent: \(err)")]) }
+            shown[idx].react = emoji
+            await out([ChatsProto.reaction(idx, emoji)])
         }
     }
 
@@ -486,6 +501,7 @@ private struct WAMsg: Decodable {
         }
         // (a picker the watch shows ends with the usual list)
         await out([ChatsProto.picker("")] + ChatsProto.list(rows) + (quick ? ChatsProto.quick(Self.quick) : []))
+        if linked { sendFaces(chats().prefix(ChatsProto.maxRows).map(\.jid)) }
     }
 
     /// The + button: the address book's people not already in the list, by name (12 at most: the watch's rows).
@@ -514,6 +530,8 @@ private struct WAMsg: Decodable {
 
     /// The open chat's messages as the watch has them (its idx is the place in here).
     private var shown: [WAMsg] = []
+    /// The message the next send replies to (the watch's swipe or hold menu).
+    private var replyID: String?
     /// The voice note playing on the watch.
     private var voice: ChatsProto.VoiceStream?
 
@@ -523,7 +541,7 @@ private struct WAMsg: Decodable {
         return [ChatsProto.open(id, title: names[jid] ?? "Chat")] + shown.enumerated().map { i, m in
             let b = bubble(m)
             return ChatsProto.message(i, me: b.me, state: m.state ?? 0, kind: b.kind, b.text)
-        }
+        } + shown.enumerated().compactMap { i, m in m.react.flatMap { $0.isEmpty ? nil : ChatsProto.reaction(i, $0) } }
     }
 
     private func show(_ id: UInt8) async {
@@ -553,9 +571,11 @@ private struct WAMsg: Decodable {
         guard await online() else {
             return await out([ChatsProto.append("Not sent: \(linked ? "WhatsApp is offline" : "not linked")")])
         }
+        let quote = replyID
+        replyID = nil
         let err = await Self.go { () -> String? in
             var e: NSError?
-            WabridgeSend(jid, text, &e)
+            if let quote { WabridgeSendReply(jid, text, quote, &e) } else { WabridgeSend(jid, text, &e) }
             return e?.localizedDescription
         }
         if let err {
@@ -590,11 +610,14 @@ private struct WAMsg: Decodable {
             guard self.open == id else { return }
             let now = self.messages(jid)
             var msgs: [Data] = []
-            for (i, m) in self.shown.enumerated() where m.fromMe {
-                guard let new = now.first(where: { $0.id != nil && $0.id == m.id }), (new.state ?? 0) > (m.state ?? 0)
-                else { continue }
+            for (i, m) in self.shown.enumerated() {
+                guard let new = now.first(where: { $0.id != nil && $0.id == m.id }) else { continue }
+                if m.fromMe, (new.state ?? 0) > (m.state ?? 0) {
+                    msgs.append(ChatsProto.state(i, new.state ?? 0))
+                }
+                // a reaction came (or went)
+                if (new.react ?? "") != (m.react ?? "") { msgs.append(ChatsProto.reaction(i, new.react ?? "")) }
                 self.shown[i] = new
-                msgs.append(ChatsProto.state(i, new.state ?? 0))
             }
             if !msgs.isEmpty { await self.out(msgs) }
         }
@@ -610,6 +633,37 @@ private struct WAMsg: Decodable {
 
     /// Pictures fetched this run (12 × 12 RGBA, nil: none), by jid; memory only.
     private var dps: [String: [UInt8]?] = [:]
+    /// The chats whose picture the watch's list has (since it last asked for the list from the start).
+    private var facesSent: Set<String> = []
+    private var facesBusy = false
+
+    /// The list's pictures the watch lacks, one chat after another, beside the queue (a download takes a while).
+    private func sendFaces(_ jids: [String]) {
+        guard !facesBusy, WabridgeState() != "disconnected" else { return }
+        let want = jids.filter { !facesSent.contains($0) }
+        guard !want.isEmpty else { return }
+        facesBusy = true
+        Task {
+            defer { facesBusy = false }
+            for jid in want {
+                facesSent.insert(jid)
+                let px: [UInt8]?
+                if let known = dps[jid] {
+                    px = known
+                } else {
+                    let data = await Self.go { () -> Data? in
+                        var e: NSError?
+                        let d = WabridgeAvatar(jid, &e)
+                        return e == nil ? d : nil
+                    }
+                    px = data.flatMap { Self.firstFrame($0) }.map { Self.tiny($0, ChatsProto.dpSide) }
+                    dps[jid] = px
+                }
+                guard live, let px else { continue }
+                await out(ChatsProto.face(ids.id(jid), rgba: px))
+            }
+        }
+    }
 
     private func seenLine(_ jid: String) -> [Data] {
         let t = WabridgeLastSeen(jid)

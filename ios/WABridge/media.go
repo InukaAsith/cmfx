@@ -198,3 +198,74 @@ func SendVoice(jid string, ogg []byte, seconds int64) error {
 	own.add(m, true)
 	return nil
 }
+
+// whose: the sender of message id in jid, as WhatsApp addresses it (ours: our own JID; theirs in a chat: the
+// chat; in a group: its sender).
+func whose(c *whatsmeow.Client, chat types.JID, fromMe bool, sender string) types.JID {
+	if fromMe && c.Store.ID != nil {
+		return c.Store.ID.ToNonAD()
+	}
+	if s, err := types.ParseJID(sender); err == nil && sender != "" {
+		return s
+	}
+	return chat
+}
+
+// React puts emoji on message id of jid (empty: takes ours back) and keeps it.
+func React(jid, id, emoji string) error {
+	c := client()
+	if c == nil {
+		return errNotOpen
+	}
+	chat, err := types.ParseJID(jid)
+	if err != nil {
+		return err
+	}
+	_, _, fromMe, sender, ok := own.quoted(jid, id)
+	if !ok {
+		return errors.New("that message is gone")
+	}
+	ctx, cancel := timeout(30 * time.Second)
+	defer cancel()
+	if _, err := c.SendMessage(ctx, chat, c.BuildReaction(chat, whose(c, chat, fromMe, sender), id, emoji)); err != nil {
+		return err
+	}
+	own.react(jid, id, emoji)
+	return nil
+}
+
+// SendReply sends text to jid as a reply to message id (quoted above it, as WhatsApp shows) and keeps it.
+func SendReply(jid, text, id string) error {
+	c := client()
+	if c == nil {
+		return errNotOpen
+	}
+	to, err := types.ParseJID(jid)
+	if err != nil {
+		return err
+	}
+	q, kind, fromMe, sender, ok := own.quoted(jid, id)
+	if !ok {
+		return Send(jid, text)
+	}
+	if q == "" {
+		q = kindName(kind)
+	}
+	ctx, cancel := timeout(30 * time.Second)
+	defer cancel()
+	m := &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+		Text: proto.String(text),
+		ContextInfo: &waE2E.ContextInfo{
+			StanzaID:      proto.String(id),
+			Participant:   proto.String(whose(c, to, fromMe, sender).String()),
+			QuotedMessage: &waE2E.Message{Conversation: proto.String(q)},
+		},
+	}}
+	resp, err := c.SendMessage(ctx, to, m)
+	if err != nil {
+		return err
+	}
+	own.add(msg{jid: jid, id: resp.ID, fromMe: true, kind: kindText, text: text, ts: resp.Timestamp,
+		group: to.Server == types.GroupServer}, true)
+	return nil
+}

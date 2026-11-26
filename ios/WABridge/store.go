@@ -63,6 +63,8 @@ func openStore(path string) (*store, error) {
 	// its picture when the watch asks); an existing store errors "duplicate column", fine
 	db.Exec(`ALTER TABLE msgs ADD COLUMN state INTEGER NOT NULL DEFAULT 0`)
 	db.Exec(`ALTER TABLE msgs ADD COLUMN media BLOB`)
+	// and the reaction on it (an emoji; the latest, theirs or ours)
+	db.Exec(`ALTER TABLE msgs ADD COLUMN react TEXT NOT NULL DEFAULT ''`)
 	return &store{db}, nil
 }
 
@@ -162,13 +164,26 @@ type msgRow struct {
 	Text   string `json:"text"`
 	Who    string `json:"who,omitempty"`
 	Time   int64  `json:"time"`
+	React  string `json:"react,omitempty"`
+}
+
+// react: the reaction on a message (empty: taken back).
+func (s *store) react(jid, id, emoji string) {
+	s.db.Exec(`UPDATE msgs SET react = ? WHERE jid = ? AND id = ?`, emoji, jid, id)
+}
+
+// quoted: a message's text, whether ours, and its sender (groups), for a reply or a reaction.
+func (s *store) quoted(jid, id string) (text string, kind int, fromMe bool, sender string, ok bool) {
+	ok = s.db.QueryRow(`SELECT text, kind, from_me, sender FROM msgs WHERE jid = ? AND id = ?`, jid, id).
+		Scan(&text, &kind, &fromMe, &sender) == nil
+	return
 }
 
 // messages: the last n, oldest first.
 func (s *store) messages(jid string, n int) []msgRow {
 	out := []msgRow{}
-	rows, err := s.db.Query(`SELECT id, from_me, state, kind, text, who, ts FROM
-		(SELECT id, from_me, state, kind, text, who, ts, rowid r FROM msgs WHERE jid = ? ORDER BY ts DESC, rowid DESC LIMIT ?)
+	rows, err := s.db.Query(`SELECT id, from_me, state, kind, text, who, ts, react FROM
+		(SELECT id, from_me, state, kind, text, who, ts, react, rowid r FROM msgs WHERE jid = ? ORDER BY ts DESC, rowid DESC LIMIT ?)
 		ORDER BY ts, r`, jid, n)
 	if err != nil {
 		return out
@@ -176,7 +191,7 @@ func (s *store) messages(jid string, n int) []msgRow {
 	defer rows.Close()
 	for rows.Next() {
 		var m msgRow
-		if rows.Scan(&m.ID, &m.FromMe, &m.State, &m.Kind, &m.Text, &m.Who, &m.Time) == nil {
+		if rows.Scan(&m.ID, &m.FromMe, &m.State, &m.Kind, &m.Text, &m.Who, &m.Time, &m.React) == nil {
 			out = append(out, m)
 		}
 	}

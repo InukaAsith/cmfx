@@ -388,6 +388,14 @@ func handle(c *whatsmeow.Client, evt any) {
 			state("logged-out")
 		}()
 	case *events.Message:
+		if e.Message.GetReactionMessage() != nil {
+			keepMessage(c, e, true)
+			// the open chat's bubbles again, as for a receipt
+			if l := current(); l != nil {
+				l.OnReceipt(chatOf(c, e.Info.Chat).String())
+			}
+			return
+		}
 		if m, ok := keepMessage(c, e, true); ok && !m.fromMe {
 			mu.Lock()
 			l := listener
@@ -498,6 +506,11 @@ func keepMessage(c *whatsmeow.Client, e *events.Message, live bool) (msg, bool) 
 		case waE2E.ProtocolMessage_REVOKE:
 			own.edit(jid, pm.GetKey().GetID(), "[Deleted]")
 		}
+		return msg{}, false
+	}
+	if r := e.Message.GetReactionMessage(); r != nil {
+		// a reaction: on the message it is for (shown on the watch's bubble)
+		own.react(jid, r.GetKey().GetID(), r.GetText())
 		return msg{}, false
 	}
 	if e.IsEdit {

@@ -88,6 +88,11 @@ public enum ChatsProto {
     /// The side of the open chat's picture on the watch (12 × 12, shown as a disc).
     public static let dpSide = 12
 
+    /// `g id part px…`: a list row's picture, as `dp` (WhatsApp keeps one per row on the watch).
+    public static func face(_ id: UInt8, rgba: [UInt8]) -> [Data] {
+        dp(rgba: rgba).map { Data([UInt8(ascii: "g"), id]) + $0.dropFirst() }
+    }
+
     /// `G part px…`: the open chat's picture, 12 × 12 RGBA (row-major) → 3 parts of 4 rows, RGB565 LE.
     public static func dp(rgba: [UInt8]) -> [Data] {
         let n = dpSide
@@ -180,12 +185,19 @@ public enum ChatsProto {
         case ready, open(UInt8), send(UInt8, String), tap(Int), credit(next: Int, room: Int), stop
         /// Notes: the tab chosen (0 notes, 1 to-do lists, 2 reminders)
         case filter(Int)
+        /// WhatsApp: a reaction on message idx (empty: ours taken back); the next send replies to idx (nil: none)
+        case react(Int, String), replyTo(Int?)
     }
 
     /// A voice note's kind (its text the length, "0:12").
     public static let voice: UInt8 = 5
     /// Voice notes play at 8 kHz: speech, and what the link carries with room to spare.
     public static let voiceRate = 8000
+
+    /// `X idx emoji…`: the reaction on message idx (empty: none).
+    public static func reaction(_ idx: Int, _ emoji: String) -> Data {
+        Data([UInt8(ascii: "X"), UInt8(idx & 0xFF)]) + Data(emoji.utf8.prefix(8))
+    }
 
     /// `O`: a voice note starts (the watch drops what it held).
     public static let voiceOpen = Data("O".utf8)
@@ -243,6 +255,8 @@ public enum ChatsProto {
         case (UInt8(ascii: "F"), 4): return .credit(next: Int(b[1]) | Int(b[2]) << 8, room: Int(b[3]))
         case (UInt8(ascii: "x"), 1): return .stop
         case (UInt8(ascii: "f"), 2): return .filter(Int(b[1]))
+        case (UInt8(ascii: "k"), 2...): return .react(Int(b[1]), String(decoding: b.dropFirst(2), as: UTF8.self))
+        case (UInt8(ascii: "y"), 2): return .replyTo(b[1] == 255 ? nil : Int(b[1]))
         case (UInt8(ascii: "s"), 3...):
             let t = String(decoding: b.dropFirst(2), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             return t.isEmpty ? nil : .send(b[1], t)
