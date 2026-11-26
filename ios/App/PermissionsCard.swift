@@ -49,6 +49,15 @@ import WireKit
             }
         }
 
+        /// The cap store apps ask for it with (FMC Companion's protocol): granted per app here.
+        var cap: String? {
+            switch self {
+            case .calendar: "calendar"
+            case .reminders: "reminders"
+            default: nil
+            }
+        }
+
         /// The watch apps (their names on the watch) that need it.
         var apps: [String] {
             switch self {
@@ -193,6 +202,34 @@ struct PermissionsCard: View {
                 }
             }
             ForEach(k.apps, id: \.self) { name in appLine(name) }
+            if let cap = k.cap { storeApps(cap) }
+        }
+    }
+
+    /// The store's apps on the watch (not CMFX's own): each allowed this one or not. They say "Enable in FMC
+    /// Companion" (their own words: CMFX answers for FMC Companion) until it is allowed here.
+    @ViewBuilder private func storeApps(_ cap: String) -> some View {
+        let ours = Set(bundled.all.map(\.name))
+        let names = Set((watch.listedLoader?.apps.values.map(\.name) ?? []).filter { !ours.contains($0) })
+            .union(Permissions.shared.packages.filter { Permissions.shared.caps($0).contains(cap) })
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        if !names.isEmpty {
+            ForEach(names, id: \.self) { name in
+                Toggle(isOn: Binding(get: { Permissions.shared.grants(name)[cap] == true },
+                                     set: { on in
+                                         Permissions.shared.set(name, cap, on)
+                                         Task { try? await Task.sleep(for: .seconds(1)); await perms.refresh() }
+                                     })) {
+                    HStack(spacing: 8) {
+                        AppIcon(name: name, side: 20)
+                        Text(name).font(.caption)
+                    }
+                }
+                .controlSize(.mini)
+                .padding(.leading, 42)
+            }
+            Text("Store apps say \u{201C}Enable in FMC Companion\u{201D}: CMFX answers for it. Allow them here, then open the app on the watch again.")
+                .font(.caption2).foregroundStyle(.secondary).padding(.leading, 42)
         }
     }
 
