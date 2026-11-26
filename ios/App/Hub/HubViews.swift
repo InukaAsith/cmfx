@@ -1005,6 +1005,7 @@ struct SettingsPage: View {
                     AccentPicker()
                 }
                 .glassCard()
+                PermissionsCard()
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 12) {
                         AppMark(size: 44)
