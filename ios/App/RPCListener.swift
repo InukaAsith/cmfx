@@ -241,11 +241,22 @@ actor KLock {
         // the ~10 s a BLE wake gives, kept until the reply is out
         let bg = UIApplication.shared.beginBackgroundTask(withName: "rpc")
         defer { UIApplication.shared.endBackgroundTask(bg) }
-        if apps[slot] == nil || -appsAt.timeIntervalSinceNow > 60,
-           let state = try? await KLock.shared.run({ try await readLoader(session) }) {
-            apps = state.apps.mapValues(\.name)
-            appsAt = .now
-            Hub.shared.setApps(apps)
+        if apps[slot] == nil || -appsAt.timeIntervalSinceNow > 60 {
+            // an app installed since the link came up (the store's Calendar, Reminders): its name, or every
+            // request of it is UNAVAILABLE ("not synced" on the watch). Tried twice: the watch may be busy.
+            for attempt in 0..<2 {
+                do {
+                    guard let state = try await KLock.shared.run({ try await readLoader(session) }) else { break }
+                    apps = state.apps.mapValues(\.name)
+                    appsAt = .now
+                    Hub.shared.setApps(apps)
+                    break
+                } catch {
+                    DevLog.shared.log("slot \(slot): reading the watch's apps failed (\(error))")
+                    if attempt == 0 { try? await Task.sleep(for: .milliseconds(300)) }
+                }
+            }
+            if apps[slot] == nil { DevLog.shared.log("slot \(slot): no app there by the watch's list: UNAVAILABLE") }
         }
         // empty: a part of http.request before its last
         guard let out = await answer(message, package: apps[slot], host: PhoneServices.shared), !out.isEmpty else { return }
