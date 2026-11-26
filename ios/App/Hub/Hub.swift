@@ -63,6 +63,12 @@ import WireKit
     /// From RPCListener: a message that is not a service request.
     func receive(_ m: Data, slot: Int) {
         guard let name = apps[slot] else { return }
+        // voice typing and recordings, from any app (`~`, HubKit VoiceProto)
+        if m.first == UInt8(ascii: "~") {
+            lastApp = name
+            lastHeard = .now
+            return Dictation.shared.receive(m, app: name)
+        }
         guard let service = services[name] else { return }
         lastApp = name
         lastHeard = .now

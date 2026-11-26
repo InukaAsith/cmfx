@@ -300,6 +300,18 @@ enum Checks {
         eq("chats delivered", hex(ChatsProto.append(me: true, state: 1, "x")), "410300" + hex(Data("x".utf8)))
         eq("chats state", hex(ChatsProto.state(3, 2)), "530302")
         eq("emoji", Emoji.text("Hi 😂👍🏽 ❤️ 🦖 🇱🇰 é 1#"), "Hi XD(y) <3 * (flag) é 1#")
+        do {
+            var enc = ADPCMEncoder()
+            let pcm = (0..<240).map { Int16(sin(Double($0) * 0.2) * 9000) }
+            let block = enc.block(pcm[...])
+            let back = VoiceProto.decode(block)
+            eq("voice decode count", "\(back.count)", "240")
+            eq("voice decode close", "\(zip(pcm, back).dropFirst(16).allSatisfy { abs(Int($0) - Int($1)) < 1500 })", "true")
+            eq("voice parse", "\(VoiceProto.parse(Data([0x7E, 0x61, 5, 0]) + block) == .audio(seq: 5, block: block))", "true")
+            eq("voice start", "\(VoiceProto.parse(Data("~1".utf8)) == .start(record: false))", "true")
+            eq("voice text tail", hex(VoiceProto.text(.final, String(repeating: "a", count: 130) + "é")),
+               "7e01" + hex(Data((String(repeating: "a", count: 118) + "é").utf8)))
+        }
         eq("emoji for the watch", Emoji.watch("Hi 😂👍🏽 ❤️ 👨‍👩‍👧 🇱🇰 é 1#"), "Hi 😂👍 \u{2764} 👨 \u{1F1F1} é 1#")
         eq("emoji message", hex(ChatsProto.message(0, "ok 👍🏽")), "4d000000" + hex(Data("ok 👍".utf8)))
         eq("chats online", hex(ChatsProto.online(true)), "5001")

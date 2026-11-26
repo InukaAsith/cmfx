@@ -53,6 +53,10 @@ targets:
         NSLocationWhenInUseUsageDescription: Maps, Navigation, the offline map's position and the weather use where you are.
         NSLocationAlwaysAndWhenInUseUsageDescription: Maps and Navigation keep the turns coming on the watch while the phone is locked.
         NSPhotoLibraryUsageDescription: Your newest photos show as a gallery on the watch.
+        NSSpeechRecognitionUsageDescription: Voice typing on the watch turns what you say into text on this iPhone.
+        # the watch's voice recordings, in Files › On My iPhone › CMFX › Recordings
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         ITSAppUsesNonExemptEncryption: false
         # build-time keys (build.sh: CMFX_SPOTIFY_CLIENT_ID, CMFX_GEMINI_KEY, CMFX_GOOGLE_CLIENT_ID; CI: the repo's
         # secrets); empty = typed in the app

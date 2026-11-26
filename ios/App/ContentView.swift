@@ -33,6 +33,8 @@ struct CMFXApp: App {
                 .preferredColorScheme(Appearance(rawValue: appearance)?.scheme)
                 .id(accent)
                 .task { await account.restore() }
+                // voice typing on the watch needs it, and the watch can't ask
+                .task { Dictation.askPermission() }
             #if DEBUG
                 .task { if CommandLine.arguments.contains("-check") { await watch.check() } }
                 .task {

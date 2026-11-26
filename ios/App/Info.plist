@@ -39,6 +39,12 @@
 	<string>Watch apps you allow show your upcoming events on the watch.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Watch apps you allow get the weather and your town, rounded to about 10 km.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Voice typing on the watch turns what you say into text on this iPhone.</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Watch apps you allow show your reminders on the watch and mark them done.</string>
 	<key>UIBackgroundModes</key>
