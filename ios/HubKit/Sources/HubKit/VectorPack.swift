@@ -69,9 +69,37 @@ public enum VectorPack {
         return AtlasScene.tiles(round: c, r: Double(l.side) / 2 + 30, origin: o, z: l.z)
     }
 
-    /// One cell's records from the tiles under it (empty: nothing there, no file).
+    /// The most a cell may take: the watch reads one at a time into a 16 KB buffer (maps main.rs SCENE_CAP).
+    public static let cellMax = 16 * 1024 - 64
+
+    /// One cell's records from the tiles under it (empty: nothing there, no file), under `cellMax`: a dense one
+    /// keeps fewer places of interest, then simpler lines, then fewer kinds of roads.
     public static func cell(_ tiles: [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])], level l: Level,
                             col: Int, row: Int, origin o: AtlasScene.LatLon) -> Data {
+        let items = cellItems(tiles, level: l, col: col, row: row, origin: o)
+        var pois = l.pois, tol = l.tol, maxRoad = l.maxRoad
+        var data = Data()
+        for _ in 0..<8 {
+            var n = 0
+            let keep = items.filter { it in
+                switch it.kind {
+                case .line, .carrier: return it.cls <= maxRoad
+                case .label where it.cls == AtlasScene.poi || it.cls >= AtlasScene.food:
+                    n += 1
+                    return n <= pois
+                default: return true
+                }
+            }
+            data = AtlasScene.build(keep, tol: tol).data
+            if data.count <= cellMax { return data }
+            if pois > 0 { pois /= 2 } else if tol < l.tol * 4 { tol *= 1.6 } else { maxRoad = max(maxRoad - 1, AtlasScene.motorway) }
+        }
+        return data.count <= cellMax ? data : Data()
+    }
+
+    /// A cell's items, clipped to it.
+    static func cellItems(_ tiles: [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])], level l: Level,
+                          col: Int, row: Int, origin o: AtlasScene.LatLon) -> [AtlasScene.Item] {
         let (lo, hi) = square(l, col: col, row: row)
         let c = ((lo.0 + hi.0) / 2, (lo.1 + hi.1) / 2)
         let feats = tiles.flatMap { t in t.features.map { (tile: t.tile, f: $0) } }
@@ -103,7 +131,60 @@ public enum VectorPack {
                 out.append(it)
             }
         }
-        return AtlasScene.build(out, tol: l.tol).data
+        return out
+    }
+
+    // MARK: names for search
+
+    /// A name on the map for the watch's search (find.rs): kind 0 place, 1 and 3 … 12 places of interest, 2 water,
+    /// 20 a street; frame metres.
+    public struct Named: Equatable, Sendable {
+        public var kind: Int, x: Int, y: Int, name: String
+    }
+    public static let street = 20
+    public static let namesMax = 3000
+
+    /// The names in a cell: its labels, and each street once (a point of it inside the cell).
+    public static func names(_ tiles: [(tile: (x: Int, y: Int), features: [AtlasScene.Feature])], level l: Level,
+                             col: Int, row: Int, origin o: AtlasScene.LatLon) -> [Named] {
+        var out: [Named] = []
+        var streets: Set<String> = []
+        for it in cellItems(tiles, level: l, col: col, row: row, origin: o) where !it.name.isEmpty {
+            switch it.kind {
+            case .label:
+                let p = it.pts[0]
+                out.append(Named(kind: it.cls, x: Int(p.0.rounded()), y: Int(p.1.rounded()), name: it.name))
+            case .line, .carrier:
+                guard it.cls <= AtlasScene.path, !streets.contains(it.name), let p = it.pts.dropFirst(it.pts.count / 2).first else { continue }
+                streets.insert(it.name)
+                out.append(Named(kind: street, x: Int(p.0.rounded()), y: Int(p.1.rounded()), name: it.name))
+            default: break
+            }
+        }
+        return out
+    }
+
+    /// The `n` file: `WMN1`, then `kind:u8 x:i16 y:i16 len:u8 text` each. The same name within 300 m once; places
+    /// first, then places of interest, water, streets; `namesMax` at most.
+    public static func namesFile(_ all: [Named]) -> Data {
+        func rank(_ k: Int) -> Int { k == 0 ? 0 : k == 2 ? 2 : k == street ? 3 : 1 }
+        var kept: [String: [Named]] = [:]
+        var order: [Named] = []
+        for n in all.sorted(by: { rank($0.kind) < rank($1.kind) }) {
+            let key = n.name.lowercased()
+            if kept[key, default: []].contains(where: { hypot(Double($0.x - n.x), Double($0.y - n.y)) < 300 }) { continue }
+            kept[key, default: []].append(n)
+            order.append(n)
+            if order.count >= namesMax { break }
+        }
+        var d = Data("WMN1".utf8)
+        for n in order {
+            let t = AtlasScene.text(n.name, 40)
+            d.append(UInt8(clamping: n.kind))
+            d.le(AtlasScene.i16(Double(n.x))); d.le(AtlasScene.i16(Double(n.y)))
+            d.append(UInt8(t.count)); d += t
+        }
+        return d
     }
 
     // MARK: clipping to a cell
@@ -171,12 +252,14 @@ public enum VectorPack {
     /// The watch asks for a route: `D mode lat0 lon0 from_x from_y to_x to_y` (mode 0 drive, 2 walk; from i16.min:
     /// where the phone is).
     public struct RouteAsk: Equatable, Sendable {
-        public var walk: Bool
+        /// 0 car, 1 bike, 2 walk
+        public var mode: Int
+        public var walk: Bool { mode == 2 }
         public var origin: (lat: Double, lon: Double)
         public var from: (Double, Double)?
         public var to: (Double, Double)
         public static func == (a: Self, b: Self) -> Bool {
-            a.walk == b.walk && a.origin == b.origin && a.from.map { [$0.0, $0.1] } == b.from.map { [$0.0, $0.1] }
+            a.mode == b.mode && a.origin == b.origin && a.from.map { [$0.0, $0.1] } == b.from.map { [$0.0, $0.1] }
                 && a.to == b.to
         }
     }
@@ -187,7 +270,7 @@ public enum VectorPack {
         func i32(_ i: Int) -> Int32 { Int32(bitPattern: UInt32(b[i]) | UInt32(b[i + 1]) << 8 | UInt32(b[i + 2]) << 16 | UInt32(b[i + 3]) << 24) }
         func i16(_ i: Int) -> Int16 { Int16(bitPattern: UInt16(b[i]) | UInt16(b[i + 1]) << 8) }
         let fx = i16(10), fy = i16(12)
-        return RouteAsk(walk: b[1] == 2, origin: (Double(i32(2)) / 1e7, Double(i32(6)) / 1e7),
+        return RouteAsk(mode: Int(min(b[1], 2)), origin: (Double(i32(2)) / 1e7, Double(i32(6)) / 1e7),
                         from: fx == .min ? nil : (Double(fx), Double(fy)), to: (Double(i16(14)), Double(i16(16))))
     }
 
@@ -212,6 +295,17 @@ public enum VectorPack {
     }
 
     public static func routeFailed(_ why: String) -> Data { Data("E".utf8) + AtlasScene.text(why, 40) }
+
+    /// The routes found: `O n`, then `o k secs:u32 metres:u32` each (the watch picks one with `p k`).
+    public static func ways(_ r: [(secs: Double, metres: Double)]) -> [Data] {
+        var out = [Data([UInt8(ascii: "O"), UInt8(r.count)])]
+        for (k, w) in r.enumerated() {
+            var d = Data([UInt8(ascii: "o"), UInt8(k)])
+            d.le(UInt32(max(0, w.secs))); d.le(UInt32(max(0, w.metres)))
+            out.append(d)
+        }
+        return out
+    }
 }
 
 extension VectorPack {

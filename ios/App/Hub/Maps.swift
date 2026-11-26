@@ -23,6 +23,9 @@ import UIKit
     private var job: Task<Void, Never>?
     private let tiles = VectorTiles()
     private let here = PhoneFix()
+    /// The routes last found for the watch (it picks one), and the search for them.
+    private var found: [(pts: [AtlasScene.Pt], metres: Double, secs: Double)] = []
+    private var routeJob: Task<Void, Never>?
 
     func receive(_ m: Data) {
         switch m.first {
@@ -35,7 +38,16 @@ import UIKit
                       "Only the map deleted (the watch's loader needs updating to clean everything)"][min(Int(m[3]), 2)]
             cleaning = false
         case UInt8(ascii: "D"):
-            if let ask = VectorPack.parseAsk(m) { Task { await route(ask) } }
+            if let ask = VectorPack.parseAsk(m) {
+                routeJob?.cancel()
+                routeJob = Task { await route(ask) }
+            }
+        case UInt8(ascii: "p") where m.count == 2:
+            // the route picked of those `O` listed
+            let k = Int(m[m.startIndex + 1])
+            guard found.indices.contains(k) else { return }
+            let r = found[k]
+            Task { try? await Hub.shared.send(Self.app, VectorPack.route(r.pts, metres: r.metres, secs: r.secs)) }
         case UInt8(ascii: "l"):
             // the watch asks where the phone is (every 2 s while Offline Maps is open): it uses it while its own
             // GPS has no fix
@@ -82,6 +94,7 @@ import UIKit
         let o: AtlasScene.LatLon = (c.latitude, c.longitude)
         let total = VectorPack.cellCount(levels)
         var done = 0, files = 0, bytes = 0
+        var named: [VectorPack.Named] = []
         do {
             progress = (0, total)
             try await Hub.shared.send(Self.app, VectorPack.progressMessage(done: 0, total: total))
@@ -102,7 +115,11 @@ import UIKit
                         try Task.checkCancellation()
                         let under = VectorPack.tiles(l, col: col, row: row, origin: o)
                             .compactMap { t in got["\(t.x)-\(t.y)"].map { (tile: t, features: $0) } }
-                        let data = await Task.detached { VectorPack.cell(under, level: l, col: col, row: row, origin: o) }.value
+                        let (data, names) = await Task.detached {
+                            (VectorPack.cell(under, level: l, col: col, row: row, origin: o),
+                             VectorPack.names(under, level: l, col: col, row: row, origin: o))
+                        }.value
+                        named += names
                         if !data.isEmpty {
                             try await sendFile(VectorPack.cellName(level: li, col: col, row: row), data)
                             files += 1
@@ -114,6 +131,12 @@ import UIKit
                     }
                 }
             }
+            // the names for the watch's search, then the index (which makes the map whole)
+            status = "Saving names for search…"
+            let n = await Task.detached { VectorPack.namesFile(named) }.value
+            try await sendFile("n", n)
+            bytes += n.count
+            status = nil
             try await sendFile("idx", VectorPack.index(levels, lat: c.latitude, lon: c.longitude))
             try await Hub.shared.send(Self.app, Data("Z".utf8))
             _ = await ack()
@@ -129,7 +152,8 @@ import UIKit
         _ = await ack()
     }
 
-    /// A route the watch asked for: Apple's, as frame metres; the watch follows it with no phone.
+    /// Routes the watch asked for (car, bike, walk): up to three, OpenStreetMap's (FOSSGIS OSRM), else Apple's; their
+    /// times go to the watch, which picks one (`p`), followed then with no phone.
     private func route(_ ask: VectorPack.RouteAsk) async {
         let o: AtlasScene.LatLon = ask.origin
         let src: CLLocationCoordinate2D
@@ -142,24 +166,48 @@ import UIKit
             try? await Hub.shared.send(Self.app, VectorPack.routeFailed("No GPS fix yet"))
             return
         }
-        let to = AtlasScene.latLon(ask.to.0, ask.to.1, o)
-        let req = MKDirections.Request()
-        req.source = MKMapItem(placemark: MKPlacemark(coordinate: src))
-        req.destination = MKMapItem(placemark: MKPlacemark(coordinate: .init(latitude: to.lat, longitude: to.lon)))
-        req.transportType = ask.walk ? .walking : .automobile
-        do {
-            guard let r = try await MKDirections(request: req).calculate().routes.first else {
-                try? await Hub.shared.send(Self.app, VectorPack.routeFailed("No route found"))
-                return
-            }
-            let n = r.polyline.pointCount, p = r.polyline.points()
-            let pts = (0..<n).map { i -> AtlasScene.Pt in
-                let c = p[i].coordinate
-                return AtlasScene.xy((c.latitude, c.longitude), o)
-            }
-            try await Hub.shared.send(Self.app, VectorPack.route(pts, metres: r.distance, secs: r.expectedTravelTime))
-        } catch {
+        let t = AtlasScene.latLon(ask.to.0, ask.to.1, o)
+        let dst = CLLocationCoordinate2D(latitude: t.lat, longitude: t.lon)
+        var ways = await osrm(src, dst, profile: ["car", "bike", "foot"][ask.mode])
+        if ways.isEmpty { ways = await apple(src, dst, walk: ask.mode != 0) }
+        guard !Task.isCancelled else { return }
+        found = ways.prefix(3).map { w in
+            (w.coords.map { AtlasScene.xy(($0.latitude, $0.longitude), o) }, w.metres, w.secs)
+        }
+        if found.isEmpty {
             try? await Hub.shared.send(Self.app, VectorPack.routeFailed("No route: needs the internet"))
+            return
+        }
+        try? await Hub.shared.send(Self.app, VectorPack.ways(found.map { ($0.secs, $0.metres) }))
+    }
+
+    private typealias Way = (coords: [CLLocationCoordinate2D], metres: Double, secs: Double)
+
+    private func osrm(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D, profile: String) async -> [Way] {
+        let s = String(format: "%.6f,%.6f;%.6f,%.6f", a.longitude, a.latitude, b.longitude, b.latitude)
+        guard let url = URL(string: "https://routing.openstreetmap.de/routed-\(profile)/route/v1/driving/\(s)?alternatives=3&overview=full&geometries=geojson") else { return [] }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 12
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], j["code"] as? String == "Ok",
+              let routes = j["routes"] as? [[String: Any]] else { return [] }
+        return routes.compactMap { r in
+            guard let line = (r["geometry"] as? [String: Any])?["coordinates"] as? [[Double]], line.count >= 2 else { return nil }
+            return (line.map { CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) },
+                    r["distance"] as? Double ?? 0, r["duration"] as? Double ?? 0)
+        }
+    }
+
+    private func apple(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D, walk: Bool) async -> [Way] {
+        let req = MKDirections.Request()
+        req.source = MKMapItem(placemark: MKPlacemark(coordinate: a))
+        req.destination = MKMapItem(placemark: MKPlacemark(coordinate: b))
+        req.transportType = walk ? .walking : .automobile
+        req.requestsAlternateRoutes = true
+        guard let routes = try? await MKDirections(request: req).calculate().routes else { return [] }
+        return routes.map { r in
+            let n = r.polyline.pointCount, p = r.polyline.points()
+            return ((0..<n).map { p[$0].coordinate }, r.distance, r.expectedTravelTime)
         }
     }
 }

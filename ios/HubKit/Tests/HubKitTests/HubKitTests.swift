@@ -74,3 +74,27 @@ import HubKit
     #expect(msgs[0] == Data([0x47, 70, 0, 0xbc, 0x02, 0, 0, 0xf4, 0x01, 0, 0]))
     #expect(msgs.count == 4 && msgs[1][1] == 0 && msgs[3][1] == 2 && msgs[3].count == 2 + 10 * 4)
 }
+
+@Test func offlineMapsWaysAndNames() {
+    var m = Data([0x44, 0x01]) + Data(repeating: 0, count: 16)
+    #expect(VectorPack.parseAsk(m)?.mode == 1)
+    m[1] = 7
+    #expect(VectorPack.parseAsk(m)?.mode == 2)
+    let w = VectorPack.ways([(600, 4200), (720.4, 3900)])
+    #expect(w[0] == Data([0x4F, 2]))
+    #expect(w[2] == Data([0x6F, 1, 0xD0, 0x02, 0, 0, 0x3C, 0x0F, 0, 0]))
+    // the same name within 300 m once, places first; kind x y len text
+    let f = VectorPack.namesFile([
+        .init(kind: 20, x: 10, y: -5, name: "Galle Road"), .init(kind: 20, x: 100, y: 0, name: "galle road"),
+        .init(kind: 0, x: -300, y: 2, name: "Kollupitiya"),
+    ])
+    #expect(f == Data("WMN1".utf8) + Data([0, 0xD4, 0xFE, 2, 0, 11]) + Data("Kollupitiya".utf8)
+        + Data([20, 10, 0, 0xFB, 0xFF, 10]) + Data("Galle Road".utf8))
+}
+
+@Test func plainSearch() {
+    let ddg = #"<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&amp;rut=x">Ex &amp; <b>ample</b></a><a class="result__snippet" href="x">Snip &#39;it&#39;</a>"#
+    #expect(PlainSearch.parseDuckDuckGo(ddg) == [["Ex & ample", "https://example.com/a", "Snip 'it'"]])
+    let wiki = Data(#"["colombo",["Colombo"],[""],["https://en.wikipedia.org/wiki/Colombo"]]"#.utf8)
+    #expect(PlainSearch.parseWikipedia(wiki) == [["Colombo - Wikipedia", "https://en.wikipedia.org/wiki/Colombo", ""]])
+}

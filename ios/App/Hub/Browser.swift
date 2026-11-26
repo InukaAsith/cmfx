@@ -146,17 +146,35 @@ import WireKit
 
     /// Another watch app talks, or the Browser closed: the page's sound and pictures stop, and what the browser
     /// cached on disk while it ran is deleted (its cookies stay: sites signed in to stay signed in).
+    /// Whatever was still loading ends here too (the reader's fetches, the page, a search): nothing goes on for a
+    /// closed Browser, nor holds up the app the watch opened next.
     func otherApp() {
+        gen += 1
         picGen += 1
         pictureLater = false
         outbox = []
         stopMedia()
         pageView = false
+        Self.pages.getAllTasks { $0.forEach { $0.cancel() } }
+        Self.fetcher.getAllTasks { $0.forEach { $0.cancel() } }
+        let w = loadWaiters
+        loadWaiters = []
+        for c in w { c.resume() }
         guard made else { return }
+        web.stopLoading()
         let caches: Set<String> = [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache, WKWebsiteDataTypeFetchCache,
                                    WKWebsiteDataTypeOfflineWebApplicationCache]
         WKWebsiteDataStore.default().removeData(ofTypes: caches, modifiedSince: .distantPast) {}
     }
+
+    /// The reader's pages and the plain searches: memory only, cancelled when the Browser closes.
+    nonisolated static let pages: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.urlCache = nil
+        c.timeoutIntervalForRequest = 15
+        c.timeoutIntervalForResource = 25
+        return URLSession(configuration: c)
+    }()
 
     /// Images fetched for a page drawn while the phone is locked: memory only, nothing on disk.
     nonisolated static let fetcher: URLSession = {
@@ -280,7 +298,7 @@ import WireKit
         req.timeoutInterval = 20
         req.setValue(Self.agent, forHTTPHeaderField: "User-Agent")
         req.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
-        guard let (data, resp) = try? await URLSession.shared.data(for: req), g == gen else {
+        guard let (data, resp) = try? await Self.pages.data(for: req), g == gen else {
             if g == gen { await note("Couldn't load \(url.host ?? "the page")") }
             return
         }
@@ -317,10 +335,10 @@ import WireKit
     /// Google's results need its scripts: the search in the browser here, its results read out of the page;
     /// nothing there (no answer, a check page): the same search on DuckDuckGo.
     private func google(_ url: URL, _ g: Int) async {
-        if !canDraw, let ddg = BrowserProto.fallback(for: url) {
-            // Google's results need its scripts, which don't run with the phone locked: DuckDuckGo's page has none
-            current = ddg
-            await open(ddg, push: false)
+        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "q" }?.value ?? ""
+        if !canDraw {
+            // Google's results need its scripts, which don't run with the phone locked: plain HTML results instead
+            await plainSearch(q, g)
             return
         }
         await note("Searching Google\u{2026}")
@@ -339,17 +357,50 @@ import WireKit
           return JSON.stringify(out); })()
         """
         let rows = (await js(script)).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [[String]] } ?? []
-        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "q" }?.value ?? ""
         let page = BrowserProto.results(rows, query: q)
         guard g == gen else { return }
-        if page.blocks.isEmpty, let ddg = BrowserProto.fallback(for: url) {
-            current = ddg
-            await open(ddg, push: false)
+        if page.blocks.isEmpty {
+            await plainSearch(q, g)
             return
         }
         links = page.links
         title = page.title
         await send(Reader.messages(page))
+    }
+
+    /// A search with no browser (the phone locked, or Google showed nothing): DuckDuckGo's HTML page, else
+    /// Wikipedia's articles; each read here, its results to the watch as text. Always ends with the watch told.
+    private func plainSearch(_ q: String, _ g: Int) async {
+        guard !q.isEmpty else { await note("Nothing to search"); return }
+        await note("Searching\u{2026}")
+        let bg = UIApplication.shared.beginBackgroundTask(withName: "browser search")
+        defer { UIApplication.shared.endBackgroundTask(bg) }
+        func get(_ u: URL) async -> Data? {
+            var req = URLRequest(url: u)
+            req.timeoutInterval = 10
+            req.setValue(Self.agent, forHTTPHeaderField: "User-Agent")
+            guard let (d, r) = try? await Self.pages.data(for: req), (r as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return d
+        }
+        let tries: [(String, URL, (Data) -> [[String]])] = [
+            ("DuckDuckGo", PlainSearch.duckduckgo(q), { PlainSearch.parseDuckDuckGo(String(decoding: $0, as: UTF8.self)) }),
+            ("Wikipedia", PlainSearch.wikipedia(q), { PlainSearch.parseWikipedia($0) }),
+        ]
+        for (name, u, parse) in tries {
+            guard g == gen else { return }
+            guard let d = await get(u) else { continue }
+            let rows = await Task.detached(priority: .userInitiated) { parse(d) }.value
+            guard g == gen else { return }
+            var page = BrowserProto.results(rows, query: q)
+            guard !page.blocks.isEmpty else { continue }
+            page.title = q + " - " + name
+            current = u
+            links = page.links
+            title = page.title
+            await send(Reader.messages(page))
+            return
+        }
+        if g == gen { await note("Search failed: no results (check the iPhone's internet)") }
     }
 
     private func back() async {
@@ -446,14 +497,16 @@ import WireKit
     private var committed = true
 
     /// Till the page's text is in (its document parsed), not every image and ad: its picture in about a second.
+    /// (Ends early when the Browser closes: `gen` moves on.)
     private func waitLoad() async {
+        let g = gen
         try? await Task.sleep(for: .milliseconds(150))
-        guard web.isLoading || !committed else { return }
+        guard web.isLoading || !committed, g == gen else { return }
         // the new document, not the one before it
-        for _ in 0..<100 where !committed {
+        for _ in 0..<100 where !committed && g == gen {
             try? await Task.sleep(for: .milliseconds(100))
         }
-        for _ in 0..<60 where await js("document.readyState") == "loading" {
+        for _ in 0..<60 where g == gen, await js("document.readyState") == "loading" {
             try? await Task.sleep(for: .milliseconds(100))
         }
         // (the pictures' capture waits for what is in view: images, fonts)
