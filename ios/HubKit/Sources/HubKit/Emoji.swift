@@ -33,6 +33,18 @@ public enum Emoji {
         return out
     }
 
+    /// Each emoji as its first code point (skin tone, joiners, variation and a flag's second letter dropped): the
+    /// chats apps draw the watch's own 52 emoji and a box for the rest, one per emoji.
+    public static func watch(_ s: String) -> String {
+        guard s.unicodeScalars.contains(where: { $0.value >= 0x2000 && $0.properties.isEmoji }) else { return s }
+        var out = ""
+        for ch in s {
+            guard let first = ch.unicodeScalars.first, isEmoji(ch) else { out.append(ch); continue }
+            out.unicodeScalars.append(first)
+        }
+        return out
+    }
+
     private static func isEmoji(_ ch: Character) -> Bool {
         let us = ch.unicodeScalars
         guard let first = us.first, first.value >= 0x2000 else { return false } // digits, #, *, ©: text

@@ -30,25 +30,25 @@ public enum ChatsProto {
         let rows = rows.prefix(maxRows)
         var out = [Data([UInt8(ascii: "L"), UInt8(rows.count)])]
         for (i, r) in rows.enumerated() {
-            out.append(Data([UInt8(ascii: "C"), UInt8(i), r.id, r.unreadByte]) + field(r.name, 24) + field(r.preview, 40))
+            out.append(Data([UInt8(ascii: "C"), UInt8(i), r.id, r.unreadByte]) + field(r.name, 24, emoji: true) + field(r.preview, 40, emoji: true))
         }
         return out
     }
 
     /// `H id title…`: a chat opened, its messages follow and replace.
-    public static func open(_ id: UInt8, title: String) -> Data { Data([UInt8(ascii: "H"), id]) + utf8(title, 24) }
+    public static func open(_ id: UInt8, title: String) -> Data { Data([UInt8(ascii: "H"), id]) + utf8(title, 24, emoji: true) }
 
     /// The `me` byte: bit 0 ours, bits 1–2 its state (0 sent, 1 delivered, 2 read).
     static func meByte(_ me: Bool, _ state: Int) -> UInt8 { me ? 1 | UInt8(min(max(state, 0), 2)) << 1 : 0 }
 
     /// `M idx me kind text…`, idx 0 the oldest.
     public static func message(_ idx: Int, me: Bool = false, state: Int = 0, kind: UInt8 = plain, _ text: String) -> Data {
-        Data([UInt8(ascii: "M"), UInt8(idx & 0xFF), meByte(me, state), kind]) + utf8(text, Self.text)
+        Data([UInt8(ascii: "M"), UInt8(idx & 0xFF), meByte(me, state), kind]) + utf8(text, Self.text, emoji: true)
     }
 
     /// `A me kind text…`: one more at the end.
     public static func append(me: Bool = false, state: Int = 0, kind: UInt8 = plain, _ text: String) -> Data {
-        Data([UInt8(ascii: "A"), meByte(me, state), kind]) + utf8(text, Self.text)
+        Data([UInt8(ascii: "A"), meByte(me, state), kind]) + utf8(text, Self.text, emoji: true)
     }
 
     /// `S idx state`: our message idx was delivered (1) or read (2).
@@ -89,7 +89,7 @@ public enum ChatsProto {
 
     /// `Q idx text…` per quick reply (6 at most).
     public static func quick(_ q: [String]) -> [Data] {
-        q.prefix(maxQuick).enumerated().map { Data([UInt8(ascii: "Q"), UInt8($0.offset)]) + utf8($0.element, 24) }
+        q.prefix(maxQuick).enumerated().map { Data([UInt8(ascii: "Q"), UInt8($0.offset)]) + utf8($0.element, 24, emoji: true) }
     }
 
     /// Text → pieces of at most `n` bytes, on spaces (a longer word is cut on a character).
@@ -101,7 +101,7 @@ public enum ChatsProto {
             if next.utf8.count <= n { cur = next; continue }
             if !cur.isEmpty { out.append(cur); cur = "" }
             while w.utf8.count > n {
-                let head = String(decoding: utf8(w, n), as: UTF8.self)
+                let head = String(decoding: utf8(w, n, emoji: true), as: UTF8.self)
                 out.append(head)
                 w = String(w.dropFirst(head.count))
             }

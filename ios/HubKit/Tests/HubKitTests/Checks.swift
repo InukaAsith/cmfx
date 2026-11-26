@@ -300,7 +300,8 @@ enum Checks {
         eq("chats delivered", hex(ChatsProto.append(me: true, state: 1, "x")), "410300" + hex(Data("x".utf8)))
         eq("chats state", hex(ChatsProto.state(3, 2)), "530302")
         eq("emoji", Emoji.text("Hi 😂👍🏽 ❤️ 🦖 🇱🇰 é 1#"), "Hi XD(y) <3 * (flag) é 1#")
-        eq("emoji message", hex(ChatsProto.message(0, "ok 👍")), "4d000000" + hex(Data("ok (y)".utf8)))
+        eq("emoji for the watch", Emoji.watch("Hi 😂👍🏽 ❤️ 👨‍👩‍👧 🇱🇰 é 1#"), "Hi 😂👍 \u{2764} 👨 \u{1F1F1} é 1#")
+        eq("emoji message", hex(ChatsProto.message(0, "ok 👍🏽")), "4d000000" + hex(Data("ok 👍".utf8)))
         eq("chats online", hex(ChatsProto.online(true)), "5001")
         var st = ChatsProto.Row(id: 1, name: "Syncing...", preview: "")
         st.status = true

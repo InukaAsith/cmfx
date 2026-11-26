@@ -1,14 +1,15 @@
 import Foundation
 
-/// Bytes that fit `n` without cutting a character; emoji as text (the watch font has none).
-func utf8(_ s: String, _ n: Int) -> Data {
-    var d = Data(Emoji.text(s).utf8.prefix(n))
+/// Bytes that fit `n` without cutting a character; emoji as text (the watch font has none), or with `emoji` as one
+/// code point each (the chats apps draw the watch's own emoji, the rest as boxes).
+func utf8(_ s: String, _ n: Int, emoji: Bool = false) -> Data {
+    var d = Data((emoji ? Emoji.watch(s) : Emoji.text(s)).utf8.prefix(n))
     while !d.isEmpty, String(data: d, encoding: .utf8) == nil { d.removeLast() }
     return d
 }
 
-func field(_ s: String, _ n: Int) -> Data {
-    let b = utf8(s, n)
+func field(_ s: String, _ n: Int, emoji: Bool = false) -> Data {
+    let b = utf8(s, n, emoji: emoji)
     return Data([UInt8(b.count)]) + b
 }
 
