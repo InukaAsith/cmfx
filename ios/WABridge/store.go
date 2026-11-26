@@ -172,6 +172,25 @@ func (s *store) react(jid, id, emoji string) {
 	s.db.Exec(`UPDATE msgs SET react = ? WHERE jid = ? AND id = ?`, emoji, jid, id)
 }
 
+// remove: a message deleted for me (the chat's preview then the one before it).
+func (s *store) remove(jid, id string) {
+	s.db.Exec(`DELETE FROM msgs WHERE jid = ? AND id = ?`, jid, id)
+	var m msg
+	if s.db.QueryRow(`SELECT id, from_me, kind, text, who FROM msgs WHERE jid = ? ORDER BY ts DESC, rowid DESC LIMIT 1`, jid).
+		Scan(&m.id, &m.fromMe, &m.kind, &m.text, &m.who) == nil {
+		m.group = strings.HasSuffix(jid, "@g.us")
+		s.db.Exec(`UPDATE chats SET preview = ? WHERE jid = ?`, preview(m), jid)
+	} else {
+		s.db.Exec(`UPDATE chats SET preview = '' WHERE jid = ?`, jid)
+	}
+}
+
+// sentAt: a message's time (unix seconds), 0 unknown.
+func (s *store) sentAt(jid, id string) (ts int64) {
+	s.db.QueryRow(`SELECT ts FROM msgs WHERE jid = ? AND id = ?`, jid, id).Scan(&ts)
+	return
+}
+
 // quoted: a message's text, whether ours, and its sender (groups), for a reply or a reaction.
 func (s *store) quoted(jid, id string) (text string, kind int, fromMe bool, sender string, ok bool) {
 	ok = s.db.QueryRow(`SELECT text, kind, from_me, sender FROM msgs WHERE jid = ? AND id = ?`, jid, id).

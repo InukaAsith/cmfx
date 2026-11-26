@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
+	"go.mau.fi/whatsmeow/proto/waSyncAction"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waMmsRetry"
 	"go.mau.fi/whatsmeow/types"
@@ -267,5 +269,59 @@ func SendReply(jid, text, id string) error {
 	}
 	own.add(msg{jid: jid, id: resp.ID, fromMe: true, kind: kindText, text: text, ts: resp.Timestamp,
 		group: to.Server == types.GroupServer}, true)
+	return nil
+}
+
+// deleted: what a message deleted for everyone says (WhatsApp's words).
+const deleted = "This message was deleted"
+
+// Delete deletes message id of jid: for everyone (WhatsApp's revoke: ours only) or for me (the app state patch WhatsApp
+// syncs to the phone and its other devices), and keeps that.
+func Delete(jid, id string, everyone bool) error {
+	c := client()
+	if c == nil {
+		return errNotOpen
+	}
+	chat, err := types.ParseJID(jid)
+	if err != nil {
+		return err
+	}
+	_, _, fromMe, sender, ok := own.quoted(jid, id)
+	if !ok {
+		return errors.New("that message is gone")
+	}
+	ctx, cancel := timeout(30 * time.Second)
+	defer cancel()
+	if everyone {
+		if !fromMe {
+			return errors.New("only your own messages")
+		}
+		if _, err := c.SendMessage(ctx, chat, c.BuildRevoke(chat, types.EmptyJID, id)); err != nil {
+			return err
+		}
+		own.edit(jid, id, deleted)
+		return nil
+	}
+	isMe, who := "0", "0"
+	if fromMe {
+		isMe = "1"
+	} else if chat.Server == types.GroupServer && sender != "" {
+		who = sender
+	}
+	ts := own.sentAt(jid, id)
+	patch := appstate.PatchInfo{
+		Type: appstate.WAPatchRegularHigh,
+		Mutations: []appstate.MutationInfo{{
+			Index:   []string{appstate.IndexDeleteMessageForMe, chat.String(), id, isMe, who},
+			Version: 3,
+			Value: &waSyncAction.SyncActionValue{DeleteMessageForMeAction: &waSyncAction.DeleteMessageForMeAction{
+				DeleteMedia: proto.Bool(true), MessageTimestamp: proto.Int64(ts),
+			}},
+		}},
+	}
+	if err := c.SendAppState(ctx, patch); err != nil {
+		return err
+	}
+	own.remove(jid, id)
 	return nil
 }

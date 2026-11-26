@@ -32,9 +32,9 @@ func TestOpenAndStore(t *testing.T) {
 	if n != keep {
 		t.Fatal(n)
 	}
-	own.edit("1@s.whatsapp.net", string(rune('A'+59)), "[Deleted]")
+	own.edit("1@s.whatsapp.net", string(rune('A'+59)), deleted)
 	MarkRead("1@s.whatsapp.net")
-	if c := Chats(); !strings.Contains(c, `"unread":0,"preview":"[Deleted]"`) {
+	if c := Chats(); !strings.Contains(c, `"unread":0,"preview":"`+deleted+`"`) {
 		t.Fatal(c)
 	}
 }

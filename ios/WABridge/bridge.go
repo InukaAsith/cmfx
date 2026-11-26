@@ -406,6 +406,9 @@ func handle(c *whatsmeow.Client, evt any) {
 		}
 	case *events.HistorySync:
 		history(c, e.Data)
+	case *events.DeleteForMe:
+		// deleted for me on the phone (or another device)
+		own.remove(chatOf(c, e.ChatJID).String(), e.MessageID)
 	case *events.Receipt:
 		st := 0
 		switch e.Type {
@@ -504,7 +507,7 @@ func keepMessage(c *whatsmeow.Client, e *events.Message, live bool) (msg, bool) 
 				own.edit(jid, pm.GetKey().GetID(), text)
 			}
 		case waE2E.ProtocolMessage_REVOKE:
-			own.edit(jid, pm.GetKey().GetID(), "[Deleted]")
+			own.edit(jid, pm.GetKey().GetID(), deleted)
 		}
 		return msg{}, false
 	}

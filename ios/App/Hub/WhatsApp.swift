@@ -461,6 +461,21 @@ private struct WAMsg: Decodable {
             if let err { return await out([ChatsProto.reaction(idx, shown[idx].react ?? ""), ChatsProto.append("Not sent: \(err)")]) }
             shown[idx].react = ChatsProto.fromWatch(emoji)
             await out([ChatsProto.reaction(idx, emoji)])
+        case .delete(let idx, let everyone):
+            guard let id = open, let jid = ids.key(id), idx < shown.count, let mid = shown[idx].id else { return }
+            let err = await Self.go { () -> String? in
+                var e: NSError?
+                WabridgeDelete(jid, mid, everyone, &e)
+                return e?.localizedDescription
+            }
+            guard open == id else { return }
+            if let err {
+                // not deleted: the watch gets it back
+                let b = bubble(shown[idx])
+                return await out([ChatsProto.message(idx, me: b.me, state: shown[idx].state ?? 0, kind: b.kind, b.text),
+                                  ChatsProto.append("Not deleted: \(err)")])
+            }
+            await sendList()
         }
     }
 
