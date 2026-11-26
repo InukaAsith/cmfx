@@ -354,6 +354,7 @@ enum Checks {
             eq("react ask", "\(ChatsProto.parse(Data([107, 2]) + Data("👍".utf8))!)", "react(2, \"👍\")")
             eq("delete for me", "\(ChatsProto.parse(Data([100, 3, 0]))!)", "delete(3, everyone: false)")
             eq("delete for everyone", "\(ChatsProto.parse(Data([100, 3, 1]))!)", "delete(3, everyone: true)")
+            eq("remove a row", "\(ChatsProto.parse(Data([68, 7]))!)", "remove(7)")
             eq("reply ask", "\(ChatsProto.parse(Data([121, 255]))!) \(ChatsProto.parse(Data([121, 4]))!)", "replyTo(nil) replyTo(Optional(4))")
             eq("reaction", hex(ChatsProto.reaction(1, "👍")), "5801f09f918d")
             eq("stand-ins", ChatsProto.toWatch("❤️") + ChatsProto.toWatch("❤") + ChatsProto.fromWatch("💗") + ChatsProto.fromWatch("😂"),

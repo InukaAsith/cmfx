@@ -133,11 +133,24 @@ struct Note: Codable, Identifiable, Equatable {
         case .open(let id): await show(id)
         case .tap(let idx): await tap(idx)
         case .credit, .stop, .react, .replyTo, .delete: break
+        case .remove(let id): await remove(id)
         case .filter(let t):
             tab = min(max(t, 0), 2)
             await sendList()
         case .send(let id, let text): await send(id, text)
         }
+    }
+
+    /// A row held and its deletion confirmed on the watch: a note, a to-do list (with its reminders), a reminder.
+    private func remove(_ id: UInt8) async {
+        switch item(id) {
+        case .note(let n): store.delete(n.id)
+        case .list(let cal): try? events.removeCalendar(cal, commit: true)
+        case .rem(let r): try? events.remove(r, commit: true)
+        default: break
+        }
+        if open == id { open = nil }
+        await sendList()
     }
 
     private enum Item { case new, newList, reminder, list(EKCalendar), note(Note), rem(EKReminder) }

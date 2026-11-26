@@ -461,6 +461,7 @@ private struct WAMsg: Decodable {
             if let err { return await out([ChatsProto.reaction(idx, shown[idx].react ?? ""), ChatsProto.append("Not sent: \(err)")]) }
             shown[idx].react = ChatsProto.fromWatch(emoji)
             await out([ChatsProto.reaction(idx, emoji)])
+        case .remove: break
         case .delete(let idx, let everyone):
             guard let id = open, let jid = ids.key(id), idx < shown.count, let mid = shown[idx].id else { return }
             let err = await Self.go { () -> String? in

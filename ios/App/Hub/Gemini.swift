@@ -62,6 +62,12 @@ import UIKit
             answering?.cancel()
             asking = text
             answering = Task { await answer(text); self.answering = nil; self.asking = nil }
+        case .remove(let id):
+            // a conversation deleted on the watch
+            convos.removeAll { $0.id == id }
+            if current == id { current = nil }
+            save()
+            send(list())
         case .tap, .credit, .stop, .filter, .react, .replyTo, .delete: break
         }
     }
