@@ -15,7 +15,11 @@ import WireKit
         var grants: [String: [String: Bool]] = [:]
         /// package → cap → last notified
         var asked: [String: [String: Date]] = [:]
+        /// (before names showed by default: the packages that showed them; kept so older stores still decode)
         var showText: Set<String> = []
+        /// The packages whose calendar, reminder and notification text the watch gets as "busy" (names show by
+        /// default; optional so a store saved before it decodes)
+        var hideText: Set<String>?
     }
 
     private(set) var store: Store
@@ -61,7 +65,7 @@ import WireKit
         Jobs.shared.clear(package)
         store.grants[package] = nil
         store.asked[package] = nil
-        store.showText.remove(package)
+        store.hideText?.remove(package)
         save()
     }
 
@@ -100,10 +104,12 @@ import WireKit
         Keychain.set("h|\(package)|\(host)", list.isEmpty ? nil : json.flatMap { String(data: $0, encoding: .utf8) })
     }
 
-    func showText(_ package: String) -> Bool { store.showText.contains(package) }
+    func showText(_ package: String) -> Bool { !(store.hideText ?? []).contains(package) }
 
     func setShowText(_ package: String, _ on: Bool) {
-        if on { store.showText.insert(package) } else { store.showText.remove(package) }
+        var hide = store.hideText ?? []
+        if on { hide.remove(package) } else { hide.insert(package) }
+        store.hideText = hide
         save()
     }
 

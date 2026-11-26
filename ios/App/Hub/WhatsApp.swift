@@ -538,7 +538,8 @@ private struct WAMsg: Decodable {
     /// `H` and the last messages, with our messages' states; `shown` follows.
     private func opened(_ id: UInt8, _ jid: String) -> [Data] {
         shown = Array(messages(jid).suffix(ChatsProto.maxMsgs))
-        return [ChatsProto.open(id, title: names[jid] ?? "Chat")] + shown.enumerated().map { i, m in
+        // newest first: the watch shows the end of the chat at once, the older ones above as they come
+        return [ChatsProto.open(id, title: names[jid] ?? "Chat")] + shown.enumerated().reversed().map { i, m in
             let b = bubble(m)
             return ChatsProto.message(i, me: b.me, state: m.state ?? 0, kind: b.kind, b.text)
         } + shown.enumerated().compactMap { i, m in m.react.flatMap { $0.isEmpty ? nil : ChatsProto.reaction(i, $0) } }

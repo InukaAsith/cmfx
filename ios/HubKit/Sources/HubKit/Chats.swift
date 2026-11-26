@@ -128,8 +128,10 @@ public enum ChatsProto {
     }
 
     /// `H` then the last 12 messages as `M`.
+    /// The messages go newest first: the watch shows the end of the chat at once and the older ones above as they
+    /// come (each keeps its index).
     public static func chat(_ id: UInt8, title: String, _ msgs: [(me: Bool, kind: UInt8, text: String)]) -> [Data] {
-        [open(id, title: title)] + msgs.suffix(maxMsgs).enumerated().map { message($0.offset, me: $0.element.me, kind: $0.element.kind, $0.element.text) }
+        [open(id, title: title)] + msgs.suffix(maxMsgs).enumerated().reversed().map { message($0.offset, me: $0.element.me, kind: $0.element.kind, $0.element.text) }
     }
 
     /// `N id`: something new in id (the watch buzzes).
