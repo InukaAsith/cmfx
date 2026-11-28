@@ -150,6 +150,35 @@ public enum YTMusic {
         return s.isEmpty ? nil : Array(s.prefix(24))
     }
 
+    /// Tells YouTube the account played song `id`, as its web player does when a song starts (the player's
+    /// `videostatsPlaybackUrl` with `ver=2` and a fresh `cpn`, yt-dlp's --mark-watched): the song is then in the
+    /// account's history, on YouTube Music too. The streams come from other players, which tell YouTube nothing.
+    /// false when not signed in or YouTube refused.
+    @discardableResult public static func markPlayed(_ id: String) async -> Bool {
+        guard let a = account, a.valid else { return false }
+        guard let j = try? await music("player", ["videoId": id, "contentCheckOk": true, "racyCheckOk": true], signedIn: true),
+              let track = j["playbackTracking"] as? [String: Any],
+              let base = (track["videostatsPlaybackUrl"] as? [String: Any])?["baseUrl"] as? String,
+              var c = URLComponents(string: base) else {
+            log("history: no playback URL for \(id)")
+            return false
+        }
+        let abc = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+        let cpn = String((0..<16).map { _ in abc.randomElement()! })
+        var items = (c.queryItems ?? []).filter { $0.name != "ver" && $0.name != "cpn" }
+        items += [URLQueryItem(name: "ver", value: "2"), URLQueryItem(name: "cpn", value: cpn)]
+        c.queryItems = items
+        guard let url = c.url else { return false }
+        var r = URLRequest(url: url)
+        r.timeoutInterval = 15
+        r.setValue(webUA, forHTTPHeaderField: "User-Agent")
+        r.setValue(a.header, forHTTPHeaderField: "Cookie")
+        r.setValue("https://music.youtube.com/", forHTTPHeaderField: "Referer")
+        let code = ((try? await URLSession.shared.data(for: r))?.1 as? HTTPURLResponse)?.statusCode ?? 0
+        if !(200..<300).contains(code) { log("history: YouTube answered \(code) for \(id)") }
+        return (200..<300).contains(code)
+    }
+
     // MARK: mixes
 
     /// The mixes on YouTube Music's home (the account's when signed in: My Supermix, Discover Mix …), then its other
