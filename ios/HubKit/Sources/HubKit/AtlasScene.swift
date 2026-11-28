@@ -387,12 +387,13 @@ public enum AtlasScene {
         let isPOI = { (c: Int) in c == poi || c >= food }
         let tiers: [[Item]] = [
             extra,
+            // the areas' names first: a few bytes, and what says where the map is
+            items.filter { $0.kind == .label && ($0.cls == place || $0.cls == waterName) },
             items.filter { $0.kind == .area && $0.cls == water },
             items.filter { $0.kind == .line && $0.cls <= tertiary },
             items.filter { $0.kind == .area && $0.cls == park },
             items.filter { $0.kind == .line && $0.cls == minor },
             items.filter { $0.kind == .carrier && $0.cls <= tertiary },
-            items.filter { $0.kind == .label && ($0.cls == place || $0.cls == waterName) },
             Array(items.filter { $0.kind == .label && isPOI($0.cls) }.sorted { $0.rank < $1.rank }.prefix(48)),
             items.filter { $0.kind == .carrier && $0.cls == minor },
             items.filter { $0.kind == .line && $0.cls == waterway },
@@ -460,5 +461,29 @@ public enum AtlasScene {
             if !full || k == radii.count - 1 { return (data, r) }
         }
         return (Data(), radii[0])
+    }
+
+    /// The wide scene's tiles' zoom (fewer, plainer features than zoom 14's) and half sides tried, widest first: the
+    /// watch's farthest zoom (10 m a pixel) shows ~2.3 km each way of its centre.
+    public static let wideZoom = 13
+    public static let wideRadii: [Double] = [4500, 4000, 3500, 3000]
+
+    /// Zoomed far out: water, parks, the main roads (tertiary and up) and their names, the areas' names (suburbs,
+    /// villages, towns); no side streets, paths, railways or places of interest. → (bytes, half side).
+    public static func wideScene(tiles: [(tile: (x: Int, y: Int), features: [Feature])], origin o: LatLon,
+                                 centre: Pt, cap: Int = cap) -> (data: Data, r: Double) {
+        let feats = tiles.flatMap { t in t.features.map { (tile: t.tile, f: $0) } }
+        for (k, r) in wideRadii.enumerated() {
+            let main = items(feats, origin: o, centre: centre, r: r, z: wideZoom).filter {
+                switch $0.kind {
+                case .area: return true
+                case .line, .carrier: return $0.cls <= tertiary
+                case .label: return $0.cls == place || $0.cls == waterName
+                }
+            }
+            let (data, full) = build(main, cap: cap, tol: 2.5)
+            if !full || k == wideRadii.count - 1 { return (data, r) }
+        }
+        return (Data(), wideRadii[0])
     }
 }

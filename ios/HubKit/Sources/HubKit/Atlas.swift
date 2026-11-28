@@ -144,8 +144,9 @@ public enum AtlasProto {
 
     /// What the watch asked for.
     public enum Ask: Equatable {
-        /// home: the map round where we are (`round` nil: a new frame may start there) or round a frame point
-        case ready, home(id: UInt8, round: (x: Int, y: Int)?), ways(idx: Int), resync
+        /// home: the map round where we are (`round` nil: a new frame may start there) or round a frame point;
+        /// `wide`: zoomed far out (main roads and names over a few km, AtlasScene.wideScene)
+        case ready, home(id: UInt8, round: (x: Int, y: Int)?, wide: Bool = false), ways(idx: Int), resync
         /// the watch's own GPS (◎ held): a fix (degrees, metres, satellites), looking for satellites (a bare `Y`
         /// every 2 s: the phone says whether it has its own fix), or `watchGPSOff`
         case watchFix(lat: Double, lon: Double, alt: Double, sats: Int), watchLooking, watchGPSOff
@@ -167,7 +168,7 @@ public enum AtlasProto {
             case (.ready, .ready), (.start, .start), (.stop, .stop), (.clear, .clear), (.resync, .resync),
                  (.watchGPSOff, .watchGPSOff), (.watchLooking, .watchLooking): return true
             case let (.watchFix(a, b, c, d), .watchFix(e, f, g, h)): return a == e && b == f && c == g && d == h
-            case let (.home(i, r), .home(j, s)): return i == j && r?.x == s?.x && r?.y == s?.y
+            case let (.home(i, r, w), .home(j, s, v)): return i == j && r?.x == s?.x && r?.y == s?.y && w == v
             case let (.search(i, p), .search(j, q)), let (.area(i, p), .area(j, q)): return i == j && p == q
             case let (.category(i, p), .category(j, q)): return i == j && p == q
             case let (.pick(x, y, n), .pick(u, v, m)): return x == u && y == v && n == m
@@ -190,10 +191,10 @@ public enum AtlasProto {
         guard let c = b.first else { return nil }
         switch (Character(UnicodeScalar(c)), b.count) {
         case ("R", 1): return .ready
-        case ("H", 7):
+        case ("H", 7...8):
             let x = Int(Int16(bitPattern: UInt16(b[3]) | UInt16(b[4]) << 8))
             let y = Int(Int16(bitPattern: UInt16(b[5]) | UInt16(b[6]) << 8))
-            return .home(id: b[1], round: b[2] == 1 ? nil : (x, y))
+            return .home(id: b[1], round: b[2] == 1 ? nil : (x, y), wide: b.count == 8 && b[7] == 1)
         case ("Q", 3...): return .search(id: b[1], String(decoding: b.dropFirst(2), as: UTF8.self))
         case ("Z", 3...): return .area(id: b[1], String(decoding: b.dropFirst(2), as: UTF8.self))
         case ("C", 3): return .category(id: b[1], Int(b[2]))

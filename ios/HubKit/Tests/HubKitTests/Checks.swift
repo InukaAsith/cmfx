@@ -104,6 +104,7 @@ enum Checks {
                 || AtlasProto.parse(Data("K".utf8)) != .clear
                 || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 0, 0x9C, 0xFF, 0x2C, 0x01])) != .home(id: 4, round: (-100, 300))
                 || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 1, 0, 0, 0, 0])) != .home(id: 4, round: nil)
+                || AtlasProto.parse(Data([UInt8(ascii: "H"), 4, 1, 0, 0, 0, 0, 1])) != .home(id: 4, round: nil, wide: true)
                 || AtlasProto.parse(Data([UInt8(ascii: "U"), 5])) != .ways(idx: 5) { bad.append("atlas: parse") }
             // l, o, i as proto.rs reads them
             if AtlasProto.row(1, (name: "Galle Face", sub: "Colombo 3", dist: 1234, at: (-300, 450)))
