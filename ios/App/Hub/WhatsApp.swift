@@ -38,6 +38,15 @@ private final class WAEvents: NSObject, WabridgeListenerProtocol {
         guard let jid else { return }
         Task { @MainActor in Hub.shared.whatsapp.presence(jid, online) }
     }
+
+    func onTyping(_ jid: String?, what: Int) {
+        guard let jid else { return }
+        Task { @MainActor in Hub.shared.whatsapp.typing(jid, what) }
+    }
+
+    func onCatchUp(_ done: Int, total: Int) {
+        Task { @MainActor in Hub.shared.whatsapp.catchUp(done, of: total) }
+    }
 }
 
 private struct WAChat: Decodable { let jid: String, name: String, unread: Int, preview: String }
@@ -641,6 +650,20 @@ private struct WAMsg: Decodable {
             }
             if !msgs.isEmpty { await self.out(msgs) }
         }
+    }
+
+    /// From Go: the open chat's contact is typing (1), recording (2) or stopped (0): the dots on the watch.
+    fileprivate func typing(_ jid: String, _ what: Int) {
+        guard live, let id = open, ids.key(id) == jid else { return }
+        enqueue { await self.out([ChatsProto.typing(what)]) }
+    }
+
+    /// From Go: how far the catch-up of what WhatsApp held while offline is: the watch's sync bar fills with it
+    /// (55 % once online, 100 % at "synced").
+    fileprivate func catchUp(_ done: Int, of total: Int) {
+        guard live, total > 0, WabridgeState() != "synced" else { return }
+        let pct = 55 + 44 * min(done, total) / total
+        enqueue { await self.out([ChatsProto.sync(pct)]) }
     }
 
     /// From Go: the open chat's contact came online or went offline (then when, if they show it).

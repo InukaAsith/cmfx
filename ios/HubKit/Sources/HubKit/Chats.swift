@@ -67,6 +67,9 @@ public enum ChatsProto {
     /// `P online`: the open chat's contact is online.
     public static func online(_ on: Bool) -> Data { Data([UInt8(ascii: "P"), on ? 1 : 0]) }
 
+    /// `Z what`: the open chat's contact is typing (1), recording a voice message (2) or neither (0).
+    public static func typing(_ what: Int) -> Data { Data([UInt8(ascii: "Z"), UInt8(min(max(what, 0), 2))]) }
+
     /// `W text`: the line under the open chat's name ("last seen 16:42").
     public static func seen(_ s: String) -> Data { Data([UInt8(ascii: "W")]) + utf8(s, 40) }
 

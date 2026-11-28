@@ -323,6 +323,7 @@ enum Checks {
             eq("chats many unread", hex(ChatsProto.list([.init(id: 2, unreadCount: 300, name: "a", preview: "")])[1].prefix(4)), "43000263")
             eq("chats picker", hex(ChatsProto.picker("New chat")), hex(Data("KNew chat".utf8)))
             eq("chats sync", hex(ChatsProto.sync(140)), "5964")
+            eq("chats typing", hex(ChatsProto.typing(1)) + hex(ChatsProto.typing(7)), "5a015a02")
         }
         do {
             // a voice note: 2 s at 8 kHz → Ogg Opus → back, about as long

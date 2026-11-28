@@ -40,6 +40,11 @@ type Listener interface {
 	OnReceipt(jid string)
 	// OnPresence: jid (watched with Watch) came online or went offline.
 	OnPresence(jid string, online bool)
+	// OnTyping: jid (watched with Watch) is typing (1), recording a voice message (2) or stopped (0).
+	OnTyping(jid string, what int)
+	// OnCatchUp: of the `total` events WhatsApp held while we were offline, `done` have come (as it goes, not each
+	// one; total from the server's preview right after connecting).
+	OnCatchUp(done, total int)
 }
 
 const (
@@ -56,6 +61,8 @@ var (
 	own       *store
 	listener  Listener
 	synced    bool
+	// the offline catch-up: events the server said it holds, how many came, the last told
+	catchTotal, catchDone, catchTold int
 )
 
 var errNotOpen = errors.New("the WhatsApp bridge is not open")
@@ -366,9 +373,33 @@ func MarkRead(jid string) {
 // MARK: events
 
 func handle(c *whatsmeow.Client, evt any) {
+	switch evt.(type) {
+	case *events.Message, *events.Receipt, *events.DeleteForMe:
+		countCatchUp()
+	}
 	switch e := evt.(type) {
 	case *events.Connected:
 		state("connected")
+	case *events.OfflineSyncPreview:
+		mu.Lock()
+		catchTotal, catchDone, catchTold = e.Messages+e.Receipts+e.Notifications, 0, 0
+		mu.Unlock()
+		caughtUp()
+	case *events.ChatPresence:
+		chat := chatOf(c, e.Chat)
+		if chat.IsEmpty() || e.IsFromMe {
+			return
+		}
+		what := 0
+		if e.State == types.ChatPresenceComposing {
+			what = 1
+			if e.Media == types.ChatPresenceMediaAudio {
+				what = 2
+			}
+		}
+		if l := current(); l != nil {
+			l.OnTyping(chat.String(), what)
+		}
 	case *events.OfflineSyncCompleted:
 		mu.Lock()
 		synced = true
@@ -439,6 +470,33 @@ func handle(c *whatsmeow.Client, evt any) {
 		if l := current(); !chat.IsEmpty() && l != nil {
 			l.OnPresence(chat.String(), !e.Unavailable)
 		}
+	}
+}
+
+// countCatchUp: one more of the offline events (while catching up).
+func countCatchUp() {
+	mu.Lock()
+	on := !synced && catchTotal > 0
+	if on {
+		catchDone++
+	}
+	mu.Unlock()
+	if on {
+		caughtUp()
+	}
+}
+
+// caughtUp tells how far the catch-up is, each 2% of it (and at the start).
+func caughtUp() {
+	mu.Lock()
+	done, total, l := min(catchDone, catchTotal), catchTotal, listener
+	tell := total > 0 && (done == 0 || (done-catchTold)*50 >= total || done == total)
+	if tell {
+		catchTold = done
+	}
+	mu.Unlock()
+	if tell && l != nil {
+		l.OnCatchUp(done, total)
 	}
 }
 
